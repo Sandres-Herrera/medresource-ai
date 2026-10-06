@@ -41,6 +41,25 @@ comparan exactamente sobre el mismo escenario.
 2. Esperar a que Maven descargue las dependencias.
 3. Ejecutar las pruebas con `mvn test`.
 
+## Estructura del proyecto
+
+Arquitectura en tres capas con el modelo del dominio como módulo transversal.
+Las carpetas padre (`services` y `ui`) solo agrupan; todas las clases van en las
+carpetas hijas.
+
+```text
+com.medresource
+├── model               Modelo del dominio (usado por las tres capas)
+├── persistence         Capa de acceso a datos (Oracle, DAO)
+├── services            Capa de lógica de negocio
+│   ├── management      Servicios que gestionan los casos de uso
+│   ├── simulation      Motor de simulación, reglas clínicas y métricas
+│   └── strategy        Estrategias de asignación (FIFO, prioridad clínica, IA)
+└── ui                  Capa de presentación
+    ├── view            Ventanas Swing
+    └── controller      Controladores de eventos
+```
+
 ## Ramas
 
 | Rama | Uso |
