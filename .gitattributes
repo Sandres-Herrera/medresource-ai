@@ -1,0 +1,15 @@
+# Normaliza los saltos de línea en el repositorio
+* text=auto
+
+# Archivos de texto del proyecto
+*.java  text eol=lf
+*.xml   text eol=lf
+*.md    text eol=lf
+*.sql   text eol=lf
+*.properties text eol=lf
+
+# Archivos binarios
+*.png   binary
+*.jpg   binary
+*.pdf   binary
+*.docx  binary

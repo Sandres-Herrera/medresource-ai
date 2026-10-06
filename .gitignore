@@ -1,0 +1,31 @@
+# ── Archivos generados por Maven y compilación ──
+target/
+out/
+*.class
+
+# ── IntelliJ IDEA (cada integrante tiene su propia configuración) ──
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ── Otros editores (por si alguien abre el proyecto con ellos) ──
+.vscode/
+.classpath
+.project
+.settings/
+nbproject/private/
+nbbuild/
+dist/
+
+# ── Credenciales locales de la base de datos (nunca se suben) ──
+src/main/resources/db.properties
+
+# ── Registros y resultados generados al ejecutar ──
+*.log
+resultados/
+
+# ── Archivos del sistema operativo ──
+.DS_Store
+Thumbs.db
+desktop.ini
