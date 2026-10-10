@@ -10,8 +10,7 @@ public abstract class StaffMember extends Person implements Assignable {
     /** Edad mínima para trabajar en el hospital. */
     public static final int MIN_STAFF_AGE = 18;
 
-    private Patient assignedPatient;
-    private int busyUntil = -1;
+    private final Occupancy occupancy;
 
     /**
      * @throws IllegalArgumentException si algún dato no es válido o la edad
@@ -22,11 +21,12 @@ public abstract class StaffMember extends Person implements Assignable {
         if (age < MIN_STAFF_AGE) {
             throw new IllegalArgumentException("El personal debe tener al menos " + MIN_STAFF_AGE + " años.");
         }
+        this.occupancy = new Occupancy(code);
     }
 
     @Override
     public boolean isAvailable() {
-        return assignedPatient == null;
+        return occupancy.isFree();
     }
 
     /**
@@ -36,38 +36,21 @@ public abstract class StaffMember extends Person implements Assignable {
      */
     @Override
     public void assign(Patient patient, int untilMinute) {
-        if (patient == null) {
-            throw new IllegalArgumentException("El paciente es obligatorio.");
-        }
-        if (patient.isFinished()) {
-            throw new IllegalArgumentException(patient.getCode() + " ya terminó su atención.");
-        }
-        if (untilMinute < 0) {
-            throw new IllegalArgumentException("El minuto de liberación no puede ser negativo.");
-        }
-        if (!isAvailable()) {
-            throw new IllegalStateException(getCode() + " ya está atendiendo a " + assignedPatient.getCode() + ".");
-        }
-        this.assignedPatient = patient;
-        this.busyUntil = untilMinute;
+        occupancy.occupy(patient, untilMinute);
     }
 
     @Override
     public void release() {
-        if (isAvailable()) {
-            throw new IllegalStateException(getCode() + " ya está libre.");
-        }
-        this.assignedPatient = null;
-        this.busyUntil = -1;
+        occupancy.free();
     }
 
     @Override
     public Patient getAssignedPatient() {
-        return assignedPatient;
+        return occupancy.getPatient();
     }
 
     @Override
     public int getBusyUntil() {
-        return busyUntil;
+        return occupancy.getBusyUntil();
     }
 }
