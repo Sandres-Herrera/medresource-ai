@@ -24,10 +24,17 @@ public class Doctor extends StaffMember {
     /**
      * Calcula qué tan apto es el médico para una enfermedad.
      *
-     * <p>Reglas: si su especialidad es la principal de la enfermedad es
-     * {@code PRIMARY}; si es secundaria, {@code SECONDARY}; si no aparece,
-     * {@code NOT_SUITABLE}. Un pediatra solo atiende pacientes menores de
-     * {@link Person#MINOR_AGE_LIMIT} años.</p>
+     * <p>Reglas, en este orden:</p>
+     * <ol>
+     *   <li>Un pediatra solo atiende pacientes menores de
+     *       {@link Person#MINOR_AGE_LIMIT} años.</li>
+     *   <li>Un médico general nunca atiende enfermedades que requieren cirugía.</li>
+     *   <li>Si su especialidad es la principal de la enfermedad: {@code PRIMARY}.</li>
+     *   <li>Si es una de las secundarias: {@code SECONDARY}.</li>
+     *   <li>Un médico de urgencias puede estabilizar (como {@code SECONDARY})
+     *       las enfermedades no quirúrgicas cuyo triage típico es I o II.</li>
+     *   <li>En cualquier otro caso: {@code NOT_SUITABLE}.</li>
+     * </ol>
      *
      * <p>Recibe la enfermedad y no el paciente porque las estrategias usan el
      * diagnóstico, que puede ser distinto de la enfermedad real.</p>
@@ -44,10 +51,13 @@ public class Doctor extends StaffMember {
         if (specialty == Specialty.PEDIATRICS && patientAge >= MINOR_AGE_LIMIT) {
             return CompatibilityLevel.NOT_SUITABLE;
         }
+        if (specialty == Specialty.GENERAL_MEDICINE && isSurgical(disease)) {
+            return CompatibilityLevel.NOT_SUITABLE;
+        }
         if (disease.getMainSpecialty() == specialty) {
             return CompatibilityLevel.PRIMARY;
         }
-        if (disease.hasSecondarySpecialty(specialty)) {
+        if (disease.hasSecondarySpecialty(specialty) || canStabilize(disease)) {
             return CompatibilityLevel.SECONDARY;
         }
         return CompatibilityLevel.NOT_SUITABLE;
@@ -71,5 +81,18 @@ public class Doctor extends StaffMember {
 
     public Specialty getSpecialty() {
         return specialty;
+    }
+
+    private static boolean isSurgical(Disease disease) {
+        return disease.getTreatment() == TreatmentType.SURGERY;
+    }
+
+    /**
+     * Un médico de urgencias estabiliza los casos no quirúrgicos de triage I o II.
+     */
+    private boolean canStabilize(Disease disease) {
+        return specialty == Specialty.EMERGENCY_MEDICINE
+                && !isSurgical(disease)
+                && disease.typicalTriage().isMoreUrgentThan(TriageLevel.III);
     }
 }
