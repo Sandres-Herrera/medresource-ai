@@ -35,8 +35,28 @@ public class HealthModel {
      */
     public double deteriorationPerMinute(Patient patient, double effectiveness) {
         requirePatient(patient);
+        return deteriorationPerMinute(patient.getDisease(), patient.getAge(), effectiveness);
+    }
+
+    /**
+     * Igual que {@link #deteriorationPerMinute(Patient, double)}, pero con la enfermedad
+     * y la edad por separado. Sirve para estimar con el diagnóstico, que puede no ser
+     * la enfermedad real del paciente.
+     *
+     * @param disease       enfermedad (o diagnóstico)
+     * @param age           edad del paciente en años
+     * @param effectiveness efectividad de la atención, de 0 (sin atención) a 1
+     * @return puntos de salud perdidos por minuto
+     * @throws IllegalArgumentException si falta la enfermedad, la edad es negativa
+     *                                  o la efectividad está fuera de 0 a 1
+     */
+    public double deteriorationPerMinute(Disease disease, int age, double effectiveness) {
+        requireDisease(disease);
+        if (age < 0) {
+            throw new IllegalArgumentException("La edad no puede ser negativa.");
+        }
         requireEffectiveness(effectiveness, true);
-        return patient.getDisease().getDeteriorationRate() * ageFactor(patient.getAge()) * (1.0 - effectiveness);
+        return disease.getDeteriorationRate() * ageFactor(age) * (1.0 - effectiveness);
     }
 
     /**
@@ -52,9 +72,28 @@ public class HealthModel {
      */
     public int treatmentMinutes(Patient patient, double effectiveness) {
         requirePatient(patient);
+        return treatmentMinutes(patient.getDisease(), patient.getHealth(), effectiveness);
+    }
+
+    /**
+     * Igual que {@link #treatmentMinutes(Patient, double)}, pero con la enfermedad y la
+     * salud por separado. Sirve para estimar con el diagnóstico y con la salud que el
+     * paciente tendrá cuando empiece su tratamiento.
+     *
+     * @param disease       enfermedad (o diagnóstico)
+     * @param health        salud del paciente, de 0 a 100
+     * @param effectiveness efectividad de la atención, mayor que 0 y hasta 1
+     * @return minutos de tratamiento, redondeados hacia arriba
+     * @throws IllegalArgumentException si falta la enfermedad, la salud está fuera de 0 a 100
+     *                                  o la efectividad no es mayor que 0 y hasta 1
+     */
+    public int treatmentMinutes(Disease disease, double health, double effectiveness) {
+        requireDisease(disease);
+        if (health < 0.0 || health > Patient.MAX_HEALTH) {
+            throw new IllegalArgumentException("La salud debe estar entre 0 y 100.");
+        }
         requireEffectiveness(effectiveness, false);
-        Disease disease = patient.getDisease();
-        double severity = 1.0 - patient.getHealth() / Patient.MAX_HEALTH;
+        double severity = 1.0 - health / Patient.MAX_HEALTH;
         double base = disease.getMinDurationMinutes()
                 + (disease.getMaxDurationMinutes() - disease.getMinDurationMinutes()) * severity;
         return (int) Math.ceil(base / effectiveness - ROUNDING_TOLERANCE);
@@ -79,6 +118,12 @@ public class HealthModel {
 
     private static double ageFactor(int age) {
         return age < INFANT_AGE_LIMIT || age >= ELDERLY_AGE_LIMIT ? VULNERABLE_AGE_FACTOR : 1.0;
+    }
+
+    private static void requireDisease(Disease disease) {
+        if (disease == null) {
+            throw new IllegalArgumentException("La enfermedad es obligatoria.");
+        }
     }
 
     private static void requirePatient(Patient patient) {
