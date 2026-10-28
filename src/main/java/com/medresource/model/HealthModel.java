@@ -1,7 +1,4 @@
-package com.medresource.services.simulation;
-
-import com.medresource.model.Disease;
-import com.medresource.model.Patient;
+package com.medresource.model;
 
 /**
  * Reglas de cómo cambia la salud de un paciente.

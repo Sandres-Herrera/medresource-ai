@@ -1,10 +1,5 @@
-package com.medresource.services.simulation;
+package com.medresource.model;
 
-import com.medresource.model.BloodType;
-import com.medresource.model.Disease;
-import com.medresource.model.DiseaseCatalog;
-import com.medresource.model.Patient;
-import com.medresource.model.Sex;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
