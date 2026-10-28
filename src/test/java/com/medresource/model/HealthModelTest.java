@@ -1,10 +1,5 @@
-package com.medresource.services.simulation;
+package com.medresource.model;
 
-import com.medresource.model.BloodType;
-import com.medresource.model.Disease;
-import com.medresource.model.DiseaseCatalog;
-import com.medresource.model.Patient;
-import com.medresource.model.Sex;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -124,5 +119,32 @@ class HealthModelTest {
         assertThrows(IllegalArgumentException.class, () -> model.recoveryPoints(patient, 1.5));
         assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(patient, 0.0));
         assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(patient, 1.2));
+    }
+
+    @Test
+    void estimatesWithADiseaseAndAgeGiveTheSameAsWithAPatient() {
+        Patient adult = patient(30, Sex.MALE, 40.0);
+        Patient baby = patient(2, Sex.MALE, 40.0);
+
+        assertClose(model.deteriorationPerMinute(adult, 0.6), model.deteriorationPerMinute(DENGUE, 30, 0.6));
+        assertClose(model.deteriorationPerMinute(baby, 0.0), model.deteriorationPerMinute(DENGUE, 2, 0.0));
+        assertEquals(model.treatmentMinutes(adult, 0.6), model.treatmentMinutes(DENGUE, 40.0, 0.6));
+    }
+
+    @Test
+    void estimatesWithADiseaseRejectInvalidData() {
+        assertThrows(IllegalArgumentException.class, () -> model.deteriorationPerMinute(null, 30, 0.5));
+        assertThrows(IllegalArgumentException.class, () -> model.deteriorationPerMinute(DENGUE, -1, 0.5));
+        assertThrows(IllegalArgumentException.class, () -> model.deteriorationPerMinute(DENGUE, 30, 1.1));
+        assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(null, 50.0, 1.0));
+        assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(DENGUE, -0.1, 1.0));
+        assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(DENGUE, 100.1, 1.0));
+        assertThrows(IllegalArgumentException.class, () -> model.treatmentMinutes(DENGUE, 50.0, 0.0));
+    }
+
+    @Test
+    void estimatesAcceptTheLimitsOfHealth() {
+        assertEquals(60, model.treatmentMinutes(DENGUE, 100.0, 1.0));
+        assertEquals(180, model.treatmentMinutes(DENGUE, 0.0, 1.0));
     }
 }

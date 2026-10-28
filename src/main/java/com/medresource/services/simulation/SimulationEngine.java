@@ -6,6 +6,7 @@ import com.medresource.model.CauseOfDeath;
 import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.Disease;
 import com.medresource.model.EventType;
+import com.medresource.model.HealthModel;
 import com.medresource.model.Hospital;
 import com.medresource.model.Morgue;
 import com.medresource.model.Patient;
@@ -25,7 +26,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 /**
  * Motor de simulación: avanza el hospital minuto a minuto aplicando las
  * decisiones de una estrategia.

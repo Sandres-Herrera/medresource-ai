@@ -9,6 +9,7 @@ import com.medresource.model.Disease;
 import com.medresource.model.DiseaseCatalog;
 import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
+import com.medresource.model.HealthModel;
 import com.medresource.model.Hospital;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Morgue;
