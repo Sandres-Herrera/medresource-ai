@@ -1,6 +1,22 @@
 package com.medresource.services.simulation;
 
-import com.medresource.model.*;
+import com.medresource.model.Assignable;
+import com.medresource.model.Bed;
+import com.medresource.model.CauseOfDeath;
+import com.medresource.model.CompatibilityLevel;
+import com.medresource.model.Disease;
+import com.medresource.model.EventType;
+import com.medresource.model.HealthModel;
+import com.medresource.model.Hospital;
+import com.medresource.model.Morgue;
+import com.medresource.model.Patient;
+import com.medresource.model.PatientOutcome;
+import com.medresource.model.PatientProfile;
+import com.medresource.model.PatientStatus;
+import com.medresource.model.SimulationCase;
+import com.medresource.model.SimulationEvent;
+import com.medresource.model.SimulationResult;
+import com.medresource.model.TriageLevel;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.services.strategy.Assignment;
 import com.medresource.services.strategy.WaitingPatient;
@@ -10,7 +26,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 /**
  * Motor de simulación: avanza el hospital minuto a minuto aplicando las
  * decisiones de una estrategia.
