@@ -64,6 +64,61 @@ public class NeuralNetwork {
     }
 
     /**
+     * Aprende de un ejemplo: calcula el error de su predicción y ajusta los pesos
+     * y sesgos un paso en la dirección que lo reduce (retropropagación).
+     *
+     * <p>El error es la mitad del cuadrado de la diferencia entre la salida y el objetivo.</p>
+     *
+     * @param inputs       entradas del ejemplo
+     * @param target       salida esperada, de 0 a 1
+     * @param learningRate tamaño del paso, mayor que 0
+     * @return el error del ejemplo antes del ajuste
+     * @throws IllegalArgumentException si las entradas no son válidas, el objetivo
+     *                                  está fuera de 0 a 1 o la tasa no es positiva
+     */
+    public double train(double[] inputs, double target, double learningRate) {
+        if (!(target >= 0.0 && target <= 1.0)) {
+            throw new IllegalArgumentException("El objetivo debe estar entre 0 y 1.");
+        }
+        if (!(learningRate > 0.0) || Double.isInfinite(learningRate)) {
+            throw new IllegalArgumentException("La tasa de aprendizaje debe ser mayor que 0.");
+        }
+        double[][] activations = forward(inputs);
+        int layers = weights.length;
+        int last = layers - 1;
+
+        // 1) Cuánto contribuyó cada neurona al error, de la salida hacia la entrada.
+        double[][] deltas = new double[layers][];
+        double output = activations[layers][0];
+        double difference = output - target;
+        deltas[last] = new double[]{difference * output * (1.0 - output)};
+        for (int layer = last - 1; layer >= 0; layer--) {
+            deltas[layer] = new double[layerSizes[layer + 1]];
+            for (int neuron = 0; neuron < deltas[layer].length; neuron++) {
+                if (activations[layer + 1][neuron] <= 0.0) {
+                    continue; // ReLU apagada: no dejó pasar nada, así que no recibe corrección
+                }
+                double sum = 0.0;
+                for (int next = 0; next < deltas[layer + 1].length; next++) {
+                    sum += weights[layer + 1][next][neuron] * deltas[layer + 1][next];
+                }
+                deltas[layer][neuron] = sum;
+            }
+        }
+
+        // 2) Con todas las correcciones ya calculadas, se ajustan los pesos y sesgos.
+        for (int layer = 0; layer < layers; layer++) {
+            for (int neuron = 0; neuron < weights[layer].length; neuron++) {
+                for (int input = 0; input < weights[layer][neuron].length; input++) {
+                    weights[layer][neuron][input] -= learningRate * deltas[layer][neuron] * activations[layer][input];
+                }
+                biases[layer][neuron] -= learningRate * deltas[layer][neuron];
+            }
+        }
+        return 0.5 * difference * difference;
+    }
+
+    /**
      * Devuelve las neuronas de cada capa.
      *
      * @return copia de los tamaños, de la entrada a la salida
@@ -84,6 +139,10 @@ public class NeuralNetwork {
     /** Peso de una conexión; solo para las pruebas. */
     double weight(int layer, int neuron, int input) {
         return weights[layer][neuron][input];
+    }
+
+    void setWeight(int layer, int neuron, int input, double value) {
+        weights[layer][neuron][input] = value;
     }
 
     /**
