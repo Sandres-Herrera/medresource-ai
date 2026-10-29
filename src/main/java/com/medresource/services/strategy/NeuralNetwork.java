@@ -51,6 +51,19 @@ public class NeuralNetwork {
     }
 
     /**
+     * Calcula la salida de la red para unas entradas.
+     *
+     * @param inputs entradas, tantas como neuronas tiene la primera capa
+     * @return puntuación de 0 a 1
+     * @throws IllegalArgumentException si las entradas son nulas, tienen un tamaño
+     *                                  distinto al de la capa de entrada o no son números finitos
+     */
+    public double predict(double[] inputs) {
+        double[][] activations = forward(inputs);
+        return activations[activations.length - 1][0];
+    }
+
+    /**
      * Devuelve las neuronas de cada capa.
      *
      * @return copia de los tamaños, de la entrada a la salida
@@ -71,6 +84,39 @@ public class NeuralNetwork {
     /** Peso de una conexión; solo para las pruebas. */
     double weight(int layer, int neuron, int input) {
         return weights[layer][neuron][input];
+    }
+
+    /**
+     * Calcula la salida de todas las capas. La posición 0 son las entradas y la última, la salida.
+     */
+    private double[][] forward(double[] inputs) {
+        if (inputs == null || inputs.length != layerSizes[0]) {
+            throw new IllegalArgumentException("La red espera " + layerSizes[0] + " entradas.");
+        }
+        for (double value : inputs) {
+            if (Double.isNaN(value) || Double.isInfinite(value)) {
+                throw new IllegalArgumentException("Las entradas deben ser números finitos.");
+            }
+        }
+        int layers = weights.length;
+        double[][] activations = new double[layers + 1][];
+        activations[0] = inputs;
+        for (int layer = 0; layer < layers; layer++) {
+            double[] result = new double[weights[layer].length];
+            for (int neuron = 0; neuron < result.length; neuron++) {
+                double sum = biases[layer][neuron];
+                for (int input = 0; input < activations[layer].length; input++) {
+                    sum += weights[layer][neuron][input] * activations[layer][input];
+                }
+                result[neuron] = layer == layers - 1 ? sigmoid(sum) : Math.max(0.0, sum);
+            }
+            activations[layer + 1] = result;
+        }
+        return activations;
+    }
+
+    private static double sigmoid(double x) {
+        return 1.0 / (1.0 + Math.exp(-x));
     }
 
     private static int[] validatedSizes(int[] sizes) {
