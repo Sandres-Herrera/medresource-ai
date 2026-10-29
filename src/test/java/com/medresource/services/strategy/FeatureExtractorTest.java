@@ -13,12 +13,14 @@ import com.medresource.model.TriageLevel;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static com.medresource.services.strategy.StrategyFixtures.APPENDICITIS;
 import static com.medresource.services.strategy.StrategyFixtures.DENGUE;
 import static com.medresource.services.strategy.StrategyFixtures.GENERAL_FLU;
 import static com.medresource.services.strategy.StrategyFixtures.HEART_ATTACK;
+import static com.medresource.services.strategy.StrategyFixtures.OPEN_FRACTURE;
 import static com.medresource.services.strategy.StrategyFixtures.disease;
 import static com.medresource.services.strategy.StrategyFixtures.hospital;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -70,6 +72,7 @@ class FeatureExtractorTest {
         double[] features = extract(waiting(DENGUE, 30, 80.0), fullHospital(), 0);
 
         assertEquals(FeatureExtractor.FEATURE_COUNT, features.length);
+        assertEquals(14, FeatureExtractor.FEATURE_COUNT);
         assertEquals(FeatureExtractor.FEATURE_COUNT, FeatureExtractor.FEATURE_NAMES.size());
     }
 
@@ -247,6 +250,101 @@ class FeatureExtractorTest {
         assertEquals(80.0, candidate.patient().getHealth());
         assertEquals(4, hospital.freeDoctors().size());
         assertEquals(3, hospital.freeNurses().size());
+    }
+
+    @Test
+    void bloodNeedsTwoCompatibleUnits() {
+        // Un paciente O− solo recibe O−: con una unidad por tipo no alcanza para las dos que consume el tratamiento.
+        Disease fracture = disease(OPEN_FRACTURE);
+        Patient patient = new Patient(1, 30, Sex.MALE, BloodType.O_NEGATIVE, fracture, fracture.getSymptoms(), 0, 80.0, false);
+        WaitingPatient candidate = new WaitingPatient(patient, fracture);
+
+        assertClose(0.0, value(extract(candidate, hospital(3, 1, 1, Specialty.TRAUMATOLOGY), 0), "bloodAvailable"));
+        assertClose(1.0, value(extract(candidate, hospital(3, 2, 1, Specialty.TRAUMATOLOGY), 0), "bloodAvailable"));
+    }
+
+    @Test
+    void aBusyDoctorDoesNotCount() {
+        WaitingPatient candidate = waiting(PNEUMONIA, 30, 80.0);
+        Hospital hospital = hospital(Specialty.INTERNAL_MEDICINE, Specialty.GENERAL_MEDICINE);
+        hospital.getDoctors().get(0).assign(waiting(GENERAL_FLU, 30, 80.0).patient(), 100);
+
+        assertClose(0.6, value(extract(candidate, hospital, 0), "bestDoctorEffectiveness"));
+        assertClose(0.5, value(extract(candidate, hospital, 0), "freeDoctors"));
+    }
+
+    @Test
+    void bedAvailabilityDependsOnWhatTheTreatmentNeeds() {
+        Hospital hospital = fullHospital();
+        WaitingPatient hospitalization = waiting(DENGUE, 30, 80.0);
+        WaitingPatient consultation = waiting(GENERAL_FLU, 30, 80.0);
+        hospital.freeBeds().forEach(bed -> bed.assign(hospitalization.patient(), 100));
+
+        assertClose(0.0, value(extract(hospitalization, hospital, 0), "bedAvailable"));
+        assertClose(1.0, value(extract(consultation, hospital, 0), "bedAvailable"));
+    }
+
+    @Test
+    void anIcuPatientNeedsAnIcuBed() {
+        Hospital hospital = fullHospital();
+        WaitingPatient heartAttack = waiting(HEART_ATTACK, 60, 60.0);
+
+        double[] free = extract(heartAttack, hospital, 0);
+        assertClose(1.0, value(free, "needsIcu"));
+        assertClose(1.0, value(free, "bedAvailable"));
+
+        hospital.freeIcuBeds().forEach(bed -> bed.assign(heartAttack.patient(), 100));
+        assertClose(0.0, value(extract(heartAttack, hospital, 0), "bedAvailable"));
+        assertClose(0.0, value(extract(waiting(DENGUE, 30, 80.0), hospital, 0), "needsIcu"));
+    }
+
+    @Test
+    void operatingRoomAvailabilityOnlyMattersForSurgery() {
+        Hospital hospital = fullHospital();
+        WaitingPatient surgery = waiting(APPENDICITIS, 30, 80.0);
+        WaitingPatient noSurgery = waiting(DENGUE, 30, 80.0);
+        hospital.getOperatingRooms().forEach(room -> room.assign(surgery.patient(), 100));
+
+        assertClose(0.0, value(extract(surgery, hospital, 0), "operatingRoomAvailable"));
+        assertClose(1.0, value(extract(noSurgery, hospital, 0), "operatingRoomAvailable"));
+    }
+
+    @Test
+    void bloodAvailabilityOnlyMattersWhenTheTreatmentNeedsBlood() {
+        WaitingPatient needsBlood = waiting(OPEN_FRACTURE, 30, 80.0);
+        WaitingPatient noBlood = waiting(DENGUE, 30, 80.0);
+        Hospital withoutBlood = hospital(3, 0, 1, Specialty.TRAUMATOLOGY);
+        Hospital withBlood = hospital(3, 5, 1, Specialty.TRAUMATOLOGY);
+
+        assertClose(0.0, value(extract(needsBlood, withoutBlood, 0), "bloodAvailable"));
+        assertClose(1.0, value(extract(needsBlood, withBlood, 0), "bloodAvailable"));
+        assertClose(1.0, value(extract(noBlood, withoutBlood, 0), "bloodAvailable"));
+    }
+
+    @Test
+    void freeNursesAreAFractionOfAllNurses() {
+        Hospital hospital = hospital(4, 5, 1, Specialty.GENERAL_MEDICINE);
+        WaitingPatient candidate = waiting(GENERAL_FLU, 30, 80.0);
+        hospital.getNurses().get(0).assign(candidate.patient(), 100);
+
+        assertClose(0.75, value(extract(candidate, hospital, 0), "freeNurses"));
+    }
+
+    @Test
+    void aHospitalWithoutNursesGivesZeroFreeNurses() {
+        Hospital hospital = hospital(0, 5, 1, Specialty.GENERAL_MEDICINE);
+
+        assertClose(0.0, value(extract(waiting(GENERAL_FLU, 30, 80.0), hospital, 0), "freeNurses"));
+    }
+
+    @Test
+    void queueSizeIsScaledAndCapped() {
+        WaitingPatient candidate = waiting(DENGUE, 30, 80.0);
+        List<WaitingPatient> ten = Collections.nCopies(10, candidate);
+        List<WaitingPatient> many = Collections.nCopies(200, candidate);
+
+        assertClose(0.2, value(extractor.extract(candidate, ten, fullHospital(), 0), "queueSize"));
+        assertClose(1.0, value(extractor.extract(candidate, many, fullHospital(), 0), "queueSize"));
     }
 
     // ---------- validación ----------
