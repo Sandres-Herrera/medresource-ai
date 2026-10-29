@@ -4,6 +4,7 @@ import com.medresource.model.Disease;
 import com.medresource.model.Doctor;
 import com.medresource.model.Hospital;
 import com.medresource.model.Patient;
+import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 
 import java.util.List;
@@ -26,13 +27,23 @@ public class FeatureExtractor {
             "minutesUntilDeath",
             "treatmentMinutes",
             "bestDoctorEffectiveness",
-            "waitingMinutes");
+            "waitingMinutes",
+            "bedAvailable",
+            "operatingRoomAvailable",
+            "bloodAvailable",
+            "needsIcu",
+            "freeDoctors",
+            "freeNurses",
+            "queueSize");
 
     /** Cantidad de características del vector. */
     public static final int FEATURE_COUNT = FEATURE_NAMES.size();
 
     /** Minutos que equivalen a 1 en las características de tiempo; lo que pase se corta en 1 (supuesto). */
     public static final int TIME_SCALE_MINUTES = 480;
+
+    /** Pacientes en espera que equivalen a 1 en el tamaño de la cola; lo que pase se corta en 1 (supuesto). */
+    public static final int QUEUE_SCALE = 50;
 
     private static final double MAX_AGE = 100.0;
 
@@ -57,7 +68,7 @@ public class FeatureExtractor {
     }
 
     /**
-     * Describe a un paciente en espera con {@value #FEATURE_COUNT} números de 0 a 1.
+     * Describe a un paciente en espera con un vector de {@link #FEATURE_COUNT} números de 0 a 1.
      *
      * <p>El orden es el de {@link #FEATURE_NAMES}. La urgencia es 1 para el triage I y 0 para
      * el V; si el paciente aún no tiene triage se usa el típico de su diagnóstico. La duración
@@ -89,6 +100,15 @@ public class FeatureExtractor {
         features[index("treatmentMinutes")] = timeFeature(estimator.treatmentMinutes(candidate, referenceEffectiveness));
         features[index("bestDoctorEffectiveness")] = bestEffectiveness;
         features[index("waitingMinutes")] = timeFeature(patient.waitingTime(minute));
+        features[index("bedAvailable")] = bedAvailable(hospital, diagnosis) ? 1.0 : 0.0;
+        features[index("operatingRoomAvailable")] =
+                !diagnosis.getTreatment().requiresOperatingRoom() || !hospital.freeOperatingRooms().isEmpty() ? 1.0 : 0.0;
+        features[index("bloodAvailable")] = !diagnosis.requiresBlood() || hospital.getBloodBank()
+                .hasCompatibleUnits(patient.getBloodType(), PriorityBasedStrategy.BLOOD_UNITS_PER_TREATMENT) ? 1.0 : 0.0;
+        features[index("needsIcu")] = diagnosis.requiresIcu() ? 1.0 : 0.0;
+        features[index("freeDoctors")] = fraction(hospital.freeDoctors().size(), hospital.getDoctors().size());
+        features[index("freeNurses")] = fraction(hospital.freeNurses().size(), hospital.getNurses().size());
+        features[index("queueSize")] = Math.min(waiting.size(), QUEUE_SCALE) / (double) QUEUE_SCALE;
         return features;
     }
 
@@ -100,11 +120,23 @@ public class FeatureExtractor {
         return Math.min(minutes, TIME_SCALE_MINUTES) / (double) TIME_SCALE_MINUTES;
     }
 
+    private static double fraction(int part, int total) {
+        return total == 0 ? 0.0 : part / (double) total;
+    }
+
     private static double bestEffectiveness(Hospital hospital, Disease diagnosis, int age) {
         double best = 0.0;
         for (Doctor doctor : hospital.freeDoctors()) {
             best = Math.max(best, doctor.effectivenessFor(diagnosis, age));
         }
         return best;
+    }
+
+    private static boolean bedAvailable(Hospital hospital, Disease diagnosis) {
+        TreatmentType treatment = diagnosis.getTreatment();
+        if (diagnosis.requiresIcu()) {
+            return !hospital.freeIcuBeds().isEmpty();
+        }
+        return !treatment.requiresBed() || !hospital.freeBeds().isEmpty();
     }
 }
