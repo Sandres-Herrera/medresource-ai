@@ -1,5 +1,13 @@
 package com.medresource.services.strategy;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import java.util.Random;
 
 /**
@@ -13,6 +21,8 @@ import java.util.Random;
  * <p>No depende de ninguna librería: solo usa arreglos de {@code double}.</p>
  */
 public class NeuralNetwork {
+
+    private static final String FILE_HEADER = "MEDRESOURCE-NEURAL-NETWORK 1";
 
     private final int[] layerSizes;
 
@@ -48,6 +58,12 @@ public class NeuralNetwork {
                 }
             }
         }
+    }
+
+    private NeuralNetwork(int[] layerSizes, double[][][] weights, double[][] biases) {
+        this.layerSizes = layerSizes;
+        this.weights = weights;
+        this.biases = biases;
     }
 
     /**
@@ -116,6 +132,73 @@ public class NeuralNetwork {
             }
         }
         return 0.5 * difference * difference;
+    }
+
+    /**
+     * Guarda la red (tamaños, pesos y sesgos) en un archivo de texto.
+     *
+     * @param file archivo de destino; se reemplaza si existe
+     * @throws IllegalArgumentException si el archivo es nulo
+     * @throws IOException              si no se puede escribir
+     */
+    public void save(Path file) throws IOException {
+        if (file == null) {
+            throw new IllegalArgumentException("El archivo es obligatorio.");
+        }
+        List<String> lines = new ArrayList<>();
+        lines.add(FILE_HEADER);
+        lines.add(joinInts(layerSizes));
+        for (int layer = 0; layer < weights.length; layer++) {
+            for (int neuron = 0; neuron < weights[layer].length; neuron++) {
+                lines.add(joinDoubles(biases[layer][neuron], weights[layer][neuron]));
+            }
+        }
+        Files.write(file, lines, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Carga una red guardada con {@link #save(Path)}.
+     *
+     * @param file archivo de origen
+     * @return la red, con las mismas predicciones que la guardada
+     * @throws IllegalArgumentException si el archivo es nulo o su contenido no es una red válida
+     * @throws IOException              si no se puede leer
+     */
+    public static NeuralNetwork load(Path file) throws IOException {
+        if (file == null) {
+            throw new IllegalArgumentException("El archivo es obligatorio.");
+        }
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        try {
+            if (lines.size() < 2 || !FILE_HEADER.equals(lines.get(0))) {
+                throw new IllegalArgumentException("El archivo no es una red neuronal de MedResource AI.");
+            }
+            int[] sizes = validatedSizes(Arrays.stream(lines.get(1).trim().split(" "))
+                    .mapToInt(Integer::parseInt).toArray());
+            int layers = sizes.length - 1;
+            double[][][] weights = new double[layers][][];
+            double[][] biases = new double[layers][];
+            int row = 2;
+            for (int layer = 0; layer < layers; layer++) {
+                weights[layer] = new double[sizes[layer + 1]][sizes[layer]];
+                biases[layer] = new double[sizes[layer + 1]];
+                for (int neuron = 0; neuron < sizes[layer + 1]; neuron++) {
+                    double[] values = Arrays.stream(lines.get(row++).trim().split(" "))
+                            .mapToDouble(Double::parseDouble).toArray();
+                    if (values.length != sizes[layer] + 1) {
+                        throw new IllegalArgumentException("Una fila del archivo tiene un tamaño incorrecto.");
+                    }
+                    biases[layer][neuron] = values[0];
+                    System.arraycopy(values, 1, weights[layer][neuron], 0, sizes[layer]);
+                }
+            }
+            if (row != lines.size()) {
+                throw new IllegalArgumentException("El archivo tiene filas de más.");
+            }
+            return new NeuralNetwork(sizes, weights, biases);
+        } catch (NumberFormatException | IndexOutOfBoundsException e) {
+            throw new IllegalArgumentException("El contenido del archivo no es válido.", e);
+        }
     }
 
     /**
@@ -191,5 +274,17 @@ public class NeuralNetwork {
             throw new IllegalArgumentException("La capa de salida debe tener exactamente una neurona.");
         }
         return sizes.clone();
+    }
+
+    private static String joinInts(int[] values) {
+        return String.join(" ", Arrays.stream(values).mapToObj(Integer::toString).toList());
+    }
+
+    private static String joinDoubles(double first, double[] rest) {
+        StringBuilder text = new StringBuilder(Double.toString(first));
+        for (double value : rest) {
+            text.append(' ').append(Double.toString(value));
+        }
+        return text.toString();
     }
 }
