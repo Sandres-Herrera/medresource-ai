@@ -2,11 +2,15 @@ package com.medresource.services.strategy;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
-
+import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -263,5 +267,97 @@ class NeuralNetworkTest {
         for (double[] inputs : XOR_INPUTS) {
             assertEquals(first.predict(inputs), second.predict(inputs));
         }
+    }
+
+    // ---------- save y load ----------
+
+    @Test
+    void aSavedNetworkLoadsWithTheSamePredictions() throws IOException {
+        NeuralNetwork network = trainedXor();
+        Path file = Files.createTempFile("network", ".txt");
+        try {
+            network.save(file);
+            NeuralNetwork loaded = NeuralNetwork.load(file);
+
+            assertTrue(Arrays.equals(network.getLayerSizes(), loaded.getLayerSizes()));
+            for (double[] inputs : XOR_INPUTS) {
+                assertEquals(network.predict(inputs), loaded.predict(inputs));
+            }
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void aLoadedNetworkKeepsLearning() throws IOException {
+        NeuralNetwork network = new NeuralNetwork(2, 2, 4, 1);
+        Path file = Files.createTempFile("network", ".txt");
+        try {
+            network.save(file);
+            NeuralNetwork loaded = NeuralNetwork.load(file);
+            NeuralNetwork original = NeuralNetwork.load(file);
+
+            loaded.train(XOR_INPUTS[1], 1.0, 0.5);
+
+            assertNotEquals(original.predict(XOR_INPUTS[1]), loaded.predict(XOR_INPUTS[1]));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void savingReplacesTheFile() throws IOException {
+        Path file = Files.createTempFile("network", ".txt");
+        try {
+            new NeuralNetwork(1, 5, 5, 5, 1).save(file);
+            NeuralNetwork small = new NeuralNetwork(2, 2, 1);
+            small.save(file);
+
+            assertTrue(Arrays.equals(new int[]{2, 1}, NeuralNetwork.load(file).getLayerSizes()));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void aFileThatIsNotANetworkIsRejected() throws IOException {
+        Path file = Files.createTempFile("network", ".txt");
+        try {
+            Files.write(file, List.of("hola mundo"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+
+            Files.write(file, List.of("MEDRESOURCE-NEURAL-NETWORK 1", "2 1", "0.5 0.1"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+
+            Files.write(file, List.of("MEDRESOURCE-NEURAL-NETWORK 1", "2 1", "0.5 0.1 abc"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+
+            Files.write(file, List.of("MEDRESOURCE-NEURAL-NETWORK 1", "2 1", "0.5 0.1 0.2 0.3"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+
+            Files.write(file, List.of("MEDRESOURCE-NEURAL-NETWORK 1", "2 1", "0.5 0.1 0.2", "0.0"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+
+            Files.write(file, List.of("MEDRESOURCE-NEURAL-NETWORK 1", "2 3", "0.5 0.1 0.2"));
+            assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(file));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    void loadingAMissingFileFails() {
+        Path missing = Path.of("no-existe-" + System.nanoTime() + ".txt");
+
+        assertThrows(IOException.class, () -> NeuralNetwork.load(missing));
+        assertFalse(Files.exists(missing));
+    }
+
+    @Test
+    void saveAndLoadRequireAFile() {
+        NeuralNetwork network = new NeuralNetwork(1, 2, 1);
+
+        assertThrows(IllegalArgumentException.class, () -> network.save(null));
+        assertThrows(IllegalArgumentException.class, () -> NeuralNetwork.load(null));
     }
 }
