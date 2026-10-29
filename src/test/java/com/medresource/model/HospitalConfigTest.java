@@ -14,13 +14,13 @@ class HospitalConfigTest {
     void standardHospitalHasTheProjectSizes() {
         HospitalConfig config = HospitalConfig.standard();
 
-        assertEquals(20, config.hospitalizationBeds());
-        assertEquals(4, config.icuBeds());
-        assertEquals(3, config.operatingRooms());
-        assertEquals(8, config.doctors());
-        assertEquals(12, config.nurses());
-        assertEquals(5, config.bloodUnitsPerType());
-        assertEquals(3, config.morgueCapacity());
+        assertEquals(30, config.hospitalizationBeds());
+        assertEquals(6, config.icuBeds());
+        assertEquals(4, config.operatingRooms());
+        assertEquals(16, config.doctors());
+        assertEquals(24, config.nurses());
+        assertEquals(10, config.bloodUnitsPerType());
+        assertEquals(5, config.morgueCapacity());
     }
 
     @Test
