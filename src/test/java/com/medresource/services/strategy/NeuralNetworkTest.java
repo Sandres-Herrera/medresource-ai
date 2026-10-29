@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -68,5 +71,69 @@ class NeuralNetworkTest {
         assertThrows(IllegalArgumentException.class, () -> new NeuralNetwork(1, 3, 0, 1));
         assertThrows(IllegalArgumentException.class, () -> new NeuralNetwork(1, 3, -2, 1));
         assertThrows(IllegalArgumentException.class, () -> new NeuralNetwork(1, 3, 4, 2));
+    }
+
+    // ---------- predict ----------
+
+    @Test
+    void theSameSeedBuildsTheSameNetwork() {
+        NeuralNetwork first = new NeuralNetwork(42, 4, 5, 1);
+        NeuralNetwork second = new NeuralNetwork(42, 4, 5, 1);
+        double[] inputs = {0.1, 0.5, 0.9, 0.3};
+
+        assertEquals(first.predict(inputs), second.predict(inputs));
+    }
+
+    @Test
+    void differentSeedsBuildDifferentNetworks() {
+        NeuralNetwork first = new NeuralNetwork(1, 4, 5, 1);
+        NeuralNetwork second = new NeuralNetwork(2, 4, 5, 1);
+        double[] inputs = {0.1, 0.5, 0.9, 0.3};
+
+        assertNotEquals(first.predict(inputs), second.predict(inputs));
+    }
+
+    @Test
+    void outputIsAlwaysBetweenZeroAndOne() {
+        NeuralNetwork network = new NeuralNetwork(3, 5, 8, 4, 1);
+        Random random = new Random(9);
+
+        for (int i = 0; i < 500; i++) {
+            double[] inputs = new double[5];
+            for (int k = 0; k < inputs.length; k++) {
+                inputs[k] = random.nextDouble() * 20 - 10;
+            }
+            double output = network.predict(inputs);
+            assertTrue(output >= 0.0 && output <= 1.0, "salida fuera de rango: " + output);
+        }
+    }
+
+    @Test
+    void predictingDoesNotChangeTheNetwork() {
+        NeuralNetwork network = new NeuralNetwork(3, 2, 4, 1);
+        double[] inputs = {0.4, 0.8};
+
+        assertEquals(network.predict(inputs), network.predict(inputs));
+    }
+
+    @Test
+    void predictionDoesNotModifyItsInputs() {
+        NeuralNetwork network = new NeuralNetwork(3, 2, 4, 1);
+        double[] inputs = {0.4, 0.8};
+
+        network.predict(inputs);
+
+        assertTrue(Arrays.equals(new double[]{0.4, 0.8}, inputs));
+    }
+
+    @Test
+    void invalidInputsAreRejected() {
+        NeuralNetwork network = new NeuralNetwork(3, 2, 4, 1);
+
+        assertThrows(IllegalArgumentException.class, () -> network.predict(null));
+        assertThrows(IllegalArgumentException.class, () -> network.predict(new double[]{1.0}));
+        assertThrows(IllegalArgumentException.class, () -> network.predict(new double[]{1.0, 2.0, 3.0}));
+        assertThrows(IllegalArgumentException.class, () -> network.predict(new double[]{1.0, Double.NaN}));
+        assertThrows(IllegalArgumentException.class, () -> network.predict(new double[]{Double.POSITIVE_INFINITY, 0.0}));
     }
 }
