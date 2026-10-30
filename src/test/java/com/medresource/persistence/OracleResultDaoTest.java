@@ -398,4 +398,68 @@ class OracleResultDaoTest {
         assertEquals(statements + 3, database.statementsClosed);
         assertEquals(results + 3, database.resultSetsClosed);
     }
+
+    // ---------- cambiar y borrar ----------
+
+    @Test
+    void doesNotAllowToUpdateARun() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class,
+                () -> dao.update(runOf(1, "FIFO", 77)));
+
+        assertTrue(error.getMessage().contains("no se modifican"));
+        assertEquals(3, database.patientIds(id).size());
+    }
+
+    @Test
+    void deletesTheRunWithItsPatientsAndEvents() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        dao.deleteById(id);
+
+        assertTrue(database.resultIds().isEmpty());
+        assertTrue(database.patientIds(id).isEmpty());
+        assertEquals(0, database.eventCount(id));
+        assertEquals(Optional.empty(), dao.findById(id));
+    }
+
+    @Test
+    void deletingARunKeepsTheOthers() {
+        int first = dao.save(runOf(1, "FIFO", 77));
+        int second = dao.save(runOf(2, "FIFO", 88));
+
+        dao.deleteById(first);
+
+        assertEquals(List.of(second), database.resultIds());
+        assertSameRun(runOf(2, "FIFO", 88), dao.findById(second).orElseThrow());
+    }
+
+    @Test
+    void doesNotDeleteAMissingRun() {
+        dao.save(runOf(1, "FIFO", 77));
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(9));
+
+        assertTrue(error.getMessage().contains("No existe la ejecución 9"));
+        assertEquals(List.of(1), database.resultIds());
+        assertEquals(1, database.rollbacks);
+    }
+
+    @Test
+    void doesNotDeleteWithANullId() {
+        assertThrows(IllegalArgumentException.class, () -> dao.deleteById(null));
+    }
+
+    @Test
+    void reportsADatabaseFailureWhileDeleting() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+        database.failWhenContaining = "DELETE FROM";
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(id));
+
+        assertEquals("No se pudo borrar la ejecución " + id + ": fallo simulado", error.getMessage());
+        assertEquals(List.of(id), database.resultIds());
+        assertEquals(database.connectionsOpened, database.connectionsClosed);
+    }
 }
