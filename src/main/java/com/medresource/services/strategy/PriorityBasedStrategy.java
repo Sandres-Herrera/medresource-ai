@@ -33,12 +33,17 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
     public static final int BLOOD_UNITS_PER_TREATMENT = 2;
 
     /**
-     * Define el orden de atención.
+     * <p>Recibe la lista de espera y el hospital porque algunas estrategias, como la de
+     * inteligencia artificial, puntúan a cada paciente comparándolo con los demás y con
+     * los recursos libres. Las que solo miran al paciente ignoran esos dos datos.</p>
      *
-     * @param minute minuto actual de la simulación
+     * @param minute   minuto actual de la simulación
+     * @param waiting  pacientes en espera, con su diagnóstico
+     * @param hospital hospital con sus recursos
      * @return comparador que pone primero al paciente que se debe atender antes
      */
-    protected abstract Comparator<WaitingPatient> priorityOrder(int minute);
+    protected abstract Comparator<WaitingPatient> priorityOrder(int minute, List<WaitingPatient> waiting,
+                                                                Hospital hospital);
 
     @Override
     public Optional<Assignment> nextAssignment(int minute, List<WaitingPatient> waiting, Hospital hospital) {
@@ -49,7 +54,7 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
             throw new IllegalArgumentException("El hospital es obligatorio.");
         }
         return waiting.stream()
-                .sorted(priorityOrder(minute))
+                .sorted(priorityOrder(minute, waiting, hospital))
                 .map(candidate -> assignmentFor(candidate, hospital))
                 .flatMap(Optional::stream)
                 .findFirst();

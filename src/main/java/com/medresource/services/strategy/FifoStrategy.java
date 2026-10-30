@@ -1,6 +1,9 @@
 package com.medresource.services.strategy;
 
+import com.medresource.model.Hospital;
+
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Estrategia de referencia: atiende a los pacientes por orden de llegada.
@@ -17,8 +20,8 @@ public class FifoStrategy extends PriorityBasedStrategy {
     }
 
     @Override
-    protected Comparator<WaitingPatient> priorityOrder(int minute) {
-        return Comparator.comparingInt((WaitingPatient waiting) -> waiting.patient().getArrivalMinute())
-                .thenComparingInt(waiting -> waiting.patient().getId());
+    protected Comparator<WaitingPatient> priorityOrder(int minute, List<WaitingPatient> waiting, Hospital hospital) {
+        return Comparator.comparingInt((WaitingPatient candidate) -> candidate.patient().getArrivalMinute())
+                .thenComparingInt(candidate -> candidate.patient().getId());
     }
 }

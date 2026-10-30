@@ -1,9 +1,11 @@
 package com.medresource.services.strategy;
 
+import com.medresource.model.Hospital;
 import com.medresource.model.Patient;
 import com.medresource.model.TriageLevel;
 
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Estrategia clínica: atiende primero a quien está más grave.
@@ -36,12 +38,12 @@ public class ClinicalPriorityStrategy extends PriorityBasedStrategy {
      * @throws IllegalStateException al comparar si algún paciente todavía no tiene triage
      */
     @Override
-    protected Comparator<WaitingPatient> priorityOrder(int minute) {
-        return Comparator.comparingInt((WaitingPatient waiting) -> effectiveLevel(waiting.patient(), minute))
-                .thenComparingInt(waiting -> triageOf(waiting.patient()).getLevel())
-                .thenComparingDouble(waiting -> waiting.patient().getHealth())
-                .thenComparingInt(waiting -> waiting.patient().getArrivalMinute())
-                .thenComparingInt(waiting -> waiting.patient().getId());
+    protected Comparator<WaitingPatient> priorityOrder(int minute, List<WaitingPatient> waiting, Hospital hospital) {
+        return Comparator.comparingInt((WaitingPatient candidate) -> effectiveLevel(candidate.patient(), minute))
+                .thenComparingInt(candidate -> triageOf(candidate.patient()).getLevel())
+                .thenComparingDouble(candidate -> candidate.patient().getHealth())
+                .thenComparingInt(candidate -> candidate.patient().getArrivalMinute())
+                .thenComparingInt(candidate -> candidate.patient().getId());
     }
 
     private static int effectiveLevel(Patient patient, int minute) {

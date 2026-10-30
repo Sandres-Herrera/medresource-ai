@@ -1,6 +1,9 @@
 package com.medresource.services.strategy;
 
+import com.medresource.model.Hospital;
+
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Estrategia que atiende en un orden al azar.
@@ -29,9 +32,9 @@ public class RandomStrategy extends PriorityBasedStrategy {
     }
 
     @Override
-    protected Comparator<WaitingPatient> priorityOrder(int minute) {
-        return Comparator.comparingLong((WaitingPatient waiting) -> mix(minute, waiting.patient().getId()))
-                .thenComparingInt(waiting -> waiting.patient().getId());
+    protected Comparator<WaitingPatient> priorityOrder(int minute, List<WaitingPatient> waiting, Hospital hospital) {
+        return Comparator.comparingLong((WaitingPatient candidate) -> mix(minute, candidate.patient().getId()))
+                .thenComparingInt(candidate -> candidate.patient().getId());
     }
 
     /** Mezcla la semilla, el minuto y el paciente en un número que parece aleatorio. */
