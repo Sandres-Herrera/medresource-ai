@@ -1,220 +1,204 @@
 package com.medresource.services.simulation;
 
+import com.medresource.model.Area;
 import com.medresource.model.Bed;
+import com.medresource.model.BloodType;
 import com.medresource.model.Doctor;
 import com.medresource.model.Hospital;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Nurse;
-import com.medresource.model.OperatingRoom;
 import com.medresource.model.Position;
-import com.medresource.model.Room;
 import com.medresource.model.ZoneType;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Arma el plano de un hospital: dónde está cada cama, quirófano, médico y enfermero.
+ * Arma el plano de un hospital: dónde está cada sala, cama, quirófano, médico y enfermero.
  *
- * <p>El plano tiene siempre {@value #COLUMNS} columnas y crece hacia abajo según los recursos del
- * hospital. De arriba abajo hay: la entrada, la sala de espera y el triage; las habitaciones de
- * hospitalización; la UCI; los quirófanos; la morgue y la sala del personal. Las casillas que no
- * pertenecen a ninguna zona son pasillo. El mismo hospital da siempre el mismo plano: no hay azar.</p>
+ * <p>El plano sigue el recorrido del paciente y se arma en tres franjas, cada una con todas sus áreas de la
+ * misma altura:</p>
+ * <ol>
+ *   <li>Arriba, de izquierda a derecha: el triage (con la entrada), la sala de espera y la hospitalización
+ *       con todas sus camas.</li>
+ *   <li>En medio: la UCI, el banco de sangre (entre la UCI y los quirófanos, que son los que más lo usan), un
+ *       área por cada quirófano, la morgue y la zona de alta o salida.</li>
+ *   <li>Abajo, a todo lo ancho: la sala del personal.</li>
+ * </ol>
+ *
+ * <p>Las salas con muchas camas se ensanchan en columnas para que el plano no se alargue demasiado, y el
+ * espacio que sobra en cada franja lo toma el último área para que ambas franjas terminen en el mismo borde.
+ * El mismo hospital da siempre el mismo plano: no hay azar.</p>
  *
  * <p>Los recursos se ubican con los códigos que ya tienen en el hospital, así los eventos de la
  * simulación se pueden situar en el plano sin traducir nada.</p>
  */
 public class LayoutFactory {
 
-    /** Columnas del plano, iguales para cualquier hospital. */
-    public static final int COLUMNS = 36;
-
-    /** Filas de la franja de recepción (entrada, sala de espera y triage). */
-    private static final int RECEPTION_ROWS = 5;
-    private static final int ENTRANCE_FIRST_COL = 0;
-    private static final int ENTRANCE_LAST_COL = 1;
-    private static final int WAITING_FIRST_COL = 3;
-    private static final int WAITING_LAST_COL = 17;
-    private static final int TRIAGE_FIRST_COL = 19;
-    private static final int TRIAGE_LAST_COL = 26;
-
-    /** Camas de cada bloque de una habitación o de la UCI: 2 columnas por 2 filas. */
-    private static final int BEDS_PER_BLOCK = 4;
-    private static final int BED_BLOCK_COLS = 2;
-    private static final int BED_BLOCK_ROWS = 2;
-    private static final int OPERATING_BLOCK_COLS = 3;
-    private static final int OPERATING_BLOCK_ROWS = 2;
-    /** Lugares de la morgue por fila. */
-    private static final int MORGUE_SPOTS_PER_ROW = 10;
+    private static final int TRIAGE_COLS = 2;
+    /** Puestos de triage, en la segunda columna del área. */
+    private static final int TRIAGE_STATIONS = 3;
+    private static final int TRIAGE_MIN_ROWS = 1 + TRIAGE_STATIONS;
+    /** Columnas de la sala de espera. */
+    private static final int WAITING_COLS = 6;
+    /** Filas de lugares de la sala de espera: {@code 6 × 6 = 36} sillas. */
+    private static final int WAITING_SLOT_ROWS = 6;
+    private static final int OPERATING_COLS = 2;
+    private static final int OPERATING_ROWS = 2;
+    private static final int BLOOD_COLS = 4;
+    /** Título y dos filas de lugares: {@code 4 × 2 = 8} tipos de sangre. */
+    private static final int BLOOD_ROWS = 3;
+    private static final int MORGUE_MAX_COLS = 10;
+    private static final int DISCHARGE_COLS = 4;
+    private static final int DISCHARGE_ROWS = 3;
+    private static final int MIN_BED_COLS = 4;
+    private static final int MAX_BED_COLS = 18;
+    private static final int MIN_ICU_COLS = 3;
+    private static final int MAX_ICU_COLS = 9;
+    /** Ancho mínimo del plano, para que la sala del personal no quede diminuta. */
+    private static final int MIN_PLAN_COLS = 12;
+    /** Cuánto más ancha que alta se deja una sala de camas. */
+    private static final double ASPECT = 1.5;
 
     /**
      * Arma el plano del hospital.
      *
      * @param hospital hospital cuyos recursos se ubican
-     * @return plano con un lugar para cada cama, quirófano, médico y enfermero, y para cada lugar de la
-     *         morgue
+     * @return plano con un lugar para cada cama, quirófano, médico y enfermero, y para cada puesto de triage,
+     *         tipo de sangre y lugar de la morgue
      * @throws IllegalArgumentException si el hospital es nulo
      */
     public HospitalLayout create(Hospital hospital) {
         if (hospital == null) {
             throw new IllegalArgumentException("El hospital es obligatorio.");
         }
-        List<List<Bed>> bedBlocks = bedBlocks(hospital);
-        int roomCount = hospital.getRooms().size();
-        List<List<Bed>> roomBlocks = bedBlocks.subList(0, roomCount);
-        List<List<Bed>> icuBlocks = bedBlocks.subList(roomCount, bedBlocks.size());
+        List<Bed> beds = hospital.getBeds();
+        List<Bed> icuBeds = hospital.getIcuBeds();
+        int operatingRooms = hospital.getOperatingRooms().size();
         int morgueCapacity = hospital.getMorgue().getCapacity();
         int staffCount = hospital.getDoctors().size() + hospital.getNurses().size();
 
-        int rows = RECEPTION_ROWS + 1
-                + bandRows(roomBlocks.size(), BED_BLOCK_COLS, BED_BLOCK_ROWS)
-                + bandRows(icuBlocks.size(), BED_BLOCK_COLS, BED_BLOCK_ROWS)
-                + bandRows(hospital.getOperatingRooms().size(), OPERATING_BLOCK_COLS, OPERATING_BLOCK_ROWS)
-                + morgueRows(morgueCapacity) + staffRows(staffCount);
-        ZoneType[][] zones = new ZoneType[rows][COLUMNS];
-        for (ZoneType[] row : zones) {
-            Arrays.fill(row, ZoneType.CORRIDOR);
-        }
+        // Anchos de las franjas: la más ancha manda y la otra reparte lo que le sobra.
+        int bedCols = columnsFor(beds.size(), MIN_BED_COLS, MAX_BED_COLS);
+        int icuCols = columnsFor(icuBeds.size(), MIN_ICU_COLS, MAX_ICU_COLS);
+        int operatingPerRow = (int) Math.ceil(Math.sqrt(operatingRooms));
+        int operatingBlockRows = (operatingRooms + operatingPerRow - 1) / operatingPerRow;
+        int operatingCols = operatingPerRow * OPERATING_COLS;
+        int morgueCols = Math.min(morgueCapacity, MORGUE_MAX_COLS);
+        int topWidth = TRIAGE_COLS + WAITING_COLS + bedCols;
+        int middleWidth = icuCols + BLOOD_COLS + operatingCols + morgueCols + DISCHARGE_COLS;
+        int planCols = Math.max(MIN_PLAN_COLS, Math.max(topWidth, middleWidth));
+        int wardCols = planCols - TRIAGE_COLS - WAITING_COLS;
+        int dischargeCols = planCols - icuCols - BLOOD_COLS - operatingCols - morgueCols;
+
+        // Alturas de las franjas: la sala más alta manda y las demás se estiran hasta ella.
+        int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, TRIAGE_MIN_ROWS), 1 + rowsFor(beds.size(), wardCols));
+        int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
+                Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
+        int staffTop = topHeight + middleHeight;
+        int staffRows = 1 + rowsFor(staffCount, planCols);
+
+        List<Area> areas = new ArrayList<>();
         Map<String, Position> spots = new HashMap<>();
 
-        fill(zones, ZoneType.ENTRANCE, ENTRANCE_FIRST_COL, ENTRANCE_LAST_COL, 0, RECEPTION_ROWS - 1);
-        fill(zones, ZoneType.WAITING_ROOM, WAITING_FIRST_COL, WAITING_LAST_COL, 0, RECEPTION_ROWS - 1);
-        fill(zones, ZoneType.TRIAGE, TRIAGE_FIRST_COL, TRIAGE_LAST_COL, 0, RECEPTION_ROWS - 1);
+        // Franja de arriba.
+        Area triage = new Area(ZoneType.TRIAGE, "Triage", 0, 0, TRIAGE_COLS, topHeight);
+        areas.add(triage);
+        Area waiting = new Area(ZoneType.WAITING_ROOM, "Sala de espera", TRIAGE_COLS, 0, WAITING_COLS, topHeight);
+        areas.add(waiting);
+        Area ward = new Area(ZoneType.HOSPITALIZATION, "Hospitalización (" + beds.size() + " camas)",
+                TRIAGE_COLS + WAITING_COLS, 0, wardCols, topHeight);
+        areas.add(ward);
+        placeBeds(spots, ward, beds);
 
-        int top = RECEPTION_ROWS + 1;
-        top = placeBedBlocks(zones, spots, roomBlocks, ZoneType.HOSPITALIZATION, top);
-        top = placeBedBlocks(zones, spots, icuBlocks, ZoneType.ICU, top);
-        top = placeOperatingRooms(zones, spots, hospital.getOperatingRooms(), top);
-        List<Position> morgueSpots = placeMorgue(zones, morgueCapacity, top);
-        top += morgueRows(morgueCapacity);
-        placeStaff(zones, spots, hospital.getDoctors(), hospital.getNurses(), top);
-        return new HospitalLayout(zones, spots, new Position(ENTRANCE_FIRST_COL, RECEPTION_ROWS / 2),
-                new Position((TRIAGE_FIRST_COL + TRIAGE_LAST_COL) / 2, RECEPTION_ROWS / 2),
-                waitingSpots(), morgueSpots);
-    }
+        // Franja del medio, de izquierda a derecha.
+        int col = 0;
+        Area icu = new Area(ZoneType.ICU, "UCI (" + icuBeds.size() + " camas)", col, topHeight, icuCols, middleHeight);
+        areas.add(icu);
+        placeBeds(spots, icu, icuBeds);
+        col += icuCols;
+        Area blood = new Area(ZoneType.BLOOD_BANK, "Banco de sangre", col, topHeight, BLOOD_COLS, middleHeight);
+        areas.add(blood);
+        col += BLOOD_COLS;
+        placeOperatingRooms(areas, spots, hospital, col, topHeight, middleHeight, operatingPerRow, operatingBlockRows);
+        col += operatingCols;
+        Area morgue = new Area(ZoneType.MORGUE, "Morgue", col, topHeight, morgueCols, middleHeight);
+        areas.add(morgue);
+        col += morgueCols;
+        areas.add(new Area(ZoneType.DISCHARGE, "Alta / salida", col, topHeight, dischargeCols, middleHeight));
 
-    /** Camas de cada habitación y, al final, las de la UCI en grupos de cuatro. */
-    private List<List<Bed>> bedBlocks(Hospital hospital) {
-        List<List<Bed>> blocks = new ArrayList<>();
-        for (Room room : hospital.getRooms()) {
-            blocks.add(room.getBeds());
-        }
-        List<Bed> icuBeds = hospital.getIcuBeds();
-        for (int first = 0; first < icuBeds.size(); first += BEDS_PER_BLOCK) {
-            blocks.add(icuBeds.subList(first, Math.min(first + BEDS_PER_BLOCK, icuBeds.size())));
-        }
-        return blocks;
-    }
+        // Franja de abajo.
+        Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", 0, staffTop,
+                planCols, staffRows);
+        areas.add(staff);
+        placeStaff(spots, staff, hospital.getDoctors(), hospital.getNurses());
 
-    /** Lugares de la sala de espera: una casilla sí y otra no, como un tablero de ajedrez. */
-    private List<Position> waitingSpots() {
-        List<Position> spots = new ArrayList<>();
-        for (int row = 0; row < RECEPTION_ROWS; row++) {
-            for (int col = WAITING_FIRST_COL; col <= WAITING_LAST_COL; col++) {
-                if ((col + row) % 2 == 0) {
-                    spots.add(new Position(col, row));
-                }
-            }
+        List<Position> triageSpots = new ArrayList<>();
+        for (int index = 0; index < TRIAGE_STATIONS; index++) {
+            triageSpots.add(triage.slot(1 + 2 * index));
         }
-        return spots;
-    }
-
-    /**
-     * Coloca bloques de camas, uno al lado del otro y en filas, separados por una casilla de pasillo.
-     *
-     * @return primera fila libre después de las camas
-     */
-    private int placeBedBlocks(ZoneType[][] zones, Map<String, Position> spots, List<List<Bed>> blocks,
-                               ZoneType zone, int top) {
-        int perRow = blocksPerRow(BED_BLOCK_COLS);
-        for (int index = 0; index < blocks.size(); index++) {
-            int col = 1 + (index % perRow) * (BED_BLOCK_COLS + 1);
-            int row = top + (index / perRow) * (BED_BLOCK_ROWS + 1);
-            fill(zones, zone, col, col + BED_BLOCK_COLS - 1, row, row + BED_BLOCK_ROWS - 1);
-            List<Bed> beds = blocks.get(index);
-            for (int bed = 0; bed < beds.size(); bed++) {
-                spots.put(beds.get(bed).getCode(),
-                        new Position(col + bed % BED_BLOCK_COLS, row + bed / BED_BLOCK_COLS));
-            }
+        List<Position> waitingSpots = new ArrayList<>();
+        for (int index = 0; index < WAITING_COLS * WAITING_SLOT_ROWS; index++) {
+            waitingSpots.add(waiting.slot(index));
         }
-        return top + bandRows(blocks.size(), BED_BLOCK_COLS, BED_BLOCK_ROWS);
+        List<Position> bloodSpots = new ArrayList<>();
+        for (int index = 0; index < BloodType.values().length; index++) {
+            bloodSpots.add(blood.slot(index));
+        }
+        List<Position> morgueSpots = new ArrayList<>();
+        for (int index = 0; index < morgueCapacity; index++) {
+            morgueSpots.add(morgue.slot(index));
+        }
+        return new HospitalLayout(planCols, staffTop + staffRows, areas, spots, triage.slot(0), triageSpots,
+                waitingSpots, bloodSpots, morgueSpots);
     }
 
     /**
-     * Coloca los quirófanos como bloques de 3 por 2 casillas; la mesa de operaciones queda en la casilla
-     * central de la fila de arriba.
-     *
-     * @return primera fila libre después de los quirófanos
+     * Pone los quirófanos en un bloque cuadrado. Las filas del bloque se reparten la altura de la franja y el
+     * último quirófano se ensancha si su fila queda incompleta, para que el bloque no tenga huecos.
      */
-    private int placeOperatingRooms(ZoneType[][] zones, Map<String, Position> spots,
-                                    List<OperatingRoom> operatingRooms, int top) {
-        int perRow = blocksPerRow(OPERATING_BLOCK_COLS);
-        for (int index = 0; index < operatingRooms.size(); index++) {
-            int col = 1 + (index % perRow) * (OPERATING_BLOCK_COLS + 1);
-            int row = top + (index / perRow) * (OPERATING_BLOCK_ROWS + 1);
-            fill(zones, ZoneType.OPERATING_ROOM, col, col + OPERATING_BLOCK_COLS - 1, row,
-                    row + OPERATING_BLOCK_ROWS - 1);
-            spots.put(operatingRooms.get(index).getCode(), new Position(col + OPERATING_BLOCK_COLS / 2, row));
+    private void placeOperatingRooms(List<Area> areas, Map<String, Position> spots, Hospital hospital, int col,
+                                     int top, int height, int perRow, int blockRows) {
+        int rowHeight = height / blockRows;
+        int rooms = hospital.getOperatingRooms().size();
+        for (int index = 0; index < rooms; index++) {
+            int blockRow = index / perRow;
+            int rowTop = top + blockRow * rowHeight;
+            int roomHeight = blockRow == blockRows - 1 ? top + height - rowTop : rowHeight;
+            int roomCols = index == rooms - 1 ? (perRow - index % perRow) * OPERATING_COLS : OPERATING_COLS;
+            Area room = new Area(ZoneType.OPERATING_ROOM, "Quirófano " + (index + 1),
+                    col + (index % perRow) * OPERATING_COLS, rowTop, roomCols, roomHeight);
+            areas.add(room);
+            spots.put(hospital.getOperatingRooms().get(index).getCode(), room.slot(0));
         }
-        return top + bandRows(operatingRooms.size(), OPERATING_BLOCK_COLS, OPERATING_BLOCK_ROWS);
     }
 
-    /** Coloca un lugar de la morgue por cada capacidad, en filas de {@value #MORGUE_SPOTS_PER_ROW}. */
-    private List<Position> placeMorgue(ZoneType[][] zones, int capacity, int top) {
-        List<Position> spots = new ArrayList<>();
-        for (int index = 0; index < capacity; index++) {
-            Position spot = new Position(1 + index % MORGUE_SPOTS_PER_ROW, top + index / MORGUE_SPOTS_PER_ROW);
-            zones[spot.row()][spot.col()] = ZoneType.MORGUE;
-            spots.add(spot);
+    /** Pone cada cama en un lugar del área, en el orden en que el hospital las tiene. */
+    private void placeBeds(Map<String, Position> spots, Area area, List<Bed> beds) {
+        for (int index = 0; index < beds.size(); index++) {
+            spots.put(beds.get(index).getCode(), area.slot(index));
         }
-        return spots;
     }
 
-    /** Coloca primero a los médicos y después a los enfermeros, una casilla cada uno. */
-    private void placeStaff(ZoneType[][] zones, Map<String, Position> spots, List<Doctor> doctors,
-                            List<Nurse> nurses, int top) {
+    /** Pone primero a los médicos y después a los enfermeros, un lugar cada uno. */
+    private void placeStaff(Map<String, Position> spots, Area area, List<Doctor> doctors, List<Nurse> nurses) {
         List<String> codes = new ArrayList<>();
         doctors.forEach(doctor -> codes.add(doctor.getCode()));
         nurses.forEach(nurse -> codes.add(nurse.getCode()));
         for (int index = 0; index < codes.size(); index++) {
-            Position spot = new Position(index % COLUMNS, top + index / COLUMNS);
-            zones[spot.row()][spot.col()] = ZoneType.STAFF_ROOM;
-            spots.put(codes.get(index), spot);
+            spots.put(codes.get(index), area.slot(index));
         }
     }
 
-    /** Filas de la morgue más una fila de pasillo debajo. */
-    private static int morgueRows(int capacity) {
-        return (capacity + MORGUE_SPOTS_PER_ROW - 1) / MORGUE_SPOTS_PER_ROW + 1;
+    /** Columnas de una sala de camas: algo más ancha que alta, entre un mínimo y un máximo. */
+    private static int columnsFor(int count, int min, int max) {
+        int wanted = (int) Math.ceil(Math.sqrt(count * ASPECT));
+        return Math.max(min, Math.min(max, wanted));
     }
 
-    private static int staffRows(int staffCount) {
-        return (staffCount + COLUMNS - 1) / COLUMNS;
-    }
-
-    /** Cuántos bloques caben en una fila: dejan una casilla de pasillo al inicio y entre bloques. */
-    private static int blocksPerRow(int blockCols) {
-        return (COLUMNS - 1) / (blockCols + 1);
-    }
-
-    /** Filas que ocupa una franja de bloques, con la fila de pasillo que va debajo de cada fila. */
-    private static int bandRows(int blockCount, int blockCols, int blockRows) {
-        if (blockCount == 0) {
-            return 0;
-        }
-        int perRow = blocksPerRow(blockCols);
-        return (blockCount + perRow - 1) / perRow * (blockRows + 1);
-    }
-
-    private static void fill(ZoneType[][] zones, ZoneType zone, int firstCol, int lastCol, int firstRow,
-                             int lastRow) {
-        for (int row = firstRow; row <= lastRow; row++) {
-            for (int col = firstCol; col <= lastCol; col++) {
-                zones[row][col] = zone;
-            }
-        }
+    private static int rowsFor(int count, int cols) {
+        return (count + cols - 1) / cols;
     }
 }

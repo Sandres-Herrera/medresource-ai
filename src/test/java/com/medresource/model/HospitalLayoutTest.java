@@ -2,242 +2,337 @@ package com.medresource.model;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pruebas del plano del hospital con un plano pequeño armado a mano (6 columnas por 3 filas):
+ * Pruebas del plano del hospital con un plano pequeño armado a mano.
  *
- * <pre>
- * E W W T M .
- * H H . . M .
- * . . . . . .
- * </pre>
+ * <p>El plano es de 6 columnas por 7 filas: arriba el triage, la sala de espera y dos camas; abajo el banco de
+ * sangre y la morgue.</p>
  */
 class HospitalLayoutTest {
 
-    private static final Position ENTRANCE = new Position(0, 0);
-    private static final Position TRIAGE = new Position(3, 0);
-    private static final List<Position> WAITING = List.of(new Position(1, 0), new Position(2, 0));
-    private static final List<Position> MORGUE = List.of(new Position(4, 0), new Position(4, 1));
+    private final Area triage = new Area(ZoneType.TRIAGE, "Triage", 0, 0, 2, 3);
+    private final Area waiting = new Area(ZoneType.WAITING_ROOM, "Sala de espera", 2, 0, 2, 3);
+    private final Area ward = new Area(ZoneType.HOSPITALIZATION, "Hospitalización", 4, 0, 2, 3);
+    private final Area blood = new Area(ZoneType.BLOOD_BANK, "Banco de sangre", 0, 3, 3, 2);
+    private final Area morgue = new Area(ZoneType.MORGUE, "Morgue", 3, 3, 3, 2);
 
-    private static ZoneType[][] zones() {
-        ZoneType[][] zones = new ZoneType[3][6];
-        for (ZoneType[] row : zones) {
-            Arrays.fill(row, ZoneType.CORRIDOR);
-        }
-        zones[0][0] = ZoneType.ENTRANCE;
-        zones[0][1] = ZoneType.WAITING_ROOM;
-        zones[0][2] = ZoneType.WAITING_ROOM;
-        zones[0][3] = ZoneType.TRIAGE;
-        zones[0][4] = ZoneType.MORGUE;
-        zones[1][4] = ZoneType.MORGUE;
-        zones[1][0] = ZoneType.HOSPITALIZATION;
-        zones[1][1] = ZoneType.HOSPITALIZATION;
-        return zones;
+    private List<Area> areas() {
+        return new ArrayList<>(List.of(triage, waiting, ward, blood, morgue));
     }
 
-    private static Map<String, Position> spots() {
+    private Map<String, Position> spots() {
         Map<String, Position> spots = new HashMap<>();
-        spots.put("H1-C1", new Position(0, 1));
-        spots.put("H1-C2", new Position(1, 1));
+        spots.put("B1", ward.slot(0));
+        spots.put("B2", ward.slot(1));
         return spots;
     }
 
-    private static HospitalLayout layout() {
-        return new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, WAITING, MORGUE);
+    private List<Position> triageSpots() {
+        return new ArrayList<>(List.of(triage.slot(1), triage.slot(3)));
     }
 
+    private List<Position> waitingSpots() {
+        return new ArrayList<>(List.of(waiting.slot(0), waiting.slot(1), waiting.slot(2), waiting.slot(3)));
+    }
+
+    private List<Position> bloodSpots() {
+        return new ArrayList<>(List.of(blood.slot(0), blood.slot(1), blood.slot(2)));
+    }
+
+    private List<Position> morgueSpots() {
+        return new ArrayList<>(List.of(morgue.slot(0), morgue.slot(1)));
+    }
+
+    private HospitalLayout layout() {
+        return new HospitalLayout(6, 7, areas(), spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                bloodSpots(), morgueSpots());
+    }
+
+    private HospitalLayout layoutWith(int rows, List<Area> areas, Map<String, Position> spots, Position entrance,
+                                      List<Position> triageSpots, List<Position> waitingSpots,
+                                      List<Position> bloodSpots, List<Position> morgueSpots) {
+        return new HospitalLayout(6, rows, areas, spots, entrance, triageSpots, waitingSpots, bloodSpots, morgueSpots);
+    }
+
+    // ---------- datos ----------
+
     @Test
-    void knowsItsSize() {
+    void keepsItsData() {
         HospitalLayout layout = layout();
 
         assertEquals(6, layout.getCols());
-        assertEquals(3, layout.getRows());
+        assertEquals(7, layout.getRows());
+        assertEquals(List.of(triage, waiting, ward, blood, morgue), layout.getAreas());
+        assertEquals(triage.slot(0), layout.getEntrance());
+        assertEquals(triageSpots(), layout.getTriageSpots());
+        assertEquals(waitingSpots(), layout.getWaitingSpots());
+        assertEquals(bloodSpots(), layout.getBloodSpots());
+        assertEquals(morgueSpots(), layout.getMorgueSpots());
     }
 
     @Test
-    void knowsTheZoneOfEachSquare() {
+    void findsTheAreaOfASlot() {
         HospitalLayout layout = layout();
 
-        assertEquals(ZoneType.ENTRANCE, layout.zoneAt(new Position(0, 0)));
-        assertEquals(ZoneType.HOSPITALIZATION, layout.zoneAt(new Position(1, 1)));
-        assertEquals(ZoneType.CORRIDOR, layout.zoneAt(new Position(5, 2)));
+        assertEquals(ward, layout.areaAt(new Position(5, 2)).orElseThrow());
+        assertEquals(morgue, layout.areaAt(new Position(4, 4)).orElseThrow());
     }
 
     @Test
-    void doesNotAnswerForSquaresOutsideThePlan() {
+    void theTitleRowAndTheOutsideBelongToNoArea() {
         HospitalLayout layout = layout();
 
-        assertThrows(IllegalArgumentException.class, () -> layout.zoneAt(new Position(6, 0)));
-        assertThrows(IllegalArgumentException.class, () -> layout.zoneAt(new Position(0, 3)));
-        assertThrows(IllegalArgumentException.class, () -> layout.zoneAt(null));
+        assertTrue(layout.areaAt(new Position(4, 0)).isEmpty());
+        assertTrue(layout.areaAt(new Position(9, 9)).isEmpty());
     }
 
     @Test
-    void knowsWhichSquaresAreInsideThePlan() {
+    void findsTheAreasOfAZoneInPlanOrder() {
+        List<Area> withTwoWards = areas();
+        withTwoWards.add(new Area(ZoneType.HOSPITALIZATION, "Otra", 0, 5, 2, 2));
+        HospitalLayout layout = layoutWith(7, withTwoWards, spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                bloodSpots(), morgueSpots());
+
+        assertEquals(List.of(ward, withTwoWards.get(5)), layout.areasOf(ZoneType.HOSPITALIZATION));
+        assertEquals(List.of(), layout.areasOf(ZoneType.ICU));
+    }
+
+    @Test
+    void findsTheSlotOfAResourceByItsCode() {
         HospitalLayout layout = layout();
 
-        assertTrue(layout.contains(new Position(5, 2)));
-        assertFalse(layout.contains(new Position(6, 2)));
-        assertFalse(layout.contains(new Position(5, 3)));
-        assertFalse(layout.contains(null));
+        assertEquals(ward.slot(1), layout.positionOf("B2").orElseThrow());
+        assertTrue(layout.positionOf("B9").isEmpty());
+        assertTrue(layout.positionOf(null).isEmpty());
     }
 
     @Test
-    void findsAResourceByItsCode() {
+    void listsTheCodesOfTheResourcesOnThePlan() {
+        assertEquals(Set.of("B1", "B2"), layout().getResourceCodes());
+    }
+
+    @Test
+    void changingTheCodesReturnedDoesNotChangeThePlan() {
         HospitalLayout layout = layout();
 
-        assertEquals(Optional.of(new Position(1, 1)), layout.positionOf("H1-C2"));
-        assertEquals(Optional.empty(), layout.positionOf("H9-C1"));
-        assertEquals(Optional.empty(), layout.positionOf(null));
-        assertEquals(Set.of("H1-C1", "H1-C2"), layout.getResourceCodes());
+        layout.getResourceCodes().clear();
+
+        assertEquals(2, layout.getResourceCodes().size());
     }
 
     @Test
-    void countsTheSquaresOfEachZone() {
+    void theListsItReturnsCannotBeModified() {
         HospitalLayout layout = layout();
 
-        assertEquals(2, layout.countOf(ZoneType.MORGUE));
-        assertEquals(2, layout.countOf(ZoneType.WAITING_ROOM));
-        assertEquals(1, layout.countOf(ZoneType.TRIAGE));
-        assertEquals(0, layout.countOf(ZoneType.ICU));
-        assertEquals(10, layout.countOf(ZoneType.CORRIDOR));
-    }
-
-    @Test
-    void keepsTheSpecialPlaces() {
-        HospitalLayout layout = layout();
-
-        assertEquals(ENTRANCE, layout.getEntrance());
-        assertEquals(TRIAGE, layout.getTriagePoint());
-        assertEquals(WAITING, layout.getWaitingSpots());
-        assertEquals(MORGUE, layout.getMorgueSpots());
-    }
-
-    @Test
-    void changingTheDataItWasBuiltWithDoesNotChangeThePlan() {
-        ZoneType[][] zones = zones();
-        Map<String, Position> spots = spots();
-        HospitalLayout layout = new HospitalLayout(zones, spots, ENTRANCE, TRIAGE, WAITING, MORGUE);
-
-        zones[2][5] = ZoneType.ICU;
-        spots.put("X", new Position(5, 2));
-
-        assertEquals(ZoneType.CORRIDOR, layout.zoneAt(new Position(5, 2)));
-        assertEquals(Optional.empty(), layout.positionOf("X"));
-    }
-
-    @Test
-    void doesNotAllowChangingTheLists() {
-        HospitalLayout layout = layout();
-
+        assertThrows(UnsupportedOperationException.class, () -> layout.getAreas().clear());
+        assertThrows(UnsupportedOperationException.class, () -> layout.getTriageSpots().clear());
         assertThrows(UnsupportedOperationException.class, () -> layout.getWaitingSpots().clear());
+        assertThrows(UnsupportedOperationException.class, () -> layout.getBloodSpots().clear());
         assertThrows(UnsupportedOperationException.class, () -> layout.getMorgueSpots().clear());
     }
 
     @Test
+    void doesNotChangeWhenTheListsItWasBuiltWithChange() {
+        List<Area> areas = areas();
+        HospitalLayout layout = layoutWith(7, areas, spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                bloodSpots(), morgueSpots());
+
+        areas.clear();
+
+        assertEquals(5, layout.getAreas().size());
+    }
+
+    @Test
+    void describesItselfWithItsSizeAndTheNumberOfAreas() {
+        String text = layout().toString();
+
+        assertTrue(text.contains("6 columnas"));
+        assertTrue(text.contains("7 filas"));
+        assertTrue(text.contains("5 áreas"));
+    }
+
+    // ---------- validación ----------
+
+    @Test
     void rejectsMissingData() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(null, spots(), ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), null, ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), null, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, null, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, null, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, WAITING, null));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, null, spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), null, triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), null,
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                null, waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), null, bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), null, morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), null));
     }
 
     @Test
-    void rejectsAMalformedGrid() {
-        ZoneType[][] ragged = zones();
-        ragged[1] = Arrays.copyOf(ragged[1], ragged[1].length + 1);
-        ragged[1][ragged[1].length - 1] = ZoneType.CORRIDOR;
-        ZoneType[][] withHole = zones();
-        withHole[2][2] = null;
-
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(new ZoneType[0][0], spots(), ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(new ZoneType[2][0], spots(), ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(ragged, spots(), ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(withHole, spots(), ENTRANCE, TRIAGE, WAITING, MORGUE));
+    void rejectsAPlanWithoutColumnsOrRows() {
+        assertThrows(IllegalArgumentException.class, () -> new HospitalLayout(0, 7, areas(), spots(),
+                triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(0, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
     }
 
     @Test
-    void rejectsSpecialPlacesInTheWrongZone() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), new Position(5, 2), TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, new Position(5, 2), WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, List.of(new Position(5, 2)), MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, WAITING, List.of(new Position(5, 2))));
+    void rejectsAnAreaOutsideThePlan() {
+        assertThrows(IllegalArgumentException.class, () -> new HospitalLayout(5, 7, areas(), spots(),
+                triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(4, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
     }
 
     @Test
-    void rejectsSpecialPlacesOutsideThePlan() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), new Position(9, 9), TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, new Position(9, 9), WAITING, MORGUE));
+    void acceptsAnAreaThatEndsExactlyAtTheEdgeOfThePlan() {
+        assertEquals(5, layoutWith(5, areas(), spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                bloodSpots(), morgueSpots()).getRows());
     }
 
     @Test
-    void needsAtLeastOneWaitingSpot() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, List.of(), MORGUE));
+    void rejectsTwoAreasThatOverlap() {
+        List<Area> overlapping = areas();
+        overlapping.add(new Area(ZoneType.ICU, "UCI", 1, 2, 2, 2));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, overlapping, spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
     }
 
     @Test
-    void acceptsAPlanWithoutMorgueSpots() {
-        HospitalLayout layout = new HospitalLayout(zones(), spots(), ENTRANCE, TRIAGE, WAITING, List.of());
+    void rejectsAnAreaThatOverlapsOnlyTheLastOne() {
+        List<Area> overlapping = areas();
+        overlapping.add(new Area(ZoneType.ICU, "UCI", 4, 4, 2, 2));
 
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, overlapping, spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsAnEntranceOutsideTheTriage() {
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), waiting.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), new Position(0, 0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsATriageOrAWaitingRoomWithoutPlaces() {
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                List.of(), waitingSpots(), bloodSpots(), morgueSpots()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), List.of(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsATriageStationThatIsNotInTheTriage() {
+        List<Position> stations = triageSpots();
+        stations.add(ward.slot(2));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                stations, waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsASeatThatIsNotInTheWaitingRoom() {
+        List<Position> seats = waitingSpots();
+        seats.add(ward.slot(2));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), seats, bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsABloodPlaceThatIsNotInTheBloodBank() {
+        List<Position> places = bloodSpots();
+        places.add(ward.slot(2));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), places, morgueSpots()));
+    }
+
+    @Test
+    void rejectsAMorguePlaceThatIsNotInTheMorgue() {
+        List<Position> places = morgueSpots();
+        places.add(ward.slot(2));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), places));
+    }
+
+    @Test
+    void acceptsAPlanWithoutBloodOrMorguePlaces() {
+        HospitalLayout layout = layoutWith(7, areas(), spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                List.of(), List.of());
+
+        assertTrue(layout.getBloodSpots().isEmpty());
         assertTrue(layout.getMorgueSpots().isEmpty());
     }
 
     @Test
-    void rejectsAResourceOutsideThePlan() {
-        Map<String, Position> spots = spots();
-        spots.put("Q1", new Position(6, 0));
+    void rejectsAResourceOutsideTheAreas() {
+        Map<String, Position> outside = spots();
+        outside.put("B3", new Position(5, 6));
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots, ENTRANCE, TRIAGE, WAITING, MORGUE));
-
-        assertTrue(error.getMessage().contains("Q1"));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), outside, triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
     }
 
     @Test
-    void rejectsTwoResourcesInTheSameSquare() {
-        Map<String, Position> spots = spots();
-        spots.put("H1-C3", new Position(0, 1));
-        Map<String, Position> overMorgue = spots();
-        overMorgue.put("H1-C3", MORGUE.get(0));
+    void rejectsAResourceOnTheTitleRowOfAnArea() {
+        Map<String, Position> onTitle = spots();
+        onTitle.put("B3", new Position(4, 0));
 
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), spots, ENTRANCE, TRIAGE, WAITING, MORGUE));
-        assertThrows(IllegalArgumentException.class,
-                () -> new HospitalLayout(zones(), overMorgue, ENTRANCE, TRIAGE, WAITING, MORGUE));
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), onTitle, triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
     }
 
     @Test
-    void describesItsSize() {
-        assertEquals("Plano de 6 columnas por 3 filas", layout().toString());
+    void rejectsTwoResourcesInTheSameSlot() {
+        Map<String, Position> repeated = spots();
+        repeated.put("B3", ward.slot(0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), repeated, triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsAResourceOnAMorguePlace() {
+        Map<String, Position> repeated = spots();
+        repeated.put("B3", morgue.slot(0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), repeated, triage.slot(0),
+                triageSpots(), waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsATriageStationOnTheEntrance() {
+        List<Position> stations = triageSpots();
+        stations.add(triage.slot(0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                stations, waitingSpots(), bloodSpots(), morgueSpots()));
+    }
+
+    @Test
+    void rejectsTwoBloodPlacesInTheSameSlot() {
+        List<Position> places = bloodSpots();
+        places.add(blood.slot(0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
+                triageSpots(), waitingSpots(), places, morgueSpots()));
     }
 }
