@@ -2,6 +2,12 @@ package com.medresource.persistence;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 /**
  * Crea las tablas de la base de datos ejecutando el script {@code db/schema.sql}.
@@ -16,6 +22,21 @@ public class SchemaInstaller {
     public static final String SCHEMA_RESOURCE = "/db/schema.sql";
 
     private static final String COMMENT_PREFIX = "--";
+
+    private final ConnectionManager connections;
+
+    /**
+     * Prepara el instalador.
+     *
+     * @param connections administrador de conexiones
+     * @throws IllegalArgumentException si el administrador es nulo
+     */
+    public SchemaInstaller(ConnectionManager connections) {
+        if (connections == null) {
+            throw new IllegalArgumentException("El administrador de conexiones es obligatorio.");
+        }
+        this.connections = connections;
+    }
 
     /**
      * Separa un script en sus sentencias. Ignora las líneas de comentario (que empiezan con
@@ -44,5 +65,33 @@ public class SchemaInstaller {
             }
         }
         return statements;
+    }
+
+    /**
+     * Crea todas las tablas.
+     *
+     * @throws DataAccessException si no se encuentra el script, no se puede conectar o Oracle rechaza alguna sentencia
+     */
+    public void install() {
+        List<String> statements = statementsFrom(readScript());
+        try (Connection connection = connections.getConnection();
+             Statement statement = connection.createStatement()) {
+            for (String sql : statements) {
+                statement.execute(sql);
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("No se pudo crear el esquema de la base de datos: " + e.getMessage(), e);
+        }
+    }
+
+    private static String readScript() {
+        try (InputStream stream = SchemaInstaller.class.getResourceAsStream(SCHEMA_RESOURCE)) {
+            if (stream == null) {
+                throw new DataAccessException("No se encontró el script " + SCHEMA_RESOURCE + ".");
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new DataAccessException("No se pudo leer el script " + SCHEMA_RESOURCE + ".", e);
+        }
     }
 }
