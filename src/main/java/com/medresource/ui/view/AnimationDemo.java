@@ -33,8 +33,8 @@ public final class AnimationDemo {
 
     private static final int DEFAULT_PATIENTS = 60;
     private static final long DEFAULT_SEED = 1L;
-    private static final int FRAME_MILLIS = 30;
-    private static final int FRAMES_PER_MINUTE = 4;
+    private static final int FRAME_MILLIS = 40;
+    private static final int FRAMES_PER_MINUTE = 30;
 
     private AnimationDemo() {
     }
