@@ -323,4 +323,68 @@ class OracleCaseDaoTest {
         assertEquals(statements + 3, database.statementsClosed);
         assertEquals(results + 3, database.resultSetsClosed);
     }
+
+    // ---------- cambiar y borrar ----------
+
+    @Test
+    void doesNotAllowToUpdateACase() {
+        int id = dao.save(threePatients(77));
+
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class,
+                () -> dao.update(threePatients(77)));
+
+        assertTrue(error.getMessage().contains("no se modifican"));
+        assertEquals(3, database.patientIds(id).size());
+    }
+
+    @Test
+    void deletesTheCaseWithItsPatientsAndSymptoms() {
+        int id = dao.save(threePatients(77));
+
+        dao.deleteById(id);
+
+        assertTrue(database.caseIds().isEmpty());
+        assertTrue(database.patientIds(id).isEmpty());
+        assertTrue(database.symptomsOf(id, 1).isEmpty());
+        assertEquals(Optional.empty(), dao.findById(id));
+    }
+
+    @Test
+    void deletingACaseKeepsTheOthers() {
+        int first = dao.save(threePatients(10));
+        int second = dao.save(threePatients(20));
+
+        dao.deleteById(first);
+
+        assertEquals(List.of(second), database.caseIds());
+        assertSameCase(threePatients(20), dao.findById(second).orElseThrow());
+    }
+
+    @Test
+    void doesNotDeleteAMissingCase() {
+        dao.save(threePatients(77));
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(9));
+
+        assertTrue(error.getMessage().contains("No existe el caso 9"));
+        assertEquals(List.of(1), database.caseIds());
+        assertEquals(1, database.rollbacks);
+    }
+
+    @Test
+    void doesNotDeleteWithANullId() {
+        assertThrows(IllegalArgumentException.class, () -> dao.deleteById(null));
+    }
+
+    @Test
+    void reportsADatabaseFailureWhileDeleting() {
+        int id = dao.save(threePatients(77));
+        database.failWhenContaining = "DELETE FROM";
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(id));
+
+        assertEquals("No se pudo borrar el caso " + id + ": fallo simulado", error.getMessage());
+        assertEquals(List.of(id), database.caseIds());
+        assertEquals(database.connectionsOpened, database.connectionsClosed);
+    }
 }
