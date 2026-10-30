@@ -267,4 +267,39 @@ class SchemaScriptTest {
         assertEquals(9, createdTables().size());
         assertEquals(10, statements().size());
     }
+
+    // ---------- borrado ----------
+
+    @Test
+    void theDropScriptRemovesEveryTable() throws IOException {
+        List<String> dropped = new ArrayList<>();
+        for (String statement : SchemaInstaller.statementsFrom(read("/db/drop_schema.sql"))) {
+            Matcher matcher = Pattern.compile("^DROP TABLE ([a-z_]+) CASCADE CONSTRAINTS PURGE$").matcher(statement);
+            assertTrue(matcher.matches(), statement);
+            dropped.add(matcher.group(1));
+        }
+
+        assertEquals(new HashSet<>(createdTables()), new HashSet<>(dropped));
+        assertEquals(createdTables().size(), dropped.size());
+    }
+
+    @Test
+    void theDropScriptRemovesChildrenBeforeParents() throws IOException {
+        List<String> dropped = new ArrayList<>();
+        for (String statement : SchemaInstaller.statementsFrom(read("/db/drop_schema.sql"))) {
+            dropped.add(statement.split(" ")[2]);
+        }
+        Pattern reference = Pattern.compile("REFERENCES ([a-z_]+) ");
+        for (String statement : statements()) {
+            Matcher table = Pattern.compile("^CREATE TABLE ([a-z_]+)").matcher(statement);
+            if (!table.find()) {
+                continue;
+            }
+            Matcher parent = reference.matcher(statement);
+            while (parent.find()) {
+                assertTrue(dropped.indexOf(table.group(1)) < dropped.indexOf(parent.group(1)),
+                        table.group(1) + " debe borrarse antes que " + parent.group(1));
+            }
+        }
+    }
 }
