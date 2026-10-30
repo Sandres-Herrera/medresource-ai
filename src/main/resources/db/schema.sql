@@ -133,10 +133,24 @@ CREATE TABLE sim_result (
     case_id              NUMBER(10)           NOT NULL,
     strategy_name        VARCHAR2(100 CHAR)   NOT NULL,
     total_minutes        NUMBER(6)            NOT NULL,
+    beds                 NUMBER(3)            NOT NULL,
+    icu_beds             NUMBER(3)            NOT NULL,
+    operating_rooms      NUMBER(3)            NOT NULL,
+    doctors              NUMBER(3)            NOT NULL,
+    nurses               NUMBER(3)            NOT NULL,
+    blood_units_per_type NUMBER(3)            NOT NULL,
+    morgue_capacity      NUMBER(3)            NOT NULL,
     executed_at          TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT pk_sim_result PRIMARY KEY (id),
     CONSTRAINT fk_sim_result_case FOREIGN KEY (case_id) REFERENCES sim_case (id) ON DELETE CASCADE,
-    CONSTRAINT ck_sim_result_minutes CHECK (total_minutes >= 0)
+    CONSTRAINT ck_sim_result_minutes CHECK (total_minutes >= 0),
+    CONSTRAINT ck_sim_result_beds CHECK (beds BETWEEN 1 AND 200),
+    CONSTRAINT ck_sim_result_icu CHECK (icu_beds BETWEEN 1 AND 50),
+    CONSTRAINT ck_sim_result_rooms CHECK (operating_rooms BETWEEN 1 AND 20),
+    CONSTRAINT ck_sim_result_doctors CHECK (doctors BETWEEN 1 AND 50),
+    CONSTRAINT ck_sim_result_nurses CHECK (nurses BETWEEN 1 AND 100),
+    CONSTRAINT ck_sim_result_blood CHECK (blood_units_per_type BETWEEN 0 AND 100),
+    CONSTRAINT ck_sim_result_morgue CHECK (morgue_capacity BETWEEN 1 AND 50)
 );
 
 CREATE INDEX idx_sim_result_case ON sim_result (case_id);

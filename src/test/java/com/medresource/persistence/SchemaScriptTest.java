@@ -21,6 +21,7 @@ import com.medresource.model.Sex;
 import com.medresource.model.CauseOfDeath;
 import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.EventType;
+import com.medresource.model.HospitalConfig;
 import com.medresource.model.PatientStatus;
 import com.medresource.model.TriageLevel;
 import java.util.Arrays;
@@ -224,7 +225,21 @@ class SchemaScriptTest {
     void theEventTypesMatchTheEnumeration() throws IOException {
         assertMatches("ck_sim_event_type", EventType.values());
     }
+    @Test
+    void theHospitalLimitsMatchTheHospitalConfiguration() throws IOException {
+        assertBetween("ck_sim_result_beds", 1, HospitalConfig.MAX_BEDS);
+        assertBetween("ck_sim_result_icu", 1, HospitalConfig.MAX_ICU_BEDS);
+        assertBetween("ck_sim_result_rooms", 1, HospitalConfig.MAX_OPERATING_ROOMS);
+        assertBetween("ck_sim_result_doctors", 1, HospitalConfig.MAX_DOCTORS);
+        assertBetween("ck_sim_result_nurses", 1, HospitalConfig.MAX_NURSES);
+        assertBetween("ck_sim_result_blood", 0, HospitalConfig.MAX_BLOOD_UNITS_PER_TYPE);
+        assertBetween("ck_sim_result_morgue", 1, HospitalConfig.MAX_MORGUE_CAPACITY);
+    }
 
+    private void assertBetween(String constraintName, int min, int max) throws IOException {
+        assertTrue(constraint(constraintName).contains("BETWEEN " + min + " AND " + max),
+                constraintName + " debe ir de " + min + " a " + max);
+    }
     @Test
     void theCausesOfDeathMatchTheEnumeration() throws IOException {
         assertMatches("ck_patient_result_cause", CauseOfDeath.values());
