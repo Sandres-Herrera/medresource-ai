@@ -28,9 +28,9 @@ import java.util.Optional;
  * enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe el DAO.</p>
  *
  * <p>Los casos no se modifican: con la misma configuración el generador produce siempre los mismos
- * pacientes, así que {@link (SimulationCase)} no está permitido.</p>
+ * pacientes, así que {@link #update(SimulationCase)} no está permitido.</p>
  */
-public class OracleCaseDao {
+public class OracleCaseDao implements CaseDao {
 
     static final String INSERT_CASE =
             "INSERT INTO sim_case (seed, scenario, patient_count, duration_minutes) VALUES (?, ?, ?, ?)";
@@ -91,6 +91,7 @@ public class OracleCaseDao {
      * @throws DataAccessException      si ya hay un caso con la misma configuración, si alguna enfermedad
      *                                  de los pacientes no está guardada, o si Oracle rechaza la operación
      */
+    @Override
     public Integer save(SimulationCase simulationCase) {
         requireCase(simulationCase);
         return transactions.run("guardar el caso", connection -> {
@@ -155,6 +156,7 @@ public class OracleCaseDao {
      * @throws IllegalArgumentException si la configuración es nula
      * @throws DataAccessException      si Oracle rechaza la operación
      */
+    @Override
     public Optional<Integer> findIdByConfig(CaseConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("La configuración del caso es obligatoria.");
@@ -180,6 +182,7 @@ public class OracleCaseDao {
      * @throws IllegalArgumentException si el identificador es nulo
      * @throws DataAccessException      si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public Optional<SimulationCase> findById(Integer id) {
         requireId(id);
         return transactions.run("buscar el caso " + id,
@@ -192,6 +195,7 @@ public class OracleCaseDao {
      * @return casos con todos sus pacientes; lista vacía si no hay ninguno
      * @throws DataAccessException si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public List<SimulationCase> findAll() {
         return transactions.run("listar los casos", connection -> loadCases(connection, null));
     }
@@ -313,6 +317,41 @@ public class OracleCaseDao {
             throw new DataAccessException("El paciente " + key.patientId() + " del caso " + key.caseId()
                     + " tiene un valor desconocido (" + name + ") para " + type.getSimpleName() + ".", e);
         }
+    }
+
+    // ---------- cambiar y borrar ----------
+
+    /**
+     * No está permitido: los casos guardados no se modifican.
+     *
+     * @param simulationCase no se usa
+     * @throws UnsupportedOperationException siempre
+     */
+    @Override
+    public void update(SimulationCase simulationCase) {
+        throw new UnsupportedOperationException(
+                "Los casos guardados no se modifican: guarde un caso nuevo con otra configuración.");
+    }
+
+    /**
+     * Borra un caso con sus pacientes, sus síntomas y los resultados de sus ejecuciones.
+     *
+     * @param id identificador del caso
+     * @throws IllegalArgumentException si el identificador es nulo
+     * @throws DataAccessException      si no existe o si Oracle rechaza la operación
+     */
+    @Override
+    public void deleteById(Integer id) {
+        requireId(id);
+        transactions.run("borrar el caso " + id, connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(DELETE_CASE)) {
+                statement.setInt(1, id);
+                if (statement.executeUpdate() == 0) {
+                    throw new DataAccessException("No existe el caso " + id + ".");
+                }
+            }
+            return null;
+        });
     }
 
     private static void requireCase(SimulationCase simulationCase) {
