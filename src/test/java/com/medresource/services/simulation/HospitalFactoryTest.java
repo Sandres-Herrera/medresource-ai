@@ -59,6 +59,7 @@ class HospitalFactoryTest {
         assertEquals(4, hospital.freeOperatingRooms().size());
         assertEquals(16, hospital.freeDoctors().size());
         assertEquals(24, hospital.freeNurses().size());
+        assertEquals(0, hospital.getMorgue().occupancy());
     }
 
     @Test
