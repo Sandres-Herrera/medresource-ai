@@ -3,10 +3,19 @@ package com.medresource.persistence;
 import com.medresource.model.Disease;
 import com.medresource.model.Specialty;
 import com.medresource.model.Symptom;
+import com.medresource.model.TreatmentType;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Guarda y lee las enfermedades del catálogo en Oracle.
@@ -135,6 +144,117 @@ public class OracleDiseaseDao {
         statement.setDouble(index, disease.getFrequency());
     }
 
+    // ---------- leer ----------
+
+    /**
+     * Busca una enfermedad por su identificador.
+     *
+     * @param id identificador buscado
+     * @return la enfermedad con sus especialidades secundarias y sus síntomas, o vacío si no existe
+     * @throws IllegalArgumentException si el identificador es nulo
+     * @throws DataAccessException      si Oracle rechaza la operación o los datos guardados no son válidos
+     */
+    public Optional<Disease> findById(Integer id) {
+        requireId(id);
+        return inTransaction("buscar la enfermedad " + id,
+                connection -> loadDiseases(connection, id).stream().findFirst());
+    }
+
+    /**
+     * Lista todas las enfermedades, ordenadas por identificador.
+     *
+     * @return enfermedades guardadas; lista vacía si no hay ninguna
+     * @throws DataAccessException si Oracle rechaza la operación o los datos guardados no son válidos
+     */
+    public List<Disease> findAll() {
+        return inTransaction("listar las enfermedades", connection -> loadDiseases(connection, null));
+    }
+
+    /** Lee una enfermedad (si se da su id) o todas, con sus especialidades secundarias y sus síntomas. */
+    private static List<Disease> loadDiseases(Connection connection, Integer id) throws SQLException {
+        Map<Integer, Set<Specialty>> secondary = readSecondarySpecialties(connection, id);
+        Map<Integer, List<Symptom>> symptoms = readSymptoms(connection, id);
+        List<Disease> diseases = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_DISEASES : SELECT_DISEASE)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    diseases.add(toDisease(rows, secondary, symptoms));
+                }
+            }
+        }
+        return diseases;
+    }
+
+    private static Map<Integer, Set<Specialty>> readSecondarySpecialties(Connection connection, Integer id)
+            throws SQLException {
+        Map<Integer, Set<Specialty>> result = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_SECONDARY : SELECT_SECONDARY_OF)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    result.computeIfAbsent(rows.getInt("disease_id"), key -> EnumSet.noneOf(Specialty.class))
+                            .add(parse(Specialty.class, rows.getString("specialty"), rows.getInt("disease_id")));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static Map<Integer, List<Symptom>> readSymptoms(Connection connection, Integer id) throws SQLException {
+        Map<Integer, List<Symptom>> result = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_SYMPTOMS : SELECT_SYMPTOMS_OF)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    result.computeIfAbsent(rows.getInt("disease_id"), key -> new ArrayList<>())
+                            .add(parse(Symptom.class, rows.getString("symptom"), rows.getInt("disease_id")));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** Arma la enfermedad de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
+    private static Disease toDisease(ResultSet row, Map<Integer, Set<Specialty>> secondary,
+                                     Map<Integer, List<Symptom>> symptoms) throws SQLException {
+        int id = row.getInt("id");
+        try {
+            return Disease.builder(id, row.getString("name"))
+                    .mainSpecialty(parse(Specialty.class, row.getString("main_specialty"), id))
+                    .secondarySpecialties(secondary.getOrDefault(id, Set.of()).toArray(new Specialty[0]))
+                    .treatment(parse(TreatmentType.class, row.getString("treatment"), id))
+                    .curable(row.getInt("curable") == 1)
+                    .requiresBlood(row.getInt("requires_blood") == 1)
+                    .requiresIcu(row.getInt("requires_icu") == 1)
+                    .deteriorationRate(row.getDouble("deterioration_rate"))
+                    .irreducibleMortality(row.getDouble("irreducible_mortality"))
+                    .durationMinutes(row.getInt("min_duration_minutes"), row.getInt("max_duration_minutes"))
+                    .ageRange(row.getInt("min_age"), row.getInt("max_age"))
+                    .frequency(row.getDouble("frequency"))
+                    .symptoms(symptoms.getOrDefault(id, List.of()).toArray(new Symptom[0]))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            throw new DataAccessException("Los datos guardados de la enfermedad " + id + " no son válidos: "
+                    + e.getMessage(), e);
+        }
+    }
+
+    private static <E extends Enum<E>> E parse(Class<E> type, String name, int diseaseId) {
+        try {
+            return Enum.valueOf(type, name);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new DataAccessException("La enfermedad " + diseaseId + " tiene un valor desconocido ("
+                    + name + ") para " + type.getSimpleName() + ".", e);
+        }
+    }
+
     // ---------- transacciones ----------
 
     /**
@@ -168,6 +288,12 @@ public class OracleDiseaseDao {
     private static void requireDisease(Disease disease) {
         if (disease == null) {
             throw new IllegalArgumentException("La enfermedad es obligatoria.");
+        }
+    }
+
+    private static void requireId(Integer id) {
+        if (id == null) {
+            throw new IllegalArgumentException("El identificador de la enfermedad es obligatorio.");
         }
     }
 }
