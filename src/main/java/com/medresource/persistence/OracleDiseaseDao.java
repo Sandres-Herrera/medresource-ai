@@ -25,7 +25,7 @@ import java.util.Set;
  * se hace en una sola transacción: o se guarda todo o no se guarda nada. Los valores de las
  * enumeraciones se guardan con el nombre de la constante y los booleanos como 0 o 1.</p>
  */
-public class OracleDiseaseDao {
+public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
 
     static final String INSERT_DISEASE = "INSERT INTO disease (id, name, main_specialty, treatment, curable, "
             + "requires_blood, requires_icu, deterioration_rate, irreducible_mortality, min_duration_minutes, "
@@ -90,6 +90,7 @@ public class OracleDiseaseDao {
      * @throws DataAccessException      si ya existe una enfermedad con ese identificador o ese nombre,
      *                                  o si Oracle rechaza la operación
      */
+    @Override
     public Integer save(Disease disease) {
         requireDisease(disease);
         return inTransaction("guardar la enfermedad " + disease.getId(), connection -> {
@@ -154,6 +155,7 @@ public class OracleDiseaseDao {
      * @throws IllegalArgumentException si el identificador es nulo
      * @throws DataAccessException      si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public Optional<Disease> findById(Integer id) {
         requireId(id);
         return inTransaction("buscar la enfermedad " + id,
@@ -166,6 +168,7 @@ public class OracleDiseaseDao {
      * @return enfermedades guardadas; lista vacía si no hay ninguna
      * @throws DataAccessException si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public List<Disease> findAll() {
         return inTransaction("listar las enfermedades", connection -> loadDiseases(connection, null));
     }
@@ -252,6 +255,71 @@ public class OracleDiseaseDao {
         } catch (IllegalArgumentException | NullPointerException e) {
             throw new DataAccessException("La enfermedad " + diseaseId + " tiene un valor desconocido ("
                     + name + ") para " + type.getSimpleName() + ".", e);
+        }
+    }
+
+    // ---------- cambiar y borrar ----------
+
+    /**
+     * Reemplaza los datos de una enfermedad que ya existe, incluidas sus especialidades secundarias
+     * y sus síntomas.
+     *
+     * @param disease enfermedad con los datos nuevos; se identifica por su {@code id}
+     * @throws IllegalArgumentException si la enfermedad es nula
+     * @throws DataAccessException      si no existe, si el nombre ya lo usa otra enfermedad o si Oracle
+     *                                  rechaza la operación
+     */
+    @Override
+    public void update(Disease disease) {
+        requireDisease(disease);
+        inTransaction("actualizar la enfermedad " + disease.getId(), connection -> {
+            updateDisease(connection, disease);
+            deleteChildren(connection, disease.getId());
+            insertChildren(connection, disease);
+            return null;
+        });
+    }
+
+    /**
+     * Borra una enfermedad con sus especialidades secundarias y sus síntomas.
+     *
+     * @param id identificador de la enfermedad
+     * @throws IllegalArgumentException si el identificador es nulo
+     * @throws DataAccessException      si no existe, si algún caso o resultado guardado la usa, o si Oracle
+     *                                  rechaza la operación
+     */
+    @Override
+    public void deleteById(Integer id) {
+        requireId(id);
+        inTransaction("borrar la enfermedad " + id, connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(DELETE_DISEASE)) {
+                statement.setInt(1, id);
+                requireOneRow(statement.executeUpdate(), id);
+            }
+            return null;
+        });
+    }
+
+    private static void updateDisease(Connection connection, Disease disease) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(UPDATE_DISEASE)) {
+            bindAttributes(statement, disease, 1);
+            statement.setInt(14, disease.getId());
+            requireOneRow(statement.executeUpdate(), disease.getId());
+        }
+    }
+
+    private static void deleteChildren(Connection connection, int diseaseId) throws SQLException {
+        for (String sql : List.of(DELETE_SECONDARY, DELETE_SYMPTOMS)) {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setInt(1, diseaseId);
+                statement.executeUpdate();
+            }
+        }
+    }
+
+    private static void requireOneRow(int changedRows, int diseaseId) {
+        if (changedRows == 0) {
+            throw new DataAccessException("No existe la enfermedad " + diseaseId + ".");
         }
     }
 
