@@ -3,6 +3,7 @@ package com.medresource.services.simulation;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Objective;
 import com.medresource.services.strategy.FeatureExtractor;
+import com.medresource.services.strategy.ModelStore;
 import com.medresource.services.strategy.NeuralNetwork;
 import com.medresource.services.strategy.TrainedModel;
 import com.medresource.services.strategy.Trainer;
@@ -10,6 +11,7 @@ import com.medresource.services.strategy.TrainingExample;
 import com.medresource.services.strategy.TrainingReport;
 import com.medresource.services.strategy.TrainingSettings;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,5 +64,25 @@ public class ModelTrainingService {
         Trainer trainer = new Trainer(settings.networkSeed(), settings.epochs(), settings.learningRate());
         TrainingReport report = trainer.train(network, trainingExamples);
         return new TrainedModel(objective, network, report, trainer.evaluate(network, evaluationExamples));
+    }
+
+    /**
+     * Entrena una red por cada objetivo y las guarda.
+     *
+     * @param store almacén donde se guardan las redes; reemplaza las que ya había
+     * @return los modelos entrenados, en el orden de {@link Objective}
+     * @throws IllegalArgumentException si el almacén es nulo
+     */
+    public List<TrainedModel> trainAll(ModelStore store) {
+        if (store == null) {
+            throw new IllegalArgumentException("El almacén es obligatorio.");
+        }
+        List<TrainedModel> models = new ArrayList<>();
+        for (Objective objective : Objective.values()) {
+            TrainedModel model = train(objective);
+            store.save(objective, model.network());
+            models.add(model);
+        }
+        return models;
     }
 }
