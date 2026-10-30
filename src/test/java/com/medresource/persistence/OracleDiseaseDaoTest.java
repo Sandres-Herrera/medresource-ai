@@ -2,6 +2,7 @@ package com.medresource.persistence;
 
 import com.medresource.model.Disease;
 import com.medresource.model.DiseaseCatalog;
+import com.medresource.model.Specialty;
 import com.medresource.model.Symptom;
 import org.junit.jupiter.api.Test;
 
@@ -273,5 +274,121 @@ class OracleDiseaseDaoTest {
     @Test
     void rejectsANullIdWhenFinding() {
         assertThrows(IllegalArgumentException.class, () -> dao.findById(null));
+    }
+
+    // ---------- cambiar y borrar ----------
+
+    @Test
+    void updatesTheDataOfAnExistingDisease() {
+        dao.save(full(5, "Neumonía grave"));
+        Disease changed = simple(5, "Neumonía leve");
+
+        dao.update(changed);
+
+        assertSameDisease(changed, dao.findById(5).orElseThrow());
+    }
+
+    @Test
+    void updateReplacesTheSecondarySpecialtiesAndTheSymptoms() {
+        dao.save(full(5, "Neumonía grave"));
+        Disease changed = Disease.builder(5, "Neumonía grave")
+                .mainSpecialty(Specialty.SURGERY)
+                .secondarySpecialties(Specialty.TRAUMATOLOGY)
+                .treatment(com.medresource.model.TreatmentType.SURGERY)
+                .durationMinutes(30, 60)
+                .symptoms(Symptom.BLEEDING, Symptom.UNCONSCIOUS)
+                .build();
+
+        dao.update(changed);
+
+        assertEquals(List.of("TRAUMATOLOGY"), database.secondaryOf(5));
+        assertEquals(List.of("BLEEDING", "UNCONSCIOUS"), database.symptomsOf(5));
+        assertSameDisease(changed, dao.findById(5).orElseThrow());
+    }
+
+    @Test
+    void updateDoesNotTouchTheOtherDiseases() {
+        dao.save(full(5, "Neumonía grave"));
+        dao.save(simple(6, "Gripa"));
+
+        dao.update(simple(5, "Neumonía leve"));
+
+        assertSameDisease(simple(6, "Gripa"), dao.findById(6).orElseThrow());
+    }
+
+    @Test
+    void updatingADiseaseThatDoesNotExistIsRejected() {
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.update(simple(5, "Gripa")));
+
+        assertTrue(error.getMessage().contains("5"), error.getMessage());
+        assertEquals(List.of(), database.diseaseIds());
+        assertEquals(1, database.rollbacks);
+    }
+
+    @Test
+    void aFailureWhileUpdatingKeepsTheOldData() {
+        Disease original = full(5, "Neumonía grave");
+        dao.save(original);
+        database.failWhenContaining = "INSERT INTO disease_symptom";
+
+        assertThrows(DataAccessException.class, () -> dao.update(simple(5, "Neumonía leve")));
+
+        database.failWhenContaining = null;
+        assertSameDisease(original, dao.findById(5).orElseThrow());
+    }
+
+    @Test
+    void updatingToANameAlreadyUsedIsRejected() {
+        dao.save(full(5, "Neumonía grave"));
+        dao.save(simple(6, "Gripa"));
+
+        assertThrows(DataAccessException.class, () -> dao.update(simple(6, "Neumonía grave")));
+        assertEquals("Gripa", dao.findById(6).orElseThrow().getName());
+    }
+
+    @Test
+    void deletesTheDiseaseWithItsChildren() {
+        dao.save(full(5, "Neumonía grave"));
+        dao.save(simple(6, "Gripa"));
+
+        dao.deleteById(5);
+
+        assertEquals(List.of(6), database.diseaseIds());
+        assertEquals(List.of(), database.secondaryOf(5));
+        assertEquals(List.of(), database.symptomsOf(5));
+        assertEquals(Optional.empty(), dao.findById(5));
+        assertTrue(dao.findById(6).isPresent());
+    }
+
+    @Test
+    void deletingADiseaseThatDoesNotExistIsRejected() {
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(7));
+
+        assertTrue(error.getMessage().contains("7"), error.getMessage());
+        assertEquals(1, database.rollbacks);
+    }
+
+    @Test
+    void aFailureWhileDeletingKeepsTheDisease() {
+        dao.save(simple(6, "Gripa"));
+        database.failWhenContaining = "DELETE FROM disease";
+
+        assertThrows(DataAccessException.class, () -> dao.deleteById(6));
+
+        assertEquals(List.of(6), database.diseaseIds());
+    }
+
+    @Test
+    void rejectsMissingArgumentsWhenChangingOrDeleting() {
+        assertThrows(IllegalArgumentException.class, () -> dao.update(null));
+        assertThrows(IllegalArgumentException.class, () -> dao.deleteById(null));
+    }
+
+    @Test
+    void theDaoCanBeUsedThroughTheGenericInterface() {
+        GenericDao<Disease, Integer> generic = dao;
+
+        assertEquals(6, generic.save(simple(6, "Gripa")).intValue());
+        assertEquals(1, generic.findAll().size());
     }
 }
