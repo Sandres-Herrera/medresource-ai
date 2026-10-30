@@ -1,6 +1,21 @@
 package com.medresource.services.simulation;
 
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.CaseConfig;
+import com.medresource.model.Objective;
+import com.medresource.model.PatientOutcome;
+import com.medresource.model.Scenario;
+import com.medresource.model.SimulationCase;
+import com.medresource.model.SimulationResult;
+import com.medresource.services.strategy.AllocationStrategy;
+import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.services.strategy.FeatureExtractor;
+import com.medresource.services.strategy.FifoStrategy;
+import com.medresource.services.strategy.OutcomeScorer;
+import com.medresource.services.strategy.RandomStrategy;
+import com.medresource.services.strategy.RecordingStrategy;
+import com.medresource.services.strategy.TrainingExample;
+import java.util.Optional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +42,10 @@ public class TrainingDataGenerator {
     public static final long EVALUATION_FIRST_SEED = 1_000_000;
 
     private final HospitalConfig hospitalConfig;
+    private final FeatureExtractor extractor = new FeatureExtractor();
+    private final OutcomeScorer scorer = new OutcomeScorer();
+    private final CaseGenerator caseGenerator = new CaseGenerator();
+    private final HospitalFactory hospitalFactory = new HospitalFactory();
 
     /**
      * Crea un generador para un tamaño de hospital.
@@ -58,5 +77,48 @@ public class TrainingDataGenerator {
             seeds.add(first + index);
         }
         return seeds;
+    }
+
+    /**
+     * Simula y devuelve los ejemplos de entrenamiento.
+     *
+     * @param seeds           semillas de los casos
+     * @param objective       objetivo que puntúa cada desenlace
+     * @param patientsPerCase pacientes de cada caso
+     * @return ejemplos, en el orden en que se simularon
+     * @throws IllegalArgumentException si las semillas, el objetivo o la cantidad de pacientes no son válidos
+     */
+    public List<TrainingExample> generate(List<Long> seeds, Objective objective, int patientsPerCase) {
+        if (seeds == null || seeds.isEmpty() || objective == null) {
+            throw new IllegalArgumentException("Las semillas y el objetivo son obligatorios.");
+        }
+        List<TrainingExample> examples = new ArrayList<>();
+        for (long seed : seeds) {
+            for (Scenario scenario : Scenario.values()) {
+                SimulationCase simulationCase = caseGenerator.generate(
+                        new CaseConfig(seed, scenario, patientsPerCase, CaseConfig.DEFAULT_DURATION_MINUTES));
+                List<AllocationStrategy> bases = List.of(
+                        new FifoStrategy(), new ClinicalPriorityStrategy(), new RandomStrategy(seed));
+                for (AllocationStrategy base : bases) {
+                    examples.addAll(examplesFrom(simulationCase, base, objective));
+                }
+            }
+        }
+        return examples;
+    }
+
+    private List<TrainingExample> examplesFrom(SimulationCase simulationCase, AllocationStrategy base,
+                                               Objective objective) {
+        RecordingStrategy recorder = new RecordingStrategy(base, extractor);
+        SimulationResult result = new SimulationEngine(simulationCase,
+                hospitalFactory.create(hospitalConfig), recorder).run();
+        List<TrainingExample> examples = new ArrayList<>();
+        for (PatientOutcome outcome : result.outcomes()) {
+            Optional<double[]> features = recorder.featuresFor(outcome.patientCode());
+            if (features.isPresent()) {
+                examples.add(new TrainingExample(features.get(), scorer.score(outcome, objective)));
+            }
+        }
+        return examples;
     }
 }
