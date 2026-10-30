@@ -21,6 +21,6 @@ class EnvironmentTest {
 
     @Test
     void mainRunsWithoutErrors() {
-        assertDoesNotThrow(() -> Main.main(new String[0]));
+        assertDoesNotThrow(() -> Main.main(new String[]{Main.CHECK_ARGUMENT}));
     }
 }
