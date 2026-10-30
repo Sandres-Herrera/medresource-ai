@@ -3,6 +3,7 @@ package com.medresource.services.simulation;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Objective;
 import com.medresource.services.strategy.FeatureExtractor;
+import com.medresource.services.strategy.ModelStore;
 import com.medresource.services.strategy.NeuralNetwork;
 import com.medresource.services.strategy.TrainedModel;
 import com.medresource.services.strategy.Trainer;
@@ -12,6 +13,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,6 +40,12 @@ class ModelTrainingServiceTest {
         double[] features = new double[FeatureExtractor.FEATURE_COUNT];
         Arrays.fill(features, 0.5);
         return features;
+    }
+
+    private static void deleteAll(Path folder) throws IOException {
+        try (Stream<Path> paths = Files.walk(folder)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
+        }
     }
 
     @Test
@@ -112,9 +124,29 @@ class ModelTrainingServiceTest {
     }
 
     @Test
+    void trainsAndSavesOneNetworkPerObjective() throws IOException {
+        Path folder = Files.createTempDirectory("modelos-");
+        try {
+            ModelStore store = new ModelStore(folder);
+
+            List<TrainedModel> models = service.trainAll(store);
+
+            assertEquals(List.of(Objective.values()), models.stream().map(TrainedModel::objective).toList());
+            for (TrainedModel model : models) {
+                assertTrue(store.contains(model.objective()));
+                assertEquals(model.network().predict(sample()),
+                        store.load(model.objective()).orElseThrow().predict(sample()), 1e-12);
+            }
+        } finally {
+            deleteAll(folder);
+        }
+    }
+
+    @Test
     void rejectsMissingArguments() {
         assertThrows(IllegalArgumentException.class, () -> new ModelTrainingService(null, TINY));
         assertThrows(IllegalArgumentException.class, () -> new ModelTrainingService(HospitalConfig.standard(), null));
         assertThrows(IllegalArgumentException.class, () -> service.train(null));
+        assertThrows(IllegalArgumentException.class, () -> service.trainAll(null));
     }
 }
