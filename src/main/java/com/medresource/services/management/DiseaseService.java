@@ -60,4 +60,69 @@ public class DiseaseService {
     public int nextId() {
         return dao.findAll().stream().mapToInt(Disease::getId).max().orElse(0) + 1;
     }
+
+    /**
+     * Agrega una enfermedad nueva al catálogo.
+     *
+     * @param disease enfermedad nueva
+     * @return el identificador con el que quedó guardada
+     * @throws IllegalArgumentException si la enfermedad es nula o ya existe otra con ese identificador
+     *                                  o con ese nombre (sin distinguir mayúsculas)
+     */
+    public int add(Disease disease) {
+        requireDisease(disease);
+        List<Disease> existing = dao.findAll();
+        if (existing.stream().anyMatch(other -> other.getId() == disease.getId())) {
+            throw new IllegalArgumentException("Ya existe una enfermedad con el identificador " + disease.getId() + ".");
+        }
+        requireFreeName(existing, disease);
+        return dao.save(disease);
+    }
+
+    /**
+     * Modifica una enfermedad que ya existe.
+     *
+     * @param disease enfermedad con los datos nuevos; se identifica por su {@code id}
+     * @throws IllegalArgumentException si la enfermedad es nula, no existe, o su nombre ya lo usa otra
+     */
+    public void update(Disease disease) {
+        requireDisease(disease);
+        List<Disease> existing = dao.findAll();
+        if (existing.stream().noneMatch(other -> other.getId() == disease.getId())) {
+            throw new IllegalArgumentException("No existe la enfermedad con el identificador " + disease.getId() + ".");
+        }
+        requireFreeName(existing, disease);
+        dao.update(disease);
+    }
+
+    /**
+     * Borra una enfermedad del catálogo.
+     *
+     * @param id identificador de la enfermedad
+     * @throws IllegalArgumentException si la enfermedad no existe
+     */
+    public void delete(int id) {
+        if (dao.findById(id).isEmpty()) {
+            throw new IllegalArgumentException("No existe la enfermedad con el identificador " + id + ".");
+        }
+        dao.deleteById(id);
+    }
+
+    private static void requireDisease(Disease disease) {
+        if (disease == null) {
+            throw new IllegalArgumentException("La enfermedad es obligatoria.");
+        }
+    }
+
+    /** Comprueba que ninguna otra enfermedad (de distinto identificador) tenga el mismo nombre. */
+    private static void requireFreeName(List<Disease> existing, Disease disease) {
+        boolean taken = existing.stream().anyMatch(other -> other.getId() != disease.getId() && sameName(other, disease));
+        if (taken) {
+            throw new IllegalArgumentException("Ya existe otra enfermedad llamada '" + disease.getName() + "'.");
+        }
+    }
+
+    private static boolean sameName(Disease first, Disease second) {
+        return first.getName().strip().equalsIgnoreCase(second.getName().strip());
+    }
 }
