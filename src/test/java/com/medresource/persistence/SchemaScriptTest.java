@@ -18,6 +18,12 @@ import com.medresource.model.BloodType;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
+import com.medresource.model.CauseOfDeath;
+import com.medresource.model.CompatibilityLevel;
+import com.medresource.model.EventType;
+import com.medresource.model.PatientStatus;
+import com.medresource.model.TriageLevel;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -201,5 +207,64 @@ class SchemaScriptTest {
         assertTrue(patients.contains("<= " + CaseConfig.MAX_PATIENTS));
         assertTrue(duration.contains(">= " + CaseConfig.MIN_DURATION_MINUTES));
         assertTrue(duration.contains("<= " + CaseConfig.MAX_DURATION_MINUTES));
+    }
+
+    // ---------- resultados ----------
+
+    @Test
+    void theResultTablesAreCreated() throws IOException {
+        List<String> tables = createdTables();
+
+        assertTrue(tables.contains("sim_result"));
+        assertTrue(tables.contains("patient_result"));
+        assertTrue(tables.contains("sim_event"));
+    }
+
+    @Test
+    void theEventTypesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_sim_event_type", EventType.values());
+    }
+
+    @Test
+    void theCausesOfDeathMatchTheEnumeration() throws IOException {
+        assertMatches("ck_patient_result_cause", CauseOfDeath.values());
+    }
+
+    @Test
+    void theCareLevelsMatchTheEnumeration() throws IOException {
+        assertMatches("ck_patient_result_care", CompatibilityLevel.values());
+    }
+
+    @Test
+    void theResultSexesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_patient_result_sex", Sex.values());
+    }
+
+    @Test
+    void onlyTheFinalStatusesAreAllowedInAResult() throws IOException {
+        Set<String> expected = new HashSet<>();
+        for (PatientStatus status : PatientStatus.values()) {
+            if (status.isFinal()) {
+                expected.add(status.name());
+            }
+        }
+
+        assertEquals(expected, allowedValues("ck_patient_result_status"));
+        assertFalse(allowedValues("ck_patient_result_status").contains("WAITING"));
+    }
+
+    @Test
+    void theTriageRangeMatchesTheTriageLevels() throws IOException {
+        List<Integer> levels = Arrays.stream(TriageLevel.values()).map(TriageLevel::getLevel).toList();
+        String triage = constraint("ck_patient_result_triage");
+
+        assertTrue(triage.contains(">= " + levels.stream().min(Integer::compare).orElseThrow()));
+        assertTrue(triage.contains("<= " + levels.stream().max(Integer::compare).orElseThrow()));
+    }
+
+    @Test
+    void theScriptCreatesNineTablesAndOneIndex() throws IOException {
+        assertEquals(9, createdTables().size());
+        assertEquals(10, statements().size());
     }
 }
