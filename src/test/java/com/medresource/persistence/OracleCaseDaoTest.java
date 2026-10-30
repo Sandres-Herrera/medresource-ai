@@ -1,12 +1,16 @@
 package com.medresource.persistence;
 
+import com.medresource.model.CaseConfig;
 import com.medresource.model.CaseFixtures;
 import com.medresource.model.Disease;
+import com.medresource.model.Scenario;
+import com.medresource.model.SimulationCase;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
+import static com.medresource.model.CaseFixtures.assertSameCase;
 import static com.medresource.model.CaseFixtures.threePatients;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -170,5 +174,153 @@ class OracleCaseDaoTest {
         public void deleteById(Integer id) {
             throw new UnsupportedOperationException();
         }
+    }
+
+    // ---------- leer ----------
+
+    @Test
+    void findsASavedCaseWithAllItsPatients() {
+        int id = dao.save(threePatients(77));
+
+        SimulationCase found = dao.findById(id).orElseThrow();
+
+        assertSameCase(threePatients(77), found);
+    }
+
+    @Test
+    void findsNothingForAMissingId() {
+        dao.save(threePatients(77));
+
+        assertEquals(Optional.empty(), dao.findById(9));
+    }
+
+    @Test
+    void doesNotSearchWithANullId() {
+        assertThrows(IllegalArgumentException.class, () -> dao.findById(null));
+    }
+
+    @Test
+    void listsAllTheCasesOrderedByIdKeepingTheirPatientsApart() {
+        dao.save(threePatients(10));
+        dao.save(threePatients(20));
+
+        List<SimulationCase> all = dao.findAll();
+
+        assertEquals(2, all.size());
+        assertSameCase(threePatients(10), all.get(0));
+        assertSameCase(threePatients(20), all.get(1));
+    }
+
+    @Test
+    void listsNothingAndDoesNotAskForDiseasesWhenThereAreNoCases() {
+        assertTrue(dao.findAll().isEmpty());
+        assertEquals(Optional.empty(), dao.findById(1));
+        assertEquals(0, catalog.lookups);
+    }
+
+    @Test
+    void findsTheIdOfTheCaseWithAConfiguration() {
+        dao.save(threePatients(10));
+        int id = dao.save(threePatients(20));
+
+        Optional<Integer> found = dao.findIdByConfig(new CaseConfig(20, Scenario.NORMAL, 3, 120));
+
+        assertEquals(Optional.of(id), found);
+    }
+
+    @Test
+    void findsNoIdIfAnyDataOfTheConfigurationDiffers() {
+        dao.save(threePatients(20));
+
+        assertEquals(Optional.empty(), dao.findIdByConfig(new CaseConfig(21, Scenario.NORMAL, 3, 120)));
+        assertEquals(Optional.empty(), dao.findIdByConfig(new CaseConfig(20, Scenario.HIGH_DEMAND, 3, 120)));
+        assertEquals(Optional.empty(), dao.findIdByConfig(new CaseConfig(20, Scenario.NORMAL, 4, 120)));
+        assertEquals(Optional.empty(), dao.findIdByConfig(new CaseConfig(20, Scenario.NORMAL, 3, 121)));
+    }
+
+    @Test
+    void doesNotSearchWithANullConfiguration() {
+        assertThrows(IllegalArgumentException.class, () -> dao.findIdByConfig(null));
+    }
+
+    @Test
+    void reportsACaseWhoseDiseaseIsNoLongerSaved() {
+        int id = dao.save(threePatients(77));
+        CatalogStub withoutFlu = new CatalogStub(List.of(CaseFixtures.diseases().get(0)));
+
+        DataAccessException error = assertThrows(DataAccessException.class,
+                () -> new OracleCaseDao(database.manager(), withoutFlu).findById(id));
+
+        assertTrue(error.getMessage().contains("enfermedad 2"));
+    }
+
+    @Test
+    void reportsASavedScenarioThatDoesNotExist() {
+        int id = dao.save(threePatients(77));
+        database.corruptCase(id, "scenario", "INVENTADO");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("caso " + id));
+    }
+
+    @Test
+    void reportsAPatientWithAnUnknownSexOrBloodType() {
+        int id = dao.save(threePatients(77));
+        database.corruptPatient(id, 2, "sex", "X");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("paciente 2"));
+        assertTrue(error.getMessage().contains("Sex"));
+
+        database.corruptPatient(id, 2, "sex", "MALE");
+        database.corruptPatient(id, 2, "blood_type", "Z");
+        error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        assertTrue(error.getMessage().contains("BloodType"));
+    }
+
+    @Test
+    void reportsAPatientWithInvalidData() {
+        int id = dao.save(threePatients(77));
+        database.corruptPatient(id, 1, "age", 1);
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findAll());
+
+        assertTrue(error.getMessage().contains("no son válidos"));
+        assertTrue(error.getMessage().contains("paciente 1"));
+    }
+
+    @Test
+    void reportsACaseWhosePatientsDoNotMatchItsConfiguration() {
+        int id = dao.save(threePatients(77));
+        database.corruptCase(id, "patient_count", 5);
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("caso " + id));
+    }
+
+    @Test
+    void reportsPatientsOutOfArrivalOrder() {
+        int id = dao.save(threePatients(77));
+        database.corruptPatient(id, 3, "arrival_minute", 5);
+
+        assertThrows(DataAccessException.class, () -> dao.findById(id));
+    }
+
+    @Test
+    void readsInOneTransactionAndClosesWhatItOpens() {
+        int id = dao.save(threePatients(77));
+        int connections = database.connectionsOpened;
+        int statements = database.statementsClosed;
+        int results = database.resultSetsClosed;
+
+        dao.findById(id);
+
+        assertEquals(connections + 1, database.connectionsOpened);
+        assertEquals(database.connectionsOpened, database.connectionsClosed);
+        assertEquals(statements + 3, database.statementsClosed);
+        assertEquals(results + 3, database.resultSetsClosed);
     }
 }
