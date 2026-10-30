@@ -55,6 +55,16 @@ class PaletteTest {
     }
 
     @Test
+    void thePatientColorsAreDifferentFromTheTriageColors() {
+        Set<Color> colors = new HashSet<>(Set.of(Palette.PATIENT_HEAD, Palette.DECEASED, Palette.BADGE));
+        for (TriageLevel level : TriageLevel.values()) {
+            colors.add(Palette.triage(level));
+        }
+
+        assertEquals(3 + TriageLevel.values().length, colors.size());
+    }
+
+    @Test
     void doesNotColorNothing() {
         assertThrows(IllegalArgumentException.class, () -> Palette.zone(null));
         assertThrows(IllegalArgumentException.class, () -> Palette.triage(null));

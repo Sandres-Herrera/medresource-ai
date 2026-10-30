@@ -1,8 +1,11 @@
 package com.medresource.ui.view;
 
 import com.medresource.model.HospitalLayout;
+import com.medresource.model.Position;
 import com.medresource.ui.render.Camera;
 import com.medresource.ui.render.Palette;
+import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.SceneRenderer;
 
 import javax.swing.JPanel;
@@ -11,13 +14,15 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.util.List;
 
 /**
  * Panel de Swing que muestra el plano del hospital.
  *
  * <p>Dibuja el plano con el {@link SceneRenderer} que recibe y lo ajusta al tamaño del panel con una
- * {@link Camera}: se ve completo y centrado, y se reajusta solo cuando la ventana cambia de tamaño. No
- * tiene reglas de simulación: solo muestra lo que le dan.</p>
+ * {@link Camera}: se ve completo y centrado, y se reajusta solo cuando la ventana cambia de tamaño. Encima
+ * del plano dibuja a los pacientes que le den con {@link #showPatients}. No tiene reglas de simulación: solo
+ * muestra lo que le dan.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -31,6 +36,9 @@ public final class HospitalMapPanel extends JPanel {
 
     private transient HospitalLayout layout;
     private final transient SceneRenderer renderer;
+    private final transient PatientPainter patientPainter = new PatientPainter();
+    private transient List<PatientMarker> markers = List.of();
+    private int overflow;
 
     /**
      * Crea el panel.
@@ -57,6 +65,26 @@ public final class HospitalMapPanel extends JPanel {
     public void showLayout(HospitalLayout layout) {
         this.layout = requireLayout(layout);
         revalidate();
+        repaint();
+    }
+
+    /**
+     * Cambia los pacientes que se dibujan encima del plano y vuelve a dibujar.
+     *
+     * @param markers  pacientes con su posición en el mundo (puntos de {@link SceneRenderer#centerOf})
+     * @param overflow pacientes esperando que no caben en las sillas; si es mayor que 0 se dibuja la
+     *                 insignia «+N» junto a la última silla
+     * @throws IllegalArgumentException si la lista es nula o el sobrante es negativo
+     */
+    public void showPatients(List<PatientMarker> markers, int overflow) {
+        if (markers == null) {
+            throw new IllegalArgumentException("La lista de pacientes es obligatoria.");
+        }
+        if (overflow < 0) {
+            throw new IllegalArgumentException("El sobrante de la sala de espera no puede ser negativo.");
+        }
+        this.markers = List.copyOf(markers);
+        this.overflow = overflow;
         repaint();
     }
 
@@ -106,6 +134,9 @@ public final class HospitalMapPanel extends JPanel {
         Dimension world = renderer.worldSize(layout);
         Camera.fit(world.width, world.height, width, height, MARGIN).applyTo(graphics);
         renderer.render(graphics, layout);
+        patientPainter.paint(graphics, markers);
+        List<Position> seats = layout.getWaitingSpots();
+        patientPainter.paintOverflow(graphics, renderer.centerOf(seats.get(seats.size() - 1)), overflow);
     }
 
     private static HospitalLayout requireLayout(HospitalLayout layout) {
