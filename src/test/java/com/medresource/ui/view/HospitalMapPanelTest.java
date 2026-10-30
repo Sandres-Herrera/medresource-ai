@@ -3,16 +3,22 @@ package com.medresource.ui.view;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
+import com.medresource.model.Sex;
+import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.ui.render.Palette;
+import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.Renderer2D;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -131,5 +137,59 @@ class HospitalMapPanelTest {
         panel.showLayout(layoutOf(new HospitalConfig(200, 50, 20, 50, 100, 100, 50)));
 
         assertEquals(new Dimension(1200 + 2 * MARGIN, 640 + 2 * MARGIN), panel.getPreferredSize());
+    }
+
+    // ---------- pacientes ----------
+
+    private BufferedImage fullSizePicture() {
+        Dimension world = renderer.worldSize(standard);
+        return panel.toImage(world.width + 2 * MARGIN, world.height + 2 * MARGIN);
+    }
+
+    @Test
+    void showsThePatientsOnTopOfThePlan() {
+        Point2D seat = renderer.centerOf(standard.getWaitingSpots().get(0));
+        panel.showPatients(List.of(new PatientMarker("P001", TriageLevel.I, Sex.MALE, false, false,
+                seat.getX(), seat.getY())), 0);
+
+        BufferedImage image = fullSizePicture();
+
+        int x = MARGIN + (int) seat.getX() + PatientPainter.OFFSET_X;
+        int y = MARGIN + (int) seat.getY();
+        assertEquals(Palette.triage(TriageLevel.I).getRGB(), image.getRGB(x, y + 5));
+    }
+
+    @Test
+    void noLongerShowsThePatientsWhenTheyAreRemoved() {
+        Point2D seat = renderer.centerOf(standard.getWaitingSpots().get(0));
+        panel.showPatients(List.of(new PatientMarker("P001", TriageLevel.I, Sex.MALE, false, false,
+                seat.getX(), seat.getY())), 0);
+        int x = MARGIN + (int) seat.getX() + PatientPainter.OFFSET_X;
+        int y = MARGIN + (int) seat.getY() + 5;
+        int withPatient = fullSizePicture().getRGB(x, y);
+
+        panel.showPatients(List.of(), 0);
+
+        assertNotEquals(withPatient, fullSizePicture().getRGB(x, y));
+    }
+
+    @Test
+    void showsTheBadgeOfThePatientsWhoDoNotFitInTheWaitingRoom() {
+        List<Position> seats = standard.getWaitingSpots();
+        Point2D last = renderer.centerOf(seats.get(seats.size() - 1));
+        int x = MARGIN + (int) last.getX() + 16;
+        int y = MARGIN + (int) last.getY() - 12;
+        int without = fullSizePicture().getRGB(x, y);
+
+        panel.showPatients(List.of(), 7);
+
+        assertNotEquals(without, fullSizePicture().getRGB(x, y));
+        assertEquals(Palette.BADGE.getRGB(), fullSizePicture().getRGB(x, y));
+    }
+
+    @Test
+    void doesNotShowMissingPatientsOrANegativeOverflow() {
+        assertThrows(IllegalArgumentException.class, () -> panel.showPatients(null, 0));
+        assertThrows(IllegalArgumentException.class, () -> panel.showPatients(List.of(), -1));
     }
 }
