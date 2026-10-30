@@ -41,8 +41,8 @@ class PriorityBasedStrategyTest {
         }
 
         @Override
-        protected Comparator<WaitingPatient> priorityOrder(int minute) {
-            return Comparator.comparingInt((WaitingPatient waiting) -> waiting.patient().getAge()).reversed();
+        protected Comparator<WaitingPatient> priorityOrder(int minute, List<WaitingPatient> waiting, Hospital hospital) {
+            return Comparator.comparingInt((WaitingPatient candidate) -> candidate.patient().getAge()).reversed();
         }
     }
 
