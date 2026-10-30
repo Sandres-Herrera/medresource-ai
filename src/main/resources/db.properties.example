@@ -1,0 +1,7 @@
+# Copia este archivo como db.properties (en esta misma carpeta) y completa tus datos.
+# db.properties está en .gitignore: nunca se sube al repositorio.
+
+# Oracle 18c XE, servicio XEPDB1 (el servicio, no el SID: lleva // antes del host).
+db.url=jdbc:oracle:thin:@//localhost:1521/XEPDB1
+db.user=medresource
+db.password=cambia_esta_clave
