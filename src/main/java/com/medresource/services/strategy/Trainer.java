@@ -62,6 +62,24 @@ public class Trainer {
         return new TrainingReport(order.size(), losses);
     }
 
+    /**
+     * Mide el error medio de la red con ejemplos que no se usaron para entrenar, sin cambiarla.
+     *
+     * @param network  red que se evalúa
+     * @param examples ejemplos de evaluación, al menos uno
+     * @return error medio (la mitad del cuadrado de la diferencia)
+     * @throws IllegalArgumentException si falta la red, no hay ejemplos o su tamaño no coincide con la red
+     */
+    public double evaluate(NeuralNetwork network, List<TrainingExample> examples) {
+        requireInputs(network, examples);
+        double total = 0.0;
+        for (TrainingExample example : examples) {
+            double difference = network.predict(example.features()) - example.target();
+            total += 0.5 * difference * difference;
+        }
+        return total / examples.size();
+    }
+
     private static void requireInputs(NeuralNetwork network, List<TrainingExample> examples) {
         if (network == null) {
             throw new IllegalArgumentException("La red es obligatoria.");
