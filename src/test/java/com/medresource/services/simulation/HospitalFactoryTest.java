@@ -42,23 +42,23 @@ class HospitalFactoryTest {
     void standardHospitalHasTheConfiguredResources() {
         Hospital hospital = standardHospital();
 
-        assertEquals(20, hospital.getBeds().size());
-        assertEquals(4, hospital.getIcuBeds().size());
-        assertEquals(3, hospital.getOperatingRooms().size());
-        assertEquals(8, hospital.getDoctors().size());
-        assertEquals(12, hospital.getNurses().size());
-        assertEquals(3, hospital.getMorgue().getCapacity());
+        assertEquals(30, hospital.getBeds().size());
+        assertEquals(6, hospital.getIcuBeds().size());
+        assertEquals(4, hospital.getOperatingRooms().size());
+        assertEquals(16, hospital.getDoctors().size());
+        assertEquals(24, hospital.getNurses().size());
+        assertEquals(5, hospital.getMorgue().getCapacity());
     }
 
     @Test
     void everyResourceStartsFree() {
         Hospital hospital = standardHospital();
 
-        assertEquals(20, hospital.freeBeds().size());
-        assertEquals(4, hospital.freeIcuBeds().size());
-        assertEquals(3, hospital.freeOperatingRooms().size());
-        assertEquals(8, hospital.freeDoctors().size());
-        assertEquals(12, hospital.freeNurses().size());
+        assertEquals(30, hospital.freeBeds().size());
+        assertEquals(6, hospital.freeIcuBeds().size());
+        assertEquals(4, hospital.freeOperatingRooms().size());
+        assertEquals(16, hospital.freeDoctors().size());
+        assertEquals(24, hospital.freeNurses().size());
         assertEquals(0, hospital.getMorgue().occupancy());
     }
 
@@ -82,7 +82,7 @@ class HospitalFactoryTest {
 
         assertEquals(RoomType.ICU, hospital.getIcu().getType());
         assertEquals("UCI", hospital.getIcu().getCode());
-        assertEquals(4, hospital.getIcu().getCapacity());
+        assertEquals(6, hospital.getIcu().getCapacity());
         for (Bed bed : hospital.getIcuBeds()) {
             assertTrue(bed.isIcu());
         }
@@ -93,9 +93,9 @@ class HospitalFactoryTest {
         Hospital hospital = standardHospital();
 
         for (BloodType type : BloodType.values()) {
-            assertEquals(5, hospital.getBloodBank().available(type));
+            assertEquals(10, hospital.getBloodBank().available(type));
         }
-        assertEquals(40, hospital.getBloodBank().totalUnits());
+        assertEquals(80, hospital.getBloodBank().totalUnits());
     }
 
     @Test
@@ -105,8 +105,8 @@ class HospitalFactoryTest {
         for (Specialty specialty : Specialty.values()) {
             assertTrue(countSpecialty(hospital, specialty) >= 1, specialty.name());
         }
-        assertEquals(2, countSpecialty(hospital, Specialty.EMERGENCY_MEDICINE));
-        assertEquals(2, countSpecialty(hospital, Specialty.GENERAL_MEDICINE));
+        assertEquals(3, countSpecialty(hospital, Specialty.EMERGENCY_MEDICINE));
+        assertEquals(3, countSpecialty(hospital, Specialty.GENERAL_MEDICINE));
     }
 
     @Test
@@ -171,10 +171,10 @@ class HospitalFactoryTest {
         first.getBeds().get(0).assign(patient, 30);
         first.getBloodBank().withdraw(BloodType.O_POSITIVE, 2);
 
-        assertEquals(19, first.freeBeds().size());
-        assertEquals(20, second.freeBeds().size());
-        assertEquals(38, first.getBloodBank().totalUnits());
-        assertEquals(40, second.getBloodBank().totalUnits());
+        assertEquals(29, first.freeBeds().size());
+        assertEquals(30, second.freeBeds().size());
+        assertEquals(78, first.getBloodBank().totalUnits());
+        assertEquals(80, second.getBloodBank().totalUnits());
     }
 
     @Test

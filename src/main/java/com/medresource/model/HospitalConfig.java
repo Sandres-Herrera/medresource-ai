@@ -56,13 +56,13 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
     }
 
     /**
-     * Crea el hospital estándar del proyecto: 20 camas, 4 de UCI, 3 quirófanos,
-     * 8 médicos, 12 enfermeros, 5 unidades de cada tipo de sangre y 3 cupos en la morgue.
+     * Crea el hospital estándar del proyecto: 30 camas, 6 de UCI, 4 quirófanos,
+     * 16 médicos, 24 enfermeros, 10 unidades de cada tipo de sangre y 5 cupos en la morgue.
      *
      * @return configuración estándar
      */
     public static HospitalConfig standard() {
-        return new HospitalConfig(20, 4, 3, 8, 12, 5, 3);
+        return new HospitalConfig(30, 6, 4, 16, 24, 10, 5);
     }
 
     private static void requireRange(int value, int min, int max, String name) {
