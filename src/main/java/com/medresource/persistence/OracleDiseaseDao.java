@@ -57,14 +57,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     static final String SELECT_SYMPTOMS_OF = "SELECT disease_id, symptom FROM disease_symptom "
             + "WHERE disease_id = ? ORDER BY symptom_order";
 
-    /** Trabajo que se hace con una conexión dentro de una transacción. */
-    @FunctionalInterface
-    private interface SqlWork<R> {
-
-        R run(Connection connection) throws SQLException;
-    }
-
-    private final ConnectionManager connections;
+    private final TransactionRunner transactions;
 
     /**
      * Crea el DAO.
@@ -73,10 +66,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
      * @throws IllegalArgumentException si el administrador es nulo
      */
     public OracleDiseaseDao(ConnectionManager connections) {
-        if (connections == null) {
-            throw new IllegalArgumentException("El administrador de conexiones es obligatorio.");
-        }
-        this.connections = connections;
+        this.transactions = new TransactionRunner(connections);
     }
 
     // ---------- guardar ----------
@@ -93,7 +83,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     @Override
     public Integer save(Disease disease) {
         requireDisease(disease);
-        return inTransaction("guardar la enfermedad " + disease.getId(), connection -> {
+        return transactions.run("guardar la enfermedad " + disease.getId(), connection -> {
             insertDisease(connection, disease);
             insertChildren(connection, disease);
             return disease.getId();
@@ -158,7 +148,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     @Override
     public Optional<Disease> findById(Integer id) {
         requireId(id);
-        return inTransaction("buscar la enfermedad " + id,
+        return transactions.run("buscar la enfermedad " + id,
                 connection -> loadDiseases(connection, id).stream().findFirst());
     }
 
@@ -170,7 +160,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
      */
     @Override
     public List<Disease> findAll() {
-        return inTransaction("listar las enfermedades", connection -> loadDiseases(connection, null));
+        return transactions.run("listar las enfermedades", connection -> loadDiseases(connection, null));
     }
 
     /** Lee una enfermedad (si se da su id) o todas, con sus especialidades secundarias y sus síntomas. */
@@ -272,7 +262,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     @Override
     public void update(Disease disease) {
         requireDisease(disease);
-        inTransaction("actualizar la enfermedad " + disease.getId(), connection -> {
+        transactions.run("actualizar la enfermedad " + disease.getId(), connection -> {
             updateDisease(connection, disease);
             deleteChildren(connection, disease.getId());
             insertChildren(connection, disease);
@@ -291,7 +281,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     @Override
     public void deleteById(Integer id) {
         requireId(id);
-        inTransaction("borrar la enfermedad " + id, connection -> {
+        transactions.run("borrar la enfermedad " + id, connection -> {
             try (PreparedStatement statement = connection.prepareStatement(DELETE_DISEASE)) {
                 statement.setInt(1, id);
                 requireOneRow(statement.executeUpdate(), id);
@@ -320,36 +310,6 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     private static void requireOneRow(int changedRows, int diseaseId) {
         if (changedRows == 0) {
             throw new DataAccessException("No existe la enfermedad " + diseaseId + ".");
-        }
-    }
-
-    // ---------- transacciones ----------
-
-    /**
-     * Hace un trabajo en una conexión nueva y dentro de una transacción: si termina bien confirma
-     * los cambios y si falla los deshace. Siempre cierra la conexión.
-     */
-    private <R> R inTransaction(String action, SqlWork<R> work) {
-        try (Connection connection = connections.getConnection()) {
-            connection.setAutoCommit(false);
-            try {
-                R result = work.run(connection);
-                connection.commit();
-                return result;
-            } catch (SQLException | RuntimeException e) {
-                rollback(connection, e);
-                throw e;
-            }
-        } catch (SQLException e) {
-            throw new DataAccessException("No se pudo " + action + ": " + e.getMessage(), e);
-        }
-    }
-
-    private static void rollback(Connection connection, Exception cause) {
-        try {
-            connection.rollback();
-        } catch (SQLException e) {
-            cause.addSuppressed(e);
         }
     }
 
