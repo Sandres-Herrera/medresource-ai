@@ -33,6 +33,14 @@ public final class Palette {
     public static final Color TRIAGE_STATION = new Color(0xE0, 0x7B, 0x39);
     /** Lugar de un tipo de sangre en el banco de sangre. */
     public static final Color BLOOD_UNIT = new Color(0xB7, 0x1C, 0x1C);
+    /** Cabeza de los pacientes. */
+    public static final Color PATIENT_HEAD = new Color(0xFF, 0xCC, 0x99);
+    /** Cuerpo y cabeza de un paciente fallecido. */
+    public static final Color DECEASED = new Color(0x75, 0x75, 0x75);
+    /** Borde fino de los pacientes. */
+    public static final Color PATIENT_OUTLINE = new Color(0x00, 0x00, 0x00, 140);
+    /** Insignia con la cantidad de pacientes que no caben en la sala de espera. */
+    public static final Color BADGE = new Color(0x21, 0x21, 0x21);
     /** Marca de la entrada de pacientes. */
     public static final Color ENTRANCE = new Color(0x2E, 0x9E, 0x4F);
 
