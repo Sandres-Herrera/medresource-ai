@@ -3,12 +3,14 @@ package com.medresource.persistence;
 import com.medresource.model.CaseFixtures;
 import com.medresource.model.Disease;
 import com.medresource.model.ResultFixtures;
+import com.medresource.model.RunRecord;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
 import static com.medresource.model.ResultFixtures.HOSPITAL;
+import static com.medresource.model.ResultFixtures.assertSameRun;
 import static com.medresource.model.ResultFixtures.runOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -227,5 +229,173 @@ class OracleResultDaoTest {
         public void deleteById(Integer id) {
             throw new UnsupportedOperationException();
         }
+    }
+
+    // ---------- leer ----------
+
+    @Test
+    void findsASavedRunWithAllItsData() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        assertSameRun(runOf(1, "FIFO", 77), dao.findById(id).orElseThrow());
+    }
+
+    @Test
+    void findsNothingForAMissingId() {
+        dao.save(runOf(1, "FIFO", 77));
+
+        assertEquals(Optional.empty(), dao.findById(9));
+    }
+
+    @Test
+    void doesNotSearchWithANullId() {
+        assertThrows(IllegalArgumentException.class, () -> dao.findById(null));
+    }
+
+    @Test
+    void listsAllTheRunsOrderedByIdKeepingTheirPatientsAndEventsApart() {
+        dao.save(runOf(2, "Prioridad clínica", 88));
+        dao.save(runOf(1, "FIFO", 77));
+
+        List<RunRecord> runs = dao.findAll();
+
+        assertEquals(2, runs.size());
+        assertSameRun(runOf(2, "Prioridad clínica", 88), runs.get(0));
+        assertSameRun(runOf(1, "FIFO", 77), runs.get(1));
+        assertEquals(1, catalog.lookups);
+    }
+
+    @Test
+    void listsNothingAndDoesNotAskForDiseasesWhenThereAreNoRuns() {
+        assertTrue(dao.findAll().isEmpty());
+        assertEquals(0, catalog.lookups);
+    }
+
+    @Test
+    void findsTheRunsOfACaseOrderedById() {
+        int first = dao.save(runOf(1, "FIFO", 77));
+        dao.save(runOf(2, "FIFO", 88));
+        int third = dao.save(runOf(1, "Prioridad clínica", 77));
+
+        assertEquals(List.of(first, third), dao.findIdsByCase(1));
+        assertEquals(List.of(2), dao.findIdsByCase(2));
+    }
+
+    @Test
+    void findsNoRunsForACaseWithoutRuns() {
+        dao.save(runOf(1, "FIFO", 77));
+
+        assertTrue(dao.findIdsByCase(2).isEmpty());
+        assertTrue(dao.findIdsByCase(99).isEmpty());
+    }
+
+    @Test
+    void reportsARunWhoseDiseaseIsNoLongerSaved() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+        OracleResultDao withoutDisease = new OracleResultDao(database.manager(),
+                new CatalogStub(List.of(CaseFixtures.diseases().get(0))));
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> withoutDisease.findById(id));
+
+        assertTrue(error.getMessage().contains("El paciente 2 de la ejecución " + id));
+        assertTrue(error.getMessage().contains("enfermedad 2"));
+    }
+
+    @Test
+    void reportsASavedScenarioThatDoesNotExist() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+        database.corruptCase(1, "scenario", "INEXISTENTE");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("INEXISTENTE"));
+        assertTrue(error.getMessage().contains("Scenario"));
+    }
+
+    @Test
+    void reportsAPatientWithAnUnknownTriageStatusOrSex() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        database.corruptPatient(id, 1, "triage", 9);
+        DataAccessException triage = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        database.corruptPatient(id, 1, "triage", 2);
+        database.corruptPatient(id, 1, "status", "VOLANDO");
+        DataAccessException status = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        database.corruptPatient(id, 1, "status", "DISCHARGED");
+        database.corruptPatient(id, 1, "sex", "X");
+        DataAccessException sex = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(triage.getMessage().contains("triage desconocido (9)"));
+        assertTrue(status.getMessage().contains("VOLANDO"));
+        assertTrue(status.getMessage().contains("PatientStatus"));
+        assertTrue(sex.getMessage().contains("Sex"));
+    }
+
+    @Test
+    void reportsAnUnknownCauseOfDeathOrCareLevel() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        database.corruptPatient(id, 2, "cause_of_death", "BRUJERIA");
+        DataAccessException cause = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        database.corruptPatient(id, 2, "cause_of_death", "NO_ICU_BED");
+        database.corruptPatient(id, 2, "care_level", "MEDIO");
+        DataAccessException care = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(cause.getMessage().contains("CauseOfDeath"));
+        assertTrue(care.getMessage().contains("CompatibilityLevel"));
+    }
+
+    @Test
+    void reportsAPatientWithInvalidData() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+        database.corruptPatient(id, 1, "status", "WAITING");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("El paciente 1 de la ejecución " + id + " no tiene datos válidos"));
+    }
+
+    @Test
+    void reportsAnEventWithAnUnknownTypeOrInvalidData() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        database.corruptEvent(id, 2, "event_type", "TERREMOTO");
+        DataAccessException type = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        database.corruptEvent(id, 2, "event_type", "DEATH");
+        database.corruptEvent(id, 2, "description", "");
+        DataAccessException invalid = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(type.getMessage().contains("Un evento de la ejecución " + id));
+        assertTrue(type.getMessage().contains("EventType"));
+        assertTrue(invalid.getMessage().contains("no tiene datos válidos"));
+    }
+
+    @Test
+    void reportsARunWhoseHospitalOrPatientsDoNotMatchWhatWasSaved() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        database.corruptResult(id, "beds", 9999);
+        DataAccessException hospital = assertThrows(DataAccessException.class, () -> dao.findById(id));
+        database.corruptResult(id, "beds", 11);
+        database.corruptCase(1, "patient_count", 4);
+        DataAccessException patients = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(hospital.getMessage().contains("Los datos guardados de la ejecución " + id + " no son válidos"));
+        assertTrue(patients.getMessage().contains("Los datos guardados de la ejecución " + id + " no son válidos"));
+    }
+
+    @Test
+    void readsInOneTransactionAndClosesWhatItOpens() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+        int connections = database.connectionsOpened;
+        int statements = database.statementsClosed;
+        int results = database.resultSetsClosed;
+
+        dao.findById(id);
+
+        assertEquals(connections + 1, database.connectionsOpened);
+        assertEquals(database.connectionsOpened, database.connectionsClosed);
+        assertEquals(statements + 3, database.statementsClosed);
+        assertEquals(results + 3, database.resultSetsClosed);
     }
 }

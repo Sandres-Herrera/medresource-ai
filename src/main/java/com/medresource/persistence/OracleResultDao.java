@@ -38,9 +38,9 @@ import java.util.Optional;
  * número de su enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe
  * el DAO.</p>
  *
- * <p>Las ejecuciones no se modifican: {@link (RunRecord)} no está permitido.</p>
+ * <p>Las ejecuciones no se modifican: {@link #update(RunRecord)} no está permitido.</p>
  */
-public class OracleResultDao {
+public class OracleResultDao implements ResultDao {
 
     static final String INSERT_RESULT = "INSERT INTO sim_result (case_id, strategy_name, total_minutes, beds, "
             + "icu_beds, operating_rooms, doctors, nurses, blood_units_per_type, morgue_capacity) "
@@ -109,6 +109,7 @@ public class OracleResultDao {
      *                                  enfermedad de los pacientes no está guardada, o si Oracle rechaza la
      *                                  operación
      */
+    @Override
     public Integer save(RunRecord run) {
         requireRun(run);
         return transactions.run("guardar la ejecución de " + run.result().strategyName(), connection -> {
@@ -243,6 +244,7 @@ public class OracleResultDao {
      * @return identificadores de las ejecuciones, ordenados; lista vacía si el caso no tiene ninguna
      * @throws DataAccessException si Oracle rechaza la operación
      */
+    @Override
     public List<Integer> findIdsByCase(int caseId) {
         return transactions.run("buscar las ejecuciones del caso " + caseId, connection -> {
             List<Integer> ids = new ArrayList<>();
@@ -266,6 +268,7 @@ public class OracleResultDao {
      * @throws IllegalArgumentException si el identificador es nulo
      * @throws DataAccessException      si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public Optional<RunRecord> findById(Integer id) {
         requireId(id);
         return transactions.run("buscar la ejecución " + id,
@@ -280,6 +283,7 @@ public class OracleResultDao {
      * @return ejecuciones guardadas; lista vacía si no hay ninguna
      * @throws DataAccessException si Oracle rechaza la operación o los datos guardados no son válidos
      */
+    @Override
     public List<RunRecord> findAll() {
         return transactions.run("listar las ejecuciones", connection -> loadRuns(connection, null));
     }
@@ -422,6 +426,41 @@ public class OracleResultDao {
 
     private static <E extends Enum<E>> E parseOrNull(Class<E> type, String name, String owner) {
         return name == null ? null : parse(type, name, owner);
+    }
+
+    // ---------- cambiar y borrar ----------
+
+    /**
+     * No está permitido: las ejecuciones guardadas no se modifican.
+     *
+     * @param run no se usa
+     * @throws UnsupportedOperationException siempre
+     */
+    @Override
+    public void update(RunRecord run) {
+        throw new UnsupportedOperationException(
+                "Las ejecuciones guardadas no se modifican: guarde una ejecución nueva.");
+    }
+
+    /**
+     * Borra una ejecución con los resultados de sus pacientes y sus eventos.
+     *
+     * @param id identificador de la ejecución
+     * @throws IllegalArgumentException si el identificador es nulo
+     * @throws DataAccessException      si no existe o si Oracle rechaza la operación
+     */
+    @Override
+    public void deleteById(Integer id) {
+        requireId(id);
+        transactions.run("borrar la ejecución " + id, connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(DELETE_RESULT)) {
+                statement.setInt(1, id);
+                if (statement.executeUpdate() == 0) {
+                    throw new DataAccessException("No existe la ejecución " + id + ".");
+                }
+            }
+            return null;
+        });
     }
 
     private static void requireRun(RunRecord run) {
