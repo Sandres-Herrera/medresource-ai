@@ -1,19 +1,31 @@
 package com.medresource.persistence;
 
 import com.medresource.model.CaseConfig;
+import com.medresource.model.CauseOfDeath;
+import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.Disease;
+import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.PatientOutcome;
+import com.medresource.model.PatientStatus;
 import com.medresource.model.RunRecord;
 import com.medresource.model.Scenario;
+import com.medresource.model.Sex;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.SimulationResult;
+import com.medresource.model.TriageLevel;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Guarda y lee en Oracle las ejecuciones de la simulación, con el resultado de cada paciente y el
@@ -222,9 +234,205 @@ public class OracleResultDao {
         }
     }
 
+    // ---------- leer ----------
+
+    /**
+     * Busca las ejecuciones guardadas de un caso.
+     *
+     * @param caseId identificador del caso
+     * @return identificadores de las ejecuciones, ordenados; lista vacía si el caso no tiene ninguna
+     * @throws DataAccessException si Oracle rechaza la operación
+     */
+    public List<Integer> findIdsByCase(int caseId) {
+        return transactions.run("buscar las ejecuciones del caso " + caseId, connection -> {
+            List<Integer> ids = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement(SELECT_IDS_BY_CASE)) {
+                statement.setInt(1, caseId);
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        ids.add(rows.getInt("id"));
+                    }
+                }
+            }
+            return ids;
+        });
+    }
+
+    /**
+     * Busca una ejecución por su identificador.
+     *
+     * @param id identificador buscado
+     * @return la ejecución con todos sus pacientes y eventos, o vacío si no existe
+     * @throws IllegalArgumentException si el identificador es nulo
+     * @throws DataAccessException      si Oracle rechaza la operación o los datos guardados no son válidos
+     */
+    public Optional<RunRecord> findById(Integer id) {
+        requireId(id);
+        return transactions.run("buscar la ejecución " + id,
+                connection -> loadRuns(connection, id).stream().findFirst());
+    }
+
+    /**
+     * Lista todas las ejecuciones guardadas, ordenadas por identificador. Cada una trae todos sus
+     * pacientes y eventos, así que con muchas ejecuciones conviene pedir una por una con
+     * {@link #findIdsByCase(int)} y {@link #findById(Integer)}.
+     *
+     * @return ejecuciones guardadas; lista vacía si no hay ninguna
+     * @throws DataAccessException si Oracle rechaza la operación o los datos guardados no son válidos
+     */
+    public List<RunRecord> findAll() {
+        return transactions.run("listar las ejecuciones", connection -> loadRuns(connection, null));
+    }
+
+    /** Lee una ejecución (si se da su id) o todas, con sus pacientes y sus eventos. */
+    private List<RunRecord> loadRuns(Connection connection, Integer id) throws SQLException {
+        List<RunRecord> runs = new ArrayList<>();
+        List<Map<String, Object>> headers = readHeaders(connection, id);
+        if (headers.isEmpty()) {
+            return runs;
+        }
+        Map<Integer, Disease> catalog = new HashMap<>();
+        diseases.findAll().forEach(disease -> catalog.put(disease.getId(), disease));
+        Map<Integer, List<PatientOutcome>> outcomes = readPatients(connection, id, catalog);
+        Map<Integer, List<SimulationEvent>> events = readEvents(connection, id);
+        for (Map<String, Object> header : headers) {
+            int resultId = (Integer) header.get("id");
+            runs.add(toRun(header, outcomes.getOrDefault(resultId, List.of()), events.getOrDefault(resultId, List.of())));
+        }
+        return runs;
+    }
+
+    private static List<Map<String, Object>> readHeaders(Connection connection, Integer id) throws SQLException {
+        List<Map<String, Object>> headers = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_RESULTS : SELECT_RESULT)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    Map<String, Object> header = new HashMap<>();
+                    for (String column : List.of("id", "case_id", "total_minutes", "beds", "icu_beds",
+                            "operating_rooms", "doctors", "nurses", "blood_units_per_type", "morgue_capacity",
+                            "patient_count", "duration_minutes")) {
+                        header.put(column, rows.getInt(column));
+                    }
+                    header.put("strategy_name", rows.getString("strategy_name"));
+                    header.put("seed", rows.getLong("seed"));
+                    header.put("scenario", rows.getString("scenario"));
+                    headers.add(header);
+                }
+            }
+        }
+        return headers;
+    }
+
+    private static Map<Integer, List<PatientOutcome>> readPatients(Connection connection, Integer id,
+                                                                   Map<Integer, Disease> catalog)
+            throws SQLException {
+        Map<Integer, List<PatientOutcome>> result = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_PATIENTS : SELECT_PATIENTS_OF)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    int resultId = rows.getInt("result_id");
+                    result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toOutcome(rows, resultId, catalog));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static Map<Integer, List<SimulationEvent>> readEvents(Connection connection, Integer id)
+            throws SQLException {
+        Map<Integer, List<SimulationEvent>> result = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_EVENTS : SELECT_EVENTS_OF)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    int resultId = rows.getInt("result_id");
+                    result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toEvent(rows, resultId));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** Arma el resultado del paciente de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
+    private static PatientOutcome toOutcome(ResultSet row, int resultId, Map<Integer, Disease> catalog)
+            throws SQLException {
+        int patientId = row.getInt("patient_id");
+        String owner = "El paciente " + patientId + " de la ejecución " + resultId;
+        Disease disease = catalog.get(row.getInt("disease_id"));
+        if (disease == null) {
+            throw new DataAccessException(owner + " usa la enfermedad " + row.getInt("disease_id")
+                    + ", que no está guardada.");
+        }
+        try {
+            return new PatientOutcome(patientId, row.getString("patient_code"), row.getInt("age"),
+                    parse(Sex.class, row.getString("sex"), owner), triage(row.getInt("triage"), owner), disease,
+                    row.getInt("arrival_minute"), row.getInt("treatment_start_minute"), row.getInt("outcome_minute"),
+                    parse(PatientStatus.class, row.getString("status"), owner),
+                    parseOrNull(CauseOfDeath.class, row.getString("cause_of_death"), owner),
+                    parseOrNull(CompatibilityLevel.class, row.getString("care_level"), owner),
+                    row.getInt("irrecoverable") == 1, row.getDouble("final_health"));
+        } catch (IllegalArgumentException e) {
+            throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
+        }
+    }
+
+    private static SimulationEvent toEvent(ResultSet row, int resultId) throws SQLException {
+        String owner = "Un evento de la ejecución " + resultId;
+        try {
+            return new SimulationEvent(row.getInt("event_minute"),
+                    parse(EventType.class, row.getString("event_type"), owner), row.getString("patient_code"),
+                    row.getString("resource_code"), row.getString("description"));
+        } catch (IllegalArgumentException e) {
+            throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
+        }
+    }
+
+    private static RunRecord toRun(Map<String, Object> header, List<PatientOutcome> outcomes,
+                                   List<SimulationEvent> events) {
+        int resultId = (Integer) header.get("id");
+        String owner = "la ejecución " + resultId;
+        try {
+            CaseConfig config = new CaseConfig((Long) header.get("seed"),
+                    parse(Scenario.class, (String) header.get("scenario"), owner),
+                    (Integer) header.get("patient_count"), (Integer) header.get("duration_minutes"));
+            HospitalConfig hospital = new HospitalConfig((Integer) header.get("beds"),
+                    (Integer) header.get("icu_beds"), (Integer) header.get("operating_rooms"),
+                    (Integer) header.get("doctors"), (Integer) header.get("nurses"),
+                    (Integer) header.get("blood_units_per_type"), (Integer) header.get("morgue_capacity"));
+            SimulationResult result = new SimulationResult((String) header.get("strategy_name"), config,
+                    (Integer) header.get("total_minutes"), outcomes, events);
+            return new RunRecord((Integer) header.get("case_id"), hospital, result);
+        } catch (IllegalArgumentException e) {
+            throw new DataAccessException("Los datos guardados de " + owner + " no son válidos: " + e.getMessage(), e);
+        }
+    }
+
+    private static TriageLevel triage(int level, String owner) {
+        return Arrays.stream(TriageLevel.values()).filter(candidate -> candidate.getLevel() == level).findFirst()
+                .orElseThrow(() -> new DataAccessException(owner + " tiene un triage desconocido (" + level + ")."));
+    }
+
+    private static <E extends Enum<E>> E parseOrNull(Class<E> type, String name, String owner) {
+        return name == null ? null : parse(type, name, owner);
+    }
+
     private static void requireRun(RunRecord run) {
         if (run == null) {
             throw new IllegalArgumentException("La ejecución es obligatoria.");
+        }
+    }
+
+    private static void requireId(Integer id) {
+        if (id == null) {
+            throw new IllegalArgumentException("El identificador de la ejecución es obligatorio.");
         }
     }
 }
