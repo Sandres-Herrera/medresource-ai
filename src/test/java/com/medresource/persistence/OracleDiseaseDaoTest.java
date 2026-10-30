@@ -2,11 +2,14 @@ package com.medresource.persistence;
 
 import com.medresource.model.Disease;
 import com.medresource.model.DiseaseCatalog;
+import com.medresource.model.Symptom;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
+import static com.medresource.model.DiseaseFixtures.assertSameDisease;
 import static com.medresource.model.DiseaseFixtures.full;
 import static com.medresource.model.DiseaseFixtures.simple;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -154,5 +157,121 @@ class OracleDiseaseDaoTest {
     void rejectsMissingArgumentsWhenSaving() {
         assertThrows(IllegalArgumentException.class, () -> new OracleDiseaseDao(null));
         assertThrows(IllegalArgumentException.class, () -> dao.save(null));
+    }
+
+    // ---------- leer ----------
+
+    @Test
+    void findsASavedDiseaseWithAllItsData() {
+        Disease saved = full(5, "Neumonía grave");
+        dao.save(saved);
+
+        Disease found = dao.findById(5).orElseThrow();
+
+        assertSameDisease(saved, found);
+    }
+
+    @Test
+    void findsASimpleDiseaseWithoutSecondarySpecialties() {
+        Disease saved = simple(6, "Gripa");
+        dao.save(saved);
+
+        assertSameDisease(saved, dao.findById(6).orElseThrow());
+    }
+
+    @Test
+    void findsTheRightDiseaseAmongSeveral() {
+        dao.save(full(5, "Neumonía grave"));
+        dao.save(simple(6, "Gripa"));
+
+        assertEquals("Gripa", dao.findById(6).orElseThrow().getName());
+        assertEquals(List.of(Symptom.FEVER), dao.findById(6).orElseThrow().getSymptoms());
+        assertEquals(3, dao.findById(5).orElseThrow().getSymptoms().size());
+    }
+
+    @Test
+    void anUnknownIdGivesNothing() {
+        dao.save(simple(6, "Gripa"));
+
+        assertEquals(Optional.empty(), dao.findById(99));
+    }
+
+    @Test
+    void listsTheDiseasesOrderedById() {
+        dao.save(simple(9, "Novena"));
+        dao.save(full(2, "Segunda"));
+        dao.save(simple(5, "Quinta"));
+
+        List<Disease> diseases = dao.findAll();
+
+        assertEquals(List.of(2, 5, 9), diseases.stream().map(Disease::getId).toList());
+        assertSameDisease(full(2, "Segunda"), diseases.get(0));
+    }
+
+    @Test
+    void listsNothingWhenThereAreNoDiseases() {
+        assertEquals(List.of(), dao.findAll());
+    }
+
+    @Test
+    void readsBackTheWholeDefaultCatalogUnchanged() {
+        for (Disease disease : DiseaseCatalog.defaultDiseases()) {
+            dao.save(disease);
+        }
+
+        List<Disease> read = dao.findAll();
+
+        assertEquals(DiseaseCatalog.defaultDiseases().size(), read.size());
+        for (int i = 0; i < read.size(); i++) {
+            assertSameDisease(DiseaseCatalog.defaultDiseases().get(i), read.get(i));
+        }
+    }
+
+    @Test
+    void readingClosesTheConnectionTheStatementsAndTheResults() {
+        dao.save(full(5, "Neumonía grave"));
+        int statementsBefore = database.statementsClosed;
+
+        dao.findAll();
+
+        assertEquals(2, database.connectionsClosed);
+        assertEquals(3, database.statementsClosed - statementsBefore);
+        assertEquals(3, database.resultSetsClosed);
+    }
+
+    @Test
+    void anUnknownValueInTheDatabaseIsReportedWithTheDisease() {
+        dao.save(simple(6, "Gripa"));
+        database.corruptColumn(6, "main_specialty", "NO_EXISTE");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(6));
+
+        assertTrue(error.getMessage().contains("6"), error.getMessage());
+        assertTrue(error.getMessage().contains("NO_EXISTE"), error.getMessage());
+    }
+
+    @Test
+    void aDiseaseWithoutSymptomsInTheDatabaseIsReportedAsInvalid() {
+        dao.save(simple(6, "Gripa"));
+        database.removeSymptoms(6);
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findAll());
+
+        assertTrue(error.getMessage().contains("6"), error.getMessage());
+        assertTrue(error.getCause() instanceof IllegalArgumentException);
+    }
+
+    @Test
+    void aFailureWhileReadingIsReported() {
+        dao.save(simple(6, "Gripa"));
+        database.failWhenContaining = "FROM disease_symptom";
+
+        assertThrows(DataAccessException.class, () -> dao.findAll());
+        assertThrows(DataAccessException.class, () -> dao.findById(6));
+    }
+
+    @Test
+    void rejectsANullIdWhenFinding() {
+        assertThrows(IllegalArgumentException.class, () -> dao.findById(null));
     }
 }
