@@ -1,6 +1,7 @@
 package com.medresource.services.management;
 
 import com.medresource.model.Disease;
+import com.medresource.model.DiseaseCatalog;
 import com.medresource.persistence.GenericDao;
 
 import java.util.List;
@@ -106,6 +107,29 @@ public class DiseaseService {
             throw new IllegalArgumentException("No existe la enfermedad con el identificador " + id + ".");
         }
         dao.deleteById(id);
+    }
+
+    /**
+     * Carga en la base de datos las enfermedades del catálogo inicial que todavía no están, y deja
+     * intactas las que ya existen (aunque alguien las haya modificado).
+     *
+     * <p>Una enfermedad inicial se considera presente si ya hay otra con su mismo identificador o con su
+     * mismo nombre.</p>
+     *
+     * @return cuántas enfermedades se cargaron; 0 si el catálogo ya estaba completo
+     */
+    public int loadDefaultCatalog() {
+        List<Disease> existing = dao.findAll();
+        int loaded = 0;
+        for (Disease initial : DiseaseCatalog.defaultDiseases()) {
+            boolean present = existing.stream()
+                    .anyMatch(other -> other.getId() == initial.getId() || sameName(other, initial));
+            if (!present) {
+                dao.save(initial);
+                loaded++;
+            }
+        }
+        return loaded;
     }
 
     private static void requireDisease(Disease disease) {

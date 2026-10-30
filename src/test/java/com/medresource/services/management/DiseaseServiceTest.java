@@ -1,6 +1,7 @@
 package com.medresource.services.management;
 
 import com.medresource.model.Disease;
+import com.medresource.model.DiseaseCatalog;
 import com.medresource.persistence.DataAccessException;
 import com.medresource.persistence.GenericDao;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static com.medresource.model.DiseaseFixtures.assertSameDisease;
 import static com.medresource.model.DiseaseFixtures.full;
 import static com.medresource.model.DiseaseFixtures.simple;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -184,6 +186,50 @@ class DiseaseServiceTest {
 
         assertThrows(DataAccessException.class, () -> new DiseaseService(dao).delete(1));
         assertEquals(1, dao.stored.size());
+    }
+
+    // ---------- catálogo inicial ----------
+
+    @Test
+    void loadsTheWholeDefaultCatalogIntoAnEmptyDatabase() {
+        InMemoryDao dao = new InMemoryDao();
+
+        int loaded = new DiseaseService(dao).loadDefaultCatalog();
+
+        assertEquals(DiseaseCatalog.defaultDiseases().size(), loaded);
+        assertEquals(loaded, dao.stored.size());
+    }
+
+    @Test
+    void loadingTheDefaultCatalogTwiceDoesNotDuplicateAnything() {
+        InMemoryDao dao = new InMemoryDao();
+        DiseaseService service = new DiseaseService(dao);
+        service.loadDefaultCatalog();
+
+        assertEquals(0, service.loadDefaultCatalog());
+        assertEquals(DiseaseCatalog.defaultDiseases().size(), dao.stored.size());
+    }
+
+    @Test
+    void loadingTheDefaultCatalogKeepsAModifiedDisease() {
+        Disease first = DiseaseCatalog.defaultDiseases().get(0);
+        InMemoryDao dao = new InMemoryDao(simple(first.getId(), "Nombre cambiado"));
+
+        int loaded = new DiseaseService(dao).loadDefaultCatalog();
+
+        assertEquals(DiseaseCatalog.defaultDiseases().size() - 1, loaded);
+        assertEquals("Nombre cambiado", dao.byId(first.getId()).getName());
+    }
+
+    @Test
+    void loadingTheDefaultCatalogSkipsADiseaseWhoseNameIsAlreadyUsedUnderAnotherId() {
+        Disease first = DiseaseCatalog.defaultDiseases().get(0);
+        InMemoryDao dao = new InMemoryDao(simple(900, first.getName().toUpperCase()));
+
+        int loaded = new DiseaseService(dao).loadDefaultCatalog();
+
+        assertEquals(DiseaseCatalog.defaultDiseases().size() - 1, loaded);
+        assertFalse(dao.stored.stream().anyMatch(disease -> disease.getId() == first.getId()));
     }
 
     /** DAO en memoria: guarda las enfermedades en una lista y cuenta las modificaciones. */
