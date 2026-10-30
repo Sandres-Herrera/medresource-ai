@@ -152,4 +152,55 @@ class TrainerTest {
         assertThrows(IllegalArgumentException.class, () -> trainer.train(network(), tooShort));
         assertThrows(IllegalArgumentException.class, () -> trainer.train(network(), withNull));
     }
+
+    // ---------- evaluar ----------
+
+    @Test
+    void evaluatesTheAverageError() {
+        NeuralNetwork network = network();
+        List<TrainingExample> examples = List.of(
+                new TrainingExample(new double[]{0.8, 0.2}, 0.3),
+                new TrainingExample(new double[]{0.1, 0.9}, 0.6));
+        double expected = (0.5 * Math.pow(network.predict(new double[]{0.8, 0.2}) - 0.3, 2)
+                + 0.5 * Math.pow(network.predict(new double[]{0.1, 0.9}) - 0.6, 2)) / 2;
+
+        assertEquals(expected, new Trainer(1, 1, 0.05).evaluate(network, examples), DELTA);
+    }
+
+    @Test
+    void evaluatingDoesNotChangeTheNetwork() {
+        NeuralNetwork network = network();
+        double[] input = {0.4, 0.6};
+        double before = network.predict(input);
+
+        new Trainer(1, 5, 0.05).evaluate(network, learnableExamples());
+
+        assertEquals(before, network.predict(input));
+    }
+
+    @Test
+    void trainingLowersTheErrorOnExamplesItNeverSaw() {
+        List<TrainingExample> training = learnableExamples();
+        List<TrainingExample> unseen = List.of(
+                new TrainingExample(new double[]{0.25, 0.75}, 0.25),
+                new TrainingExample(new double[]{0.85, 0.15}, 0.85));
+        NeuralNetwork network = network();
+        Trainer trainer = new Trainer(1, 600, 0.05);
+        double before = trainer.evaluate(network, unseen);
+
+        trainer.train(network, training);
+
+        assertTrue(trainer.evaluate(network, unseen) < before / 3);
+    }
+
+    @Test
+    void rejectsInvalidInputsWhenEvaluating() {
+        Trainer trainer = new Trainer(1, 2, 0.05);
+        List<TrainingExample> wrongSize = List.of(new TrainingExample(new double[]{0.1}, 0.5));
+
+        assertThrows(IllegalArgumentException.class, () -> trainer.evaluate(null, learnableExamples()));
+        assertThrows(IllegalArgumentException.class, () -> trainer.evaluate(network(), null));
+        assertThrows(IllegalArgumentException.class, () -> trainer.evaluate(network(), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> trainer.evaluate(network(), wrongSize));
+    }
 }
