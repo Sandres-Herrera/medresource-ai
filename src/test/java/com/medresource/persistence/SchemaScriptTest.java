@@ -14,6 +14,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.medresource.model.BloodType;
+import com.medresource.model.CaseConfig;
+import com.medresource.model.Scenario;
+import com.medresource.model.Sex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -155,5 +159,47 @@ class SchemaScriptTest {
     @Test
     void theDiseaseSymptomsMatchTheEnumeration() throws IOException {
         assertMatches("ck_disease_symptom_name", Symptom.values());
+    }
+
+    // ---------- casos ----------
+
+    @Test
+    void theCaseTablesAreCreated() throws IOException {
+        List<String> tables = createdTables();
+
+        assertTrue(tables.contains("sim_case"));
+        assertTrue(tables.contains("case_patient"));
+        assertTrue(tables.contains("case_patient_symptom"));
+    }
+
+    @Test
+    void theScenariosMatchTheEnumeration() throws IOException {
+        assertMatches("ck_sim_case_scenario", Scenario.values());
+    }
+
+    @Test
+    void theBloodTypesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_case_patient_blood", BloodType.values());
+    }
+
+    @Test
+    void theSexesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_case_patient_sex", Sex.values());
+    }
+
+    @Test
+    void thePatientSymptomsMatchTheEnumeration() throws IOException {
+        assertMatches("ck_case_symptom_name", Symptom.values());
+    }
+
+    @Test
+    void theCaseLimitsMatchTheCaseConfiguration() throws IOException {
+        String patients = constraint("ck_sim_case_patients");
+        String duration = constraint("ck_sim_case_duration");
+
+        assertTrue(patients.contains(">= " + CaseConfig.MIN_PATIENTS));
+        assertTrue(patients.contains("<= " + CaseConfig.MAX_PATIENTS));
+        assertTrue(duration.contains(">= " + CaseConfig.MIN_DURATION_MINUTES));
+        assertTrue(duration.contains("<= " + CaseConfig.MAX_DURATION_MINUTES));
     }
 }
