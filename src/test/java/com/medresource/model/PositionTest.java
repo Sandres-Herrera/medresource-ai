@@ -53,7 +53,7 @@ class PositionTest {
         long different = Arrays.stream(ZoneType.values()).map(ZoneType::getDisplayName).distinct().count();
 
         assertEquals(ZoneType.values().length, different);
-        assertEquals("Pasillo", ZoneType.CORRIDOR.getDisplayName());
+        assertEquals("Sala de espera", ZoneType.WAITING_ROOM.getDisplayName());
         assertEquals("Quirófano", ZoneType.OPERATING_ROOM.getDisplayName());
     }
 }
