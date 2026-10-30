@@ -1,4 +1,159 @@
 package com.medresource.persistence;
 
-public class SchemaScriptTest {
+import com.medresource.model.Specialty;
+import com.medresource.model.Symptom;
+import com.medresource.model.TreatmentType;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Pruebas del script SQL: comprueban que sus restricciones coinciden con las enumeraciones
+ * y reglas del modelo, porque Oracle no se puede ejecutar durante las pruebas.
+ */
+class SchemaScriptTest {
+
+    private static final Pattern NAME = Pattern.compile("(?:CONSTRAINT|TABLE|INDEX)\\s+([a-z_]+)");
+    private static final Pattern QUOTED = Pattern.compile("'([A-Z_]+)'");
+    private static final Pattern BLANK_LINE = Pattern.compile("\\n[ \\t]*\\n");
+
+    private static String read(String resource) throws IOException {
+        try (InputStream stream = SchemaScriptTest.class.getResourceAsStream(resource)) {
+            assertNotNull(stream, "no se encontró " + resource);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static List<String> statements() throws IOException {
+        return SchemaInstaller.statementsFrom(read(SchemaInstaller.SCHEMA_RESOURCE));
+    }
+
+    private static List<String> createdTables() throws IOException {
+        List<String> tables = new ArrayList<>();
+        for (String statement : statements()) {
+            Matcher matcher = Pattern.compile("^CREATE TABLE ([a-z_]+)").matcher(statement);
+            if (matcher.find()) {
+                tables.add(matcher.group(1));
+            }
+        }
+        return tables;
+    }
+
+    /** Texto de una restricción CHECK, desde su nombre hasta la siguiente restricción. */
+    private static String constraint(String name) throws IOException {
+        String script = read(SchemaInstaller.SCHEMA_RESOURCE);
+        int start = script.indexOf("CONSTRAINT " + name + " CHECK");
+        assertTrue(start >= 0, "no existe la restricción " + name);
+        int end = script.indexOf("CONSTRAINT", start + 1);
+        int semicolon = script.indexOf(");", start);
+        int stop = end >= 0 ? Math.min(end, semicolon) : semicolon;
+        return script.substring(start, stop);
+    }
+
+    /** Valores entre comillas de la lista {@code IN (...)} de una restricción. */
+    private static Set<String> allowedValues(String name) throws IOException {
+        String text = constraint(name);
+        String list = text.substring(text.indexOf("IN ("));
+        Set<String> values = new HashSet<>();
+        Matcher matcher = QUOTED.matcher(list);
+        while (matcher.find()) {
+            values.add(matcher.group(1));
+        }
+        return values;
+    }
+
+    private static Set<String> namesOf(Enum<?>[] constants) {
+        Set<String> names = new HashSet<>();
+        for (Enum<?> constant : constants) {
+            names.add(constant.name());
+        }
+        return names;
+    }
+
+    private static void assertMatches(String constraint, Enum<?>[] constants) throws IOException {
+        assertEquals(namesOf(constants), allowedValues(constraint), constraint);
+    }
+
+    // ---------- forma general ----------
+
+    @Test
+    void identifiersAreAtMostThirtyCharactersLong() throws IOException {
+        Matcher matcher = NAME.matcher(read(SchemaInstaller.SCHEMA_RESOURCE));
+        while (matcher.find()) {
+            assertTrue(matcher.group(1).length() <= 30, matcher.group(1));
+        }
+    }
+
+    @Test
+    void everyStatementCreatesATableOrAnIndex() throws IOException {
+        for (String statement : statements()) {
+            assertTrue(statement.startsWith("CREATE TABLE ") || statement.startsWith("CREATE INDEX "), statement);
+        }
+    }
+
+    @Test
+    void theScriptRunsInSqlPlusWithoutSurprises() throws IOException {
+        // SQL*Plus corta una sentencia en la primera línea en blanco y trata "&" como variable.
+        for (String statement : statements()) {
+            assertFalse(BLANK_LINE.matcher(statement).find(), "línea en blanco dentro de: " + statement);
+        }
+        assertFalse(read(SchemaInstaller.SCHEMA_RESOURCE).contains("&"));
+    }
+
+    @Test
+    void everyForeignKeyPointsToATableCreatedBefore() throws IOException {
+        List<String> created = new ArrayList<>();
+        Pattern reference = Pattern.compile("REFERENCES ([a-z_]+) ");
+        for (String statement : statements()) {
+            Matcher table = Pattern.compile("^CREATE TABLE ([a-z_]+)").matcher(statement);
+            if (!table.find()) {
+                continue;
+            }
+            Matcher target = reference.matcher(statement);
+            while (target.find()) {
+                assertTrue(created.contains(target.group(1)), table.group(1) + " usa " + target.group(1) + " antes de crearla");
+            }
+            created.add(table.group(1));
+        }
+    }
+
+    // ---------- catálogo ----------
+
+    @Test
+    void theCatalogTablesAreCreated() throws IOException {
+        List<String> tables = createdTables();
+
+        assertTrue(tables.contains("disease"));
+        assertTrue(tables.contains("disease_secondary_specialty"));
+        assertTrue(tables.contains("disease_symptom"));
+    }
+
+    @Test
+    void theSpecialtiesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_disease_specialty", Specialty.values());
+        assertMatches("ck_disease_secondary_specialty", Specialty.values());
+    }
+
+    @Test
+    void theTreatmentsMatchTheEnumeration() throws IOException {
+        assertMatches("ck_disease_treatment", TreatmentType.values());
+    }
+
+    @Test
+    void theDiseaseSymptomsMatchTheEnumeration() throws IOException {
+        assertMatches("ck_disease_symptom_name", Symptom.values());
+    }
 }

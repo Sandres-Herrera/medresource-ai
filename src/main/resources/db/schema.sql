@@ -1,0 +1,67 @@
+-- ============================================================================
+-- MedResource AI - esquema de la base de datos (Oracle 18c XE, servicio XEPDB1)
+--
+-- Se ejecuta con el usuario de la aplicación (ver README, sección Oracle).
+-- Los valores de texto que vienen de una enumeración de Java (especialidad,
+-- escenario, tipo de sangre...) se guardan con el nombre de la constante y una
+-- restricción CHECK que lista los nombres válidos.
+-- Los números decimales de Java (double) se guardan como BINARY_DOUBLE para no
+-- perder precisión; los booleanos, como NUMBER(1) con valor 0 o 1.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- Catálogo de enfermedades
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE disease (
+    id                   NUMBER(5)            NOT NULL,
+    name                 VARCHAR2(100 CHAR)   NOT NULL,
+    main_specialty       VARCHAR2(30)         NOT NULL,
+    treatment            VARCHAR2(20)         NOT NULL,
+    curable              NUMBER(1)            NOT NULL,
+    requires_blood       NUMBER(1)            NOT NULL,
+    requires_icu         NUMBER(1)            NOT NULL,
+    deterioration_rate   BINARY_DOUBLE        NOT NULL,
+    irreducible_mortality BINARY_DOUBLE       NOT NULL,
+    min_duration_minutes NUMBER(5)            NOT NULL,
+    max_duration_minutes NUMBER(5)            NOT NULL,
+    min_age              NUMBER(3)            NOT NULL,
+    max_age              NUMBER(3)            NOT NULL,
+    frequency            BINARY_DOUBLE        NOT NULL,
+    CONSTRAINT pk_disease PRIMARY KEY (id),
+    CONSTRAINT uq_disease_name UNIQUE (name),
+    CONSTRAINT ck_disease_id CHECK (id > 0),
+    CONSTRAINT ck_disease_specialty CHECK (main_specialty IN (
+        'GENERAL_MEDICINE', 'PEDIATRICS', 'INTERNAL_MEDICINE', 'SURGERY', 'TRAUMATOLOGY', 'EMERGENCY_MEDICINE')),
+    CONSTRAINT ck_disease_treatment CHECK (treatment IN ('CONSULTATION', 'HOSPITALIZATION', 'SURGERY')),
+    CONSTRAINT ck_disease_curable CHECK (curable IN (0, 1)),
+    CONSTRAINT ck_disease_blood CHECK (requires_blood IN (0, 1)),
+    CONSTRAINT ck_disease_icu CHECK (requires_icu IN (0, 1)),
+    CONSTRAINT ck_disease_deterioration CHECK (deterioration_rate >= 0),
+    CONSTRAINT ck_disease_mortality CHECK (irreducible_mortality >= 0 AND irreducible_mortality <= 1),
+    CONSTRAINT ck_disease_duration CHECK (min_duration_minutes > 0 AND min_duration_minutes <= max_duration_minutes),
+    CONSTRAINT ck_disease_age CHECK (min_age >= 0 AND min_age <= max_age),
+    CONSTRAINT ck_disease_frequency CHECK (frequency > 0)
+);
+
+CREATE TABLE disease_secondary_specialty (
+    disease_id           NUMBER(5)            NOT NULL,
+    specialty            VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_disease_secondary PRIMARY KEY (disease_id, specialty),
+    CONSTRAINT fk_disease_secondary_disease FOREIGN KEY (disease_id) REFERENCES disease (id) ON DELETE CASCADE,
+    CONSTRAINT ck_disease_secondary_specialty CHECK (specialty IN (
+        'GENERAL_MEDICINE', 'PEDIATRICS', 'INTERNAL_MEDICINE', 'SURGERY', 'TRAUMATOLOGY', 'EMERGENCY_MEDICINE'))
+);
+
+CREATE TABLE disease_symptom (
+    disease_id           NUMBER(5)            NOT NULL,
+    symptom_order        NUMBER(3)            NOT NULL,
+    symptom              VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_disease_symptom PRIMARY KEY (disease_id, symptom_order),
+    CONSTRAINT fk_disease_symptom_disease FOREIGN KEY (disease_id) REFERENCES disease (id) ON DELETE CASCADE,
+    CONSTRAINT ck_disease_symptom_order CHECK (symptom_order >= 0),
+    CONSTRAINT ck_disease_symptom_name CHECK (symptom IN (
+        'UNCONSCIOUS', 'CHEST_PAIN', 'BREATHING_DIFFICULTY', 'BLEEDING', 'EXPOSED_BONE', 'UNABLE_TO_WALK',
+        'ABDOMINAL_PAIN', 'HIGH_FEVER', 'GENERALIZED_PAIN', 'LIMB_DEFORMITY', 'LEG_PAIN', 'WEIGHT_LOSS',
+        'FATIGUE', 'FEVER', 'COUGH', 'CONGESTION'))
+);
