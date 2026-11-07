@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.Scenario;
+import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.controller.SimulationSetup;
 import com.medresource.ui.render.Palette;
@@ -31,6 +32,12 @@ public final class MainWindow extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
+    /** Duración de los casos de demostración: dos horas, para verlos completos en pocos minutos. */
+    private static final int DEMO_DURATION_MINUTES = 120;
+
+    /** Velocidad con la que empiezan las demostraciones. */
+    private static final int DEMO_SPEED = 10;
+
     /** Crea la ventana principal. */
     public MainWindow() {
         super("MedResource AI");
@@ -48,13 +55,15 @@ public final class MainWindow extends JFrame {
         subtitle.setForeground(new Color(0xB0, 0xBE, 0xC5));
 
         JButton configure = button("Nueva simulación…");
-        configure.addActionListener(event -> CaseConfigDialog.ask(this).ifPresent(this::open));
-        JButton quick = button("Simulación rápida (hospital estándar, 60 pacientes)");
+        configure.addActionListener(event -> CaseConfigDialog.ask(this)
+                .ifPresent(setup -> open(setup, SimulationClock.DEFAULT_SPEED)));
+        JButton quick = button("Simulación rápida (60 pacientes en 2 horas, ×10)");
         quick.addActionListener(event -> open(SimulationSetup.standard(
-                new CaseConfig(1L, Scenario.NORMAL, 60, CaseConfig.DEFAULT_DURATION_MINUTES))));
-        JButton catastrophe = button("Demostración: catástrofe (100 pacientes)");
-        catastrophe.addActionListener(event -> open(SimulationSetup.standard(CaseConfig.of(7L,
-                Scenario.CATASTROPHE))));
+                new CaseConfig(1L, Scenario.NORMAL, 60, DEMO_DURATION_MINUTES)), DEMO_SPEED));
+        JButton catastrophe = button("Demostración: catástrofe (100 pacientes en 2 horas, ×10)");
+        catastrophe.addActionListener(event -> open(SimulationSetup.standard(
+                new CaseConfig(7L, Scenario.CATASTROPHE, CaseConfig.DEFAULT_PATIENTS, DEMO_DURATION_MINUTES)),
+                DEMO_SPEED));
         JButton exit = button("Salir");
         exit.addActionListener(event -> dispose());
 
@@ -84,13 +93,15 @@ public final class MainWindow extends JFrame {
     }
 
     /**
-     * Abre la ventana de simulación con la configuración elegida. Si no se puede preparar, avisa al usuario
-     * en lugar de abrirla.
+     * Abre la ventana de simulación con la configuración elegida y la velocidad inicial. Si no se puede
+     * preparar, avisa al usuario en lugar de abrirla.
      */
-    private void open(SimulationSetup setup) {
+    private void open(SimulationSetup setup, int speed) {
         try {
             Renderer2D renderer = new Renderer2D();
-            new SimulationWindow(new SimulationController(setup, renderer), renderer).setVisible(true);
+            SimulationController controller = new SimulationController(setup, renderer);
+            controller.setSpeed(speed);
+            new SimulationWindow(controller, renderer).setVisible(true);
         } catch (IllegalStateException | IllegalArgumentException error) {
             JOptionPane.showMessageDialog(this, error.getMessage(), "No se pudo iniciar la simulación",
                     JOptionPane.ERROR_MESSAGE);
