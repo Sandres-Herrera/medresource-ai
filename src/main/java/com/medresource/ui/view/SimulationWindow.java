@@ -4,6 +4,7 @@ import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.TriageLevel;
 import com.medresource.ui.controller.LiveCounters;
+import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.Renderer2D;
@@ -109,13 +110,13 @@ public final class SimulationWindow extends JFrame {
     private JToolBar buildToolBar() {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
-        for (int speed : SimulationController.SPEEDS) {
-            speedBox.addItem("×" + speed + " min/s");
+        for (int speed : SimulationClock.SPEEDS) {
+            speedBox.addItem("×" + speed);
         }
-        speedBox.setSelectedIndex(SimulationController.SPEEDS.indexOf(controller.getSpeed()));
+        speedBox.setSelectedIndex(SimulationClock.SPEEDS.indexOf(controller.getSpeed()));
         speedBox.setMaximumSize(speedBox.getPreferredSize());
         speedBox.addActionListener(event ->
-                controller.setSpeed(SimulationController.SPEEDS.get(speedBox.getSelectedIndex())));
+                controller.setSpeed(SimulationClock.SPEEDS.get(speedBox.getSelectedIndex())));
         playButton.addActionListener(event -> togglePlay());
         stepButton.addActionListener(event -> {
             controller.stepOnce();

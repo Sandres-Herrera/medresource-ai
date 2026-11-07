@@ -22,20 +22,12 @@ import java.util.Optional;
  * Controla una simulación que se ve en pantalla: reloj, pausa, paso a paso, reinicio y velocidad.
  *
  * <p>No usa Swing: la ventana llama a {@link #advance(double)} en cada cuadro con los milisegundos reales
- * que pasaron, y el controlador decide cuántos minutos simular según la velocidad (minutos simulados por
- * segundo real) y cuánto mover a los pacientes. La velocidad solo cambia lo que se ve: el resultado de la
- * simulación es el mismo con cualquier velocidad.</p>
+ * que pasaron. El {@link SimulationClock} los convierte en segundos simulados según la velocidad (×1 es
+ * tiempo real); cada vez que se completa un minuto el controlador avanza el motor, y entre minuto y minuto
+ * mueve a los pacientes. La velocidad solo cambia lo que se ve: el resultado de la simulación es el mismo
+ * con cualquier velocidad.</p>
  */
 public final class SimulationController {
-
-    /** Velocidades que se pueden elegir, en minutos simulados por segundo. */
-    public static final List<Integer> SPEEDS = List.of(1, 5, 20, 60);
-
-    /** Velocidad inicial, en minutos simulados por segundo. */
-    public static final int DEFAULT_SPEED = 5;
-
-    /** Máximo de minutos que se simulan en un solo cuadro, para que la ventana no se congele. */
-    public static final int MAX_MINUTES_PER_FRAME = 10;
 
     private final SimulationSetup setup;
     private final SceneRenderer renderer;
@@ -43,9 +35,8 @@ public final class SimulationController {
     private ScenePlayer player;
     private HospitalLayout layout;
     private String strategyName;
-    private int speed = DEFAULT_SPEED;
+    private final SimulationClock clock = new SimulationClock();
     private boolean running;
-    private double minuteProgress;
     private int deliveredEvents;
 
     /**
@@ -64,7 +55,7 @@ public final class SimulationController {
         reset();
     }
 
-    /** Vuelve al minuto 0 con el mismo caso, hospital y estrategia; queda en pausa. */
+    /** Vuelve al minuto 0 con el mismo caso, hospital, estrategia y velocidad; queda en pausa. */
     public void reset() {
         Hospital hospital = new HospitalFactory().create(setup.hospital());
         AllocationStrategy strategy = setup.strategy().create(setup.caseConfig().seed());
@@ -73,7 +64,7 @@ public final class SimulationController {
         player = new ScenePlayer(engine, layout, renderer);
         strategyName = strategy.getName();
         running = false;
-        minuteProgress = 0;
+        clock.restartMinute();
         deliveredEvents = 0;
     }
 
@@ -93,23 +84,21 @@ public final class SimulationController {
     /**
      * Cambia la velocidad.
      *
-     * @param minutesPerSecond minutos simulados por segundo real; debe ser una de {@link #SPEEDS}
+     * @param speed segundos simulados por segundo real; debe ser una de {@link SimulationClock#SPEEDS}
      * @throws IllegalArgumentException si la velocidad no está en la lista
      */
-    public void setSpeed(int minutesPerSecond) {
-        if (!SPEEDS.contains(minutesPerSecond)) {
-            throw new IllegalArgumentException("La velocidad debe ser una de " + SPEEDS + ".");
-        }
-        this.speed = minutesPerSecond;
+    public void setSpeed(int speed) {
+        clock.setSpeed(speed);
     }
 
     public int getSpeed() {
-        return speed;
+        return clock.getSpeed();
     }
 
     /**
-     * Avanza el reloj: simula los minutos que tocan según el tiempo real que pasó y mueve a los pacientes.
-     * En pausa no hace nada. Cuando la simulación termina, queda en pausa.
+     * Avanza el reloj con el tiempo real que pasó. Cuando se completa un minuto simulado, avanza el motor;
+     * entre minuto y minuto, mueve a los pacientes. En pausa no hace nada. Cuando la simulación termina, queda
+     * en pausa.
      *
      * @param elapsedMillis milisegundos reales desde el cuadro anterior
      * @throws IllegalArgumentException si el tiempo es negativo
@@ -121,19 +110,14 @@ public final class SimulationController {
         if (!running) {
             return;
         }
-        minuteProgress += speed * elapsedMillis / 1000.0;
-        int simulated = 0;
-        while (minuteProgress >= 1.0 && simulated < MAX_MINUTES_PER_FRAME) {
+        if (clock.advance(elapsedMillis)) {
             player.animate(1.0);
             if (!player.step()) {
                 finishClock();
                 return;
             }
-            minuteProgress -= 1.0;
-            simulated++;
         }
-        minuteProgress = Math.min(minuteProgress, 1.0);
-        player.animate(minuteProgress);
+        player.animate(clock.minuteFraction());
         if (player.isFinished()) {
             finishClock();
         }
@@ -149,7 +133,7 @@ public final class SimulationController {
         player.animate(1.0);
         boolean stepped = player.step();
         player.animate(1.0);
-        minuteProgress = 0;
+        clock.restartMinute();
         return stepped;
     }
 
@@ -245,6 +229,11 @@ public final class SimulationController {
         return player.getMinute();
     }
 
+    /** Segundo dentro del minuto simulado actual, de 0 a 59. */
+    public int getSecond() {
+        return clock.getSecond();
+    }
+
     public boolean isFinished() {
         return player.isFinished();
     }
@@ -252,6 +241,6 @@ public final class SimulationController {
     private void finishClock() {
         player.animate(1.0);
         running = false;
-        minuteProgress = 0;
+        clock.restartMinute();
     }
 }

@@ -36,8 +36,9 @@ class SimulationControllerTest {
         SimulationController controller = controller();
 
         assertEquals(0, controller.getMinute());
+        assertEquals(0, controller.getSecond());
         assertFalse(controller.isRunning());
-        assertEquals(SimulationController.DEFAULT_SPEED, controller.getSpeed());
+        assertEquals(SimulationClock.DEFAULT_SPEED, controller.getSpeed());
         assertTrue(controller.markers().isEmpty());
     }
 
@@ -51,25 +52,39 @@ class SimulationControllerTest {
     }
 
     @Test
-    void advancesAsManyMinutesAsTheSpeedSays() {
+    void inRealTimeAMinuteTakesSixtySeconds() {
         SimulationController controller = controller();
-        controller.setSpeed(5);
         controller.play();
 
-        controller.advance(1000);
+        controller.advance(30_000);
+        assertEquals(0, controller.getMinute());
+        assertEquals(30, controller.getSecond());
 
-        assertEquals(5, controller.getMinute());
+        controller.advance(30_000);
+        assertEquals(1, controller.getMinute());
+        assertEquals(0, controller.getSecond());
     }
 
     @Test
-    void aLongFrameNeverSimulatesMoreThanTheLimit() {
+    void atTenTimesSpeedAMinuteTakesSixSeconds() {
         SimulationController controller = controller();
-        controller.setSpeed(60);
+        controller.setSpeed(10);
         controller.play();
 
-        controller.advance(60_000);
+        controller.advance(6_000);
 
-        assertEquals(SimulationController.MAX_MINUTES_PER_FRAME, controller.getMinute());
+        assertEquals(1, controller.getMinute());
+    }
+
+    @Test
+    void aVeryLateFrameSimulatesOnlyOneMinute() {
+        SimulationController controller = controller();
+        controller.setSpeed(10);
+        controller.play();
+
+        controller.advance(600_000);
+
+        assertEquals(1, controller.getMinute());
     }
 
     @Test
@@ -86,10 +101,10 @@ class SimulationControllerTest {
     @Test
     void reachesTheSameResultAsTheEngineAloneAtAnySpeed() {
         SimulationController controller = controller();
-        controller.setSpeed(60);
+        controller.setSpeed(10);
         controller.play();
         while (!controller.isFinished()) {
-            controller.advance(1000);
+            controller.advance(2_000);
         }
         SimulationEngine engine = new SimulationEngine(new CaseGenerator().generate(SMALL_CASE),
                 new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
@@ -110,9 +125,11 @@ class SimulationControllerTest {
     @Test
     void newEventsAreDeliveredOnlyOnce() {
         SimulationController controller = controller();
-        controller.setSpeed(60);
+        controller.setSpeed(10);
         controller.play();
-        controller.advance(1000);
+        for (int minute = 0; minute < 60; minute++) {
+            controller.advance(6_000);
+        }
 
         List<SimulationEvent> first = controller.drainNewEvents();
 
@@ -123,19 +140,23 @@ class SimulationControllerTest {
     @Test
     void resetGoesBackToMinuteZero() {
         SimulationController controller = controller();
+        controller.setSpeed(10);
         controller.play();
-        controller.advance(1000);
+        controller.advance(6_000);
+        controller.advance(1_000);
 
         controller.reset();
 
         assertEquals(0, controller.getMinute());
+        assertEquals(0, controller.getSecond());
+        assertEquals(10, controller.getSpeed());
         assertFalse(controller.isRunning());
         assertEquals(0, controller.counters().arrived());
     }
 
     @Test
     void rejectsASpeedOutsideTheList() {
-        assertThrows(IllegalArgumentException.class, () -> controller().setSpeed(7));
+        assertThrows(IllegalArgumentException.class, () -> controller().setSpeed(60));
     }
 
     @Test
