@@ -2,27 +2,18 @@ package com.medresource.services.simulation;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.Metric;
-import com.medresource.model.Objective;
 import com.medresource.model.Scenario;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.Statistic;
 import com.medresource.model.StrategySummary;
-import com.medresource.services.strategy.FeatureExtractor;
-import com.medresource.services.strategy.ModelStore;
-import com.medresource.services.strategy.NeuralNetwork;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,15 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CompareStrategiesTest {
 
-    private static void deleteAll(Path folder) throws IOException {
-        try (Stream<Path> paths = Files.walk(folder)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> path.toFile().delete());
-        }
-    }
-
-    private static String run(Path folder, int cases) {
+    private static String run(int cases) {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        CompareStrategies.run(folder, cases, new PrintStream(buffer, true, StandardCharsets.UTF_8));
+        CompareStrategies.run(cases, new PrintStream(buffer, true, StandardCharsets.UTF_8));
         return buffer.toString(StandardCharsets.UTF_8);
     }
 
@@ -58,80 +43,43 @@ class CompareStrategiesTest {
     }
 
     @Test
-    void writesOneTablePerHospitalSizeAndScenario() throws IOException {
-        Path folder = Files.createTempDirectory("modelos-");
-        try {
-            String output = run(folder, 1);
+    void writesOneTablePerHospitalSizeAndScenario() {
+        String output = run(1);
 
-            assertEquals(12, output.lines().filter(line -> line.startsWith("== Hospital ")).count());
-            assertTrue(output.contains("== Hospital pequeño (15 camas, 3 UCI, 2 quirófanos, 8 médicos, 12 enfermeros)"
-                    + " | Hospital normal | 1 casos =="), output);
-            assertTrue(output.contains("== Hospital estándar (30 camas"), output);
-            assertTrue(output.contains("== Hospital grande (60 camas"), output);
-            assertTrue(output.contains("Catástrofe"), output);
-            assertEquals(12, output.lines().filter(line -> line.endsWith("referencia")).count());
-        } finally {
-            deleteAll(folder);
-        }
+        assertEquals(12, output.lines().filter(line -> line.startsWith("== Hospital ")).count());
+        assertTrue(output.contains("== Hospital pequeño (15 camas, 3 UCI, 2 quirófanos, 8 médicos, 12 enfermeros)"
+                + " | Hospital normal | 1 casos =="), output);
+        assertTrue(output.contains("== Hospital estándar (30 camas"), output);
+        assertTrue(output.contains("== Hospital grande (60 camas"), output);
+        assertTrue(output.contains("Catástrofe"), output);
+        assertEquals(12, output.lines().filter(line -> line.endsWith("referencia")).count());
     }
 
     @Test
-    void comparesTheThreeSimpleStrategiesWhenThereAreNoNetworks() throws IOException {
-        Path folder = Files.createTempDirectory("modelos-");
-        try {
-            String output = run(folder, 1);
+    void comparesTheThreeClassicStrategies() {
+        String output = run(1);
 
-            assertTrue(output.contains("Sin red guardada para: MAXIMIZE_LIVES, MAXIMIZE_LIFE_YEARS, EQUITY, "
-                    + "MINIMIZE_WAIT (ejecute TrainModels)."), output);
-            assertEquals(12, output.lines().filter(line -> line.startsWith("Prioridad clínica")).count());
-            assertEquals(12, output.lines().filter(line -> line.startsWith("FIFO")).count());
-            assertEquals(12, output.lines().filter(line -> line.startsWith("Aleatoria")).count());
-            assertFalse(output.contains("Inteligencia artificial"), output);
-        } finally {
-            deleteAll(folder);
-        }
+        assertEquals(12, output.lines().filter(line -> line.startsWith("Prioridad clínica")).count());
+        assertEquals(12, output.lines().filter(line -> line.startsWith("FIFO")).count());
+        assertEquals(12, output.lines().filter(line -> line.startsWith("Aleatoria")).count());
     }
 
     @Test
-    void addsTheStrategyOfEachSavedNetwork() throws IOException {
-        Path folder = Files.createTempDirectory("modelos-");
-        try {
-            new ModelStore(folder).save(Objective.MAXIMIZE_LIVES,
-                    new NeuralNetwork(1, FeatureExtractor.FEATURE_COUNT, 3, 1));
+    void withASingleCaseNoDifferenceIsClaimed() {
+        String output = run(1);
 
-            String output = run(folder, 1);
-
-            assertEquals(12, output.lines().filter(line -> line.startsWith("Inteligencia artificial "
-                    + "(Maximizar vidas salvadas)")).count());
-            assertTrue(output.contains("Sin red guardada para: MAXIMIZE_LIFE_YEARS, EQUITY, MINIMIZE_WAIT"), output);
-            assertFalse(output.contains("Sin red guardada para: MAXIMIZE_LIVES"), output);
-        } finally {
-            deleteAll(folder);
-        }
+        assertEquals(24, output.lines().filter(line -> line.contains("sin diferencia clara")).count());
+        assertFalse(output.contains("mejor ("), output);
+        assertFalse(output.contains("peor ("), output);
     }
 
     @Test
-    void withASingleCaseNoDifferenceIsClaimed() throws IOException {
-        Path folder = Files.createTempDirectory("modelos-");
-        try {
-            String output = run(folder, 1);
-
-            assertEquals(24, output.lines().filter(line -> line.contains("sin diferencia clara")).count());
-            assertFalse(output.contains("mejor ("), output);
-            assertFalse(output.contains("peor ("), output);
-        } finally {
-            deleteAll(folder);
-        }
-    }
-
-    @Test
-    void doesNotRunWithoutTheFolderTheOutputOrAnyCase() {
+    void doesNotRunWithoutTheOutputOrAnyCase() {
         PrintStream out = new PrintStream(new ByteArrayOutputStream());
 
-        assertThrows(IllegalArgumentException.class, () -> CompareStrategies.run(null, 1, out));
-        assertThrows(IllegalArgumentException.class, () -> CompareStrategies.run(Path.of("models"), 1, null));
+        assertThrows(IllegalArgumentException.class, () -> CompareStrategies.run(1, null));
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> CompareStrategies.run(Path.of("models"), 0, out));
+                () -> CompareStrategies.run(0, out));
         assertTrue(error.getMessage().contains("al menos un caso por escenario"));
     }
 
