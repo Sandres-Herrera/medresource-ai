@@ -7,7 +7,6 @@ import com.medresource.model.Person;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationResult;
 import com.medresource.model.TriageLevel;
-import com.medresource.services.strategy.OutcomeScorer;
 
 import java.util.List;
 import java.util.function.Predicate;
@@ -16,11 +15,14 @@ import java.util.function.Predicate;
  * Calcula las métricas de una ejecución a partir de su resultado.
  *
  * <p>Un paciente sobrevivió si fue dado de alta o quedó estabilizado sin cura. Los años de vida salvados de
- * un sobreviviente son los que le faltaban hasta los {@value OutcomeScorer#LIFE_EXPECTANCY_YEARS} años
+ * un sobreviviente son los que le faltaban hasta los {@value #LIFE_EXPECTANCY_YEARS} años
  * (supuesto). La espera es el tiempo entre la llegada y el inicio del tratamiento; si nunca fue atendido,
  * hasta que terminó su caso. Los pacientes urgentes son los de triage I y II.</p>
  */
 public class MetricsCalculator {
+
+    /** Edad hasta la que se cuentan los años de vida salvados (supuesto). */
+    public static final int LIFE_EXPECTANCY_YEARS = 100;
 
     private static final int URGENT_LEVEL_LIMIT = TriageLevel.II.getLevel();
 
@@ -41,7 +43,7 @@ public class MetricsCalculator {
         List<PatientOutcome> urgent = filter(outcomes, outcome -> outcome.triage().getLevel() <= URGENT_LEVEL_LIMIT);
         List<PatientOutcome> survivors = filter(outcomes, MetricsCalculator::survived);
         double lifeYears = survivors.stream()
-                .mapToInt(outcome -> Math.max(0, OutcomeScorer.LIFE_EXPECTANCY_YEARS - outcome.age())).sum();
+                .mapToInt(outcome -> Math.max(0, LIFE_EXPECTANCY_YEARS - outcome.age())).sum();
         return new RunMetrics(result.strategyName(), outcomes.size(), (int) result.deaths(),
                 (int) result.avoidableDeaths(), survivors.size(), (int) result.count(PatientStatus.REFERRED),
                 (int) result.count(PatientStatus.UNATTENDED), averageWait(outcomes), averageWait(urgent), lifeYears,
