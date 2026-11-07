@@ -4,7 +4,6 @@ import com.medresource.model.CaseConfig;
 import com.medresource.model.ComparisonReport;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Metric;
-import com.medresource.model.Objective;
 import com.medresource.model.Scenario;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.Statistic;
@@ -12,12 +11,9 @@ import com.medresource.model.StrategySummary;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
 import com.medresource.services.strategy.FifoStrategy;
-import com.medresource.services.strategy.ModelStore;
-import com.medresource.services.strategy.OptimizationStrategy;
 import com.medresource.services.strategy.RandomStrategy;
 
 import java.io.PrintStream;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -28,9 +24,8 @@ import java.util.Locale;
  *
  * <p>La referencia es la prioridad clínica. Cada fila dice si la estrategia es mejor, peor o no se
  * distingue de la referencia en la mortalidad, con confianza del 95 %. Las semillas de los casos
- * empiezan en {@value #FIRST_SEED}, que no se usan para entrenar las redes. Argumentos opcionales: la
- * cantidad de casos por escenario (por defecto {@value #DEFAULT_CASES}) y la carpeta con las redes
- * entrenadas (por defecto {@code models}).</p>
+ * empiezan en {@value #FIRST_SEED}. Argumento opcional: la cantidad de casos por escenario (por defecto
+ * {@value #DEFAULT_CASES}).</p>
  */
 public final class CompareStrategies {
 
@@ -57,30 +52,28 @@ public final class CompareStrategies {
     /**
      * Compara las estrategias y escribe las tablas en la salida estándar.
      *
-     * @param args opcionales: casos por escenario y carpeta de las redes
+     * @param args opcional: casos por escenario
      */
     public static void main(String[] args) {
         int cases = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_CASES;
-        Path directory = args.length > 1 ? Path.of(args[1]) : ModelStore.DEFAULT_DIRECTORY;
-        run(directory, cases, System.out);
+        run(cases, System.out);
     }
 
     /**
      * Compara las estrategias en cada tamaño de hospital y escenario, y escribe una tabla por cada uno.
      *
-     * @param modelsDirectory   carpeta con las redes entrenadas; las que falten se avisan y no se comparan
-     * @param casesPerScenario  casos de cada escenario
-     * @param out               donde se escriben las tablas
-     * @throws IllegalArgumentException si falta la carpeta o la salida, o si los casos son menos de uno
+     * @param casesPerScenario casos de cada escenario
+     * @param out              donde se escriben las tablas
+     * @throws IllegalArgumentException si falta la salida o si los casos son menos de uno
      */
-    static void run(Path modelsDirectory, int casesPerScenario, PrintStream out) {
-        if (modelsDirectory == null || out == null) {
-            throw new IllegalArgumentException("La carpeta de las redes y la salida son obligatorias.");
+    static void run(int casesPerScenario, PrintStream out) {
+        if (out == null) {
+            throw new IllegalArgumentException("La salida es obligatoria.");
         }
         if (casesPerScenario < 1) {
             throw new IllegalArgumentException("Debe haber al menos un caso por escenario.");
         }
-        List<AllocationStrategy> strategies = strategies(new ModelStore(modelsDirectory), out);
+        List<AllocationStrategy> strategies = strategies();
         for (Scenario scenario : Scenario.values()) {
             List<SimulationCase> cases = casesOf(scenario, casesPerScenario);
             for (Size size : SIZES) {
@@ -100,23 +93,9 @@ public final class CompareStrategies {
         return cases;
     }
 
-    private static List<AllocationStrategy> strategies(ModelStore store, PrintStream out) {
-        List<AllocationStrategy> strategies = new ArrayList<>();
-        strategies.add(new ClinicalPriorityStrategy());
-        strategies.add(new FifoStrategy());
-        strategies.add(new RandomStrategy(1));
-        List<String> missing = new ArrayList<>();
-        for (Objective objective : Objective.values()) {
-            if (store.contains(objective)) {
-                strategies.add(new OptimizationStrategy(store.load(objective).orElseThrow(), objective));
-            } else {
-                missing.add(objective.name());
-            }
-        }
-        if (!missing.isEmpty()) {
-            out.println("Sin red guardada para: " + String.join(", ", missing) + " (ejecute TrainModels).");
-        }
-        return strategies;
+    /** Estrategias que se comparan; la primera es la referencia. */
+    private static List<AllocationStrategy> strategies() {
+        return List.of(new ClinicalPriorityStrategy(), new FifoStrategy(), new RandomStrategy(1));
     }
 
     private static void print(ComparisonReport report, Size size, Scenario scenario, PrintStream out) {

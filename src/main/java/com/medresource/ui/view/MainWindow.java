@@ -84,8 +84,8 @@ public final class MainWindow extends JFrame {
     }
 
     /**
-     * Abre la ventana de simulación con la configuración elegida. Si la estrategia necesita un modelo que no
-     * existe, avisa al usuario en lugar de abrirla.
+     * Abre la ventana de simulación con la configuración elegida. Si no se puede preparar, avisa al usuario
+     * en lugar de abrirla.
      */
     private void open(SimulationSetup setup) {
         try {
