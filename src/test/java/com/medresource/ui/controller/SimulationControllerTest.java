@@ -118,6 +118,47 @@ class SimulationControllerTest {
     }
 
     @Test
+    void skipToNextEventStopsAtTheNextMinuteWithEvents() {
+        SimulationController controller = controller();
+        controller.drainNewEvents();
+
+        int skipped = controller.skipToNextEvent();
+
+        assertTrue(skipped >= 1);
+        assertEquals(skipped, controller.getMinute());
+        assertEquals(0, controller.getSecond());
+        List<SimulationEvent> events = controller.drainNewEvents();
+        assertFalse(events.isEmpty());
+        int lastMinute = controller.getMinute() - 1;
+        assertTrue(events.stream().allMatch(event -> event.minute() == lastMinute));
+    }
+
+    @Test
+    void skipToNextEventKeepsPlayingOrPausedAsItWas() {
+        SimulationController paused = controller();
+        paused.skipToNextEvent();
+        assertFalse(paused.isRunning());
+
+        SimulationController playing = controller();
+        playing.play();
+        playing.skipToNextEvent();
+        assertTrue(playing.isRunning());
+    }
+
+    @Test
+    void skippingFromEventToEventReachesTheSameResultAsTheEngineAlone() {
+        SimulationController controller = controller();
+        while (!controller.isFinished()) {
+            controller.skipToNextEvent();
+        }
+        SimulationEngine engine = new SimulationEngine(new CaseGenerator().generate(SMALL_CASE),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+
+        assertEquals(new MetricsCalculator().calculate(engine.run()), controller.metrics().orElseThrow());
+        assertEquals(0, controller.skipToNextEvent());
+    }
+
+    @Test
     void metricsAreEmptyUntilTheEnd() {
         assertTrue(controller().metrics().isEmpty());
     }

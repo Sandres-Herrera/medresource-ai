@@ -138,6 +138,33 @@ public final class SimulationController {
     }
 
     /**
+     * Avanza minuto a minuto hasta el siguiente minuto en el que pasa algo (llega un paciente, empieza o
+     * termina un tratamiento, alguien muere…) o hasta el final. Sirve para no esperar en tiempo real los
+     * ratos en que nadie se mueve. El reloj queda en el segundo 0 de ese minuto y la simulación sigue
+     * corriendo o en pausa, como estaba.
+     *
+     * @return minutos que se avanzaron; 0 si la simulación ya había terminado
+     */
+    public int skipToNextEvent() {
+        int eventsBefore = engine.getEvents().size();
+        int skipped = 0;
+        while (!player.isFinished()) {
+            player.animate(1.0);
+            player.step();
+            skipped++;
+            if (engine.getEvents().size() > eventsBefore) {
+                break;
+            }
+        }
+        clock.restartMinute();
+        player.animate(0.0);
+        if (player.isFinished()) {
+            finishClock();
+        }
+        return skipped;
+    }
+
+    /**
      * Eventos que ocurrieron desde la última llamada, para el registro de la ventana.
      *
      * @return eventos nuevos en orden cronológico
