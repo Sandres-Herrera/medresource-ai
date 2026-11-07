@@ -12,7 +12,6 @@ import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.services.simulation.MetricsCalculator;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.AllocationStrategy;
-import com.medresource.services.strategy.ModelStore;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.SceneRenderer;
 
@@ -40,7 +39,6 @@ public final class SimulationController {
 
     private final SimulationSetup setup;
     private final SceneRenderer renderer;
-    private final ModelStore store;
     private SimulationEngine engine;
     private ScenePlayer player;
     private HospitalLayout layout;
@@ -51,44 +49,25 @@ public final class SimulationController {
     private int deliveredEvents;
 
     /**
-     * Prepara la simulación sin empezarla; las redes de la IA se cargan de la carpeta {@code models}.
-     *
-     * @param setup    hospital, caso y estrategia
-     * @param renderer renderizador que da el centro de cada casilla
-     * @throws IllegalArgumentException si algún argumento es nulo
-     * @throws IllegalStateException    si la estrategia necesita un modelo que no existe
-     */
-    public SimulationController(SimulationSetup setup, SceneRenderer renderer) {
-        this(setup, renderer, new ModelStore(ModelStore.DEFAULT_DIRECTORY));
-    }
-
-    /**
      * Prepara la simulación sin empezarla.
      *
      * @param setup    hospital, caso y estrategia
      * @param renderer renderizador que da el centro de cada casilla
-     * @param store    almacén de las redes entrenadas
      * @throws IllegalArgumentException si algún argumento es nulo
-     * @throws IllegalStateException    si la estrategia necesita un modelo que no existe
      */
-    public SimulationController(SimulationSetup setup, SceneRenderer renderer, ModelStore store) {
-        if (setup == null || renderer == null || store == null) {
-            throw new IllegalArgumentException("La configuración, el renderizador y los modelos son obligatorios.");
+    public SimulationController(SimulationSetup setup, SceneRenderer renderer) {
+        if (setup == null || renderer == null) {
+            throw new IllegalArgumentException("La configuración y el renderizador son obligatorios.");
         }
         this.setup = setup;
         this.renderer = renderer;
-        this.store = store;
         reset();
     }
 
-    /**
-     * Vuelve al minuto 0 con el mismo caso, hospital y estrategia; queda en pausa.
-     *
-     * @throws IllegalStateException si la estrategia necesita un modelo que no existe
-     */
+    /** Vuelve al minuto 0 con el mismo caso, hospital y estrategia; queda en pausa. */
     public void reset() {
         Hospital hospital = new HospitalFactory().create(setup.hospital());
-        AllocationStrategy strategy = setup.strategy().create(setup.caseConfig().seed(), store);
+        AllocationStrategy strategy = setup.strategy().create(setup.caseConfig().seed());
         engine = new SimulationEngine(new CaseGenerator().generate(setup.caseConfig()), hospital, strategy);
         layout = new LayoutFactory().create(hospital);
         player = new ScenePlayer(engine, layout, renderer);
