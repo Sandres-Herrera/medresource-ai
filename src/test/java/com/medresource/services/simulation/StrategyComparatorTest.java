@@ -87,7 +87,7 @@ class StrategyComparatorTest {
 
         assertEquals(HospitalConfig.standard(), report.hospital());
         assertEquals(3, report.cases());
-        assertEquals(List.of("Prioridad clínica (triage)", "FIFO (orden de llegada)", "Aleatoria (entrenamiento)"),
+        assertEquals(List.of("Prioridad clínica (triage)", "FIFO (orden de llegada)", "Aleatoria"),
                 report.summaries().stream().map(StrategySummary::strategyName).toList());
         assertTrue(report.summaries().stream().allMatch(summary -> summary.cases() == 3));
     }

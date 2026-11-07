@@ -8,10 +8,10 @@ import java.util.List;
 /**
  * Estrategia que atiende en un orden al azar.
  *
- * <p>No es una estrategia para comparar, sino para generar datos: al probar órdenes
- * muy distintos, la red neuronal ve también decisiones que ni FIFO ni la prioridad
- * clínica tomarían. El "azar" sale de una función de mezcla de la semilla, el minuto
- * y el paciente, así que con la misma semilla las decisiones se repiten siempre.</p>
+ * <p>Sirve de punto de comparación: una estrategia que no use ningún criterio clínico
+ * debería salir peor que las demás. El "azar" sale de una función de mezcla de la
+ * semilla, el minuto y el paciente, así que con la misma semilla las decisiones se
+ * repiten siempre.</p>
  */
 public class RandomStrategy extends PriorityBasedStrategy {
 
@@ -28,7 +28,7 @@ public class RandomStrategy extends PriorityBasedStrategy {
 
     @Override
     public String getName() {
-        return "Aleatoria (entrenamiento)";
+        return "Aleatoria";
     }
 
     @Override
