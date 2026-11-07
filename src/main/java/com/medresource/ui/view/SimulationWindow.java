@@ -4,6 +4,7 @@ import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.TriageLevel;
 import com.medresource.ui.controller.LiveCounters;
+import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.Renderer2D;
@@ -44,6 +45,9 @@ import java.util.Map;
  * Ventana de la simulación 2D: el plano con los pacientes moviéndose, los controles del reloj, los contadores
  * en vivo, la barra de progreso y el registro de eventos.
  *
+ * <p>El reloj corre en tiempo real (×1) o más rápido (×2, ×5, ×10) y muestra el día y la hora con segundos.
+ * El botón «Saltar al siguiente evento» adelanta los ratos en que no pasa nada.</p>
+ *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
  */
@@ -58,6 +62,7 @@ public final class SimulationWindow extends JFrame {
     private final HospitalMapPanel mapPanel;
     private final JButton playButton = new JButton("Iniciar");
     private final JButton stepButton = new JButton("Paso (+1 min)");
+    private final JButton skipButton = new JButton("Saltar al siguiente evento");
     private final JButton resetButton = new JButton("Reiniciar");
     private final JButton captureButton = new JButton("Guardar captura");
     private final JComboBox<String> speedBox = new JComboBox<>();
@@ -109,22 +114,29 @@ public final class SimulationWindow extends JFrame {
     private JToolBar buildToolBar() {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
-        for (int speed : SimulationController.SPEEDS) {
-            speedBox.addItem("×" + speed + " min/s");
+        for (int speed : SimulationClock.SPEEDS) {
+            speedBox.addItem("×" + speed);
         }
-        speedBox.setSelectedIndex(SimulationController.SPEEDS.indexOf(controller.getSpeed()));
+        speedBox.setSelectedIndex(SimulationClock.SPEEDS.indexOf(controller.getSpeed()));
         speedBox.setMaximumSize(speedBox.getPreferredSize());
+        speedBox.setToolTipText("×1 es tiempo real: un segundo en pantalla es un segundo en el hospital.");
         speedBox.addActionListener(event ->
-                controller.setSpeed(SimulationController.SPEEDS.get(speedBox.getSelectedIndex())));
+                controller.setSpeed(SimulationClock.SPEEDS.get(speedBox.getSelectedIndex())));
         playButton.addActionListener(event -> togglePlay());
         stepButton.addActionListener(event -> {
             controller.stepOnce();
+            refresh();
+        });
+        skipButton.addActionListener(event -> {
+            controller.skipToNextEvent();
+            lastFrameNanos = System.nanoTime();
             refresh();
         });
         resetButton.addActionListener(event -> restart());
         captureButton.addActionListener(event -> saveCapture());
         bar.add(playButton);
         bar.add(stepButton);
+        bar.add(skipButton);
         bar.add(resetButton);
         bar.addSeparator();
         bar.add(new JLabel("Velocidad: "));
@@ -244,7 +256,8 @@ public final class SimulationWindow extends JFrame {
         set("Morgue (ocupada)", counters.morgueOccupancy() + " / " + counters.morgueCapacity());
         counterLabels.get("Fallecidos").setForeground(counters.deceased() > 0 ? new Color(0xC6, 0x28, 0x28)
                 : getForeground());
-        clockLabel.setText("Minuto " + counters.minute() + "  (" + clock(counters.minute()) + ")");
+        clockLabel.setText(SimulationClock.format(controller.getMinute(), controller.getSecond())
+                + "   (minuto " + counters.minute() + ")");
         progressBar.setValue(counters.progressPercent());
         progressBar.setString(counters.finished() + " de " + counters.totalPatients()
                 + " pacientes terminaron su caso (" + counters.progressPercent() + " %)");
@@ -282,6 +295,7 @@ public final class SimulationWindow extends JFrame {
         playButton.setText(controller.isRunning() ? "Pausar" : "Iniciar");
         playButton.setEnabled(!finished);
         stepButton.setEnabled(!finished && !controller.isRunning());
+        skipButton.setEnabled(!finished);
     }
 
     private void showSummary() {
@@ -324,20 +338,5 @@ public final class SimulationWindow extends JFrame {
             controller.play();
         }
         updateButtons();
-    }
-
-    /**
-     * Minuto simulado como día y hora, empezando el día 1 a las 00:00 (por ejemplo, el minuto 1515 es
-     * «día 2, 01:15»).
-     *
-     * @param minute minuto simulado
-     * @return texto con el día y la hora
-     * @throws IllegalArgumentException si el minuto es negativo
-     */
-    static String clock(int minute) {
-        if (minute < 0) {
-            throw new IllegalArgumentException("El minuto no puede ser negativo.");
-        }
-        return String.format("día %d, %02d:%02d", minute / 1440 + 1, minute / 60 % 24, minute % 60);
     }
 }
