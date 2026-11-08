@@ -50,21 +50,42 @@ public record Assignment(Patient patient, Doctor doctor, List<Nurse> nurses, Bed
     }
 
     /**
+     * Personal que atiende al paciente: el médico y los enfermeros.
+     *
+     * @return médico y enfermeros
+     */
+    public List<Assignable> staff() {
+        List<Assignable> staff = new ArrayList<>();
+        staff.add(doctor);
+        staff.addAll(nurses);
+        return staff;
+    }
+
+    /**
+     * Lugares que ocupa el paciente: la cama y el quirófano, solo los que se necesitan.
+     *
+     * @return cama y quirófano
+     */
+    public List<Assignable> places() {
+        List<Assignable> places = new ArrayList<>();
+        if (bed != null) {
+            places.add(bed);
+        }
+        if (operatingRoom != null) {
+            places.add(operatingRoom);
+        }
+        return places;
+    }
+
+    /**
      * Lista todos los recursos que ocupa el tratamiento, para que el motor los
-     * asigne y los libere juntos.
+     * asigne y los libere.
      *
      * @return médico, enfermeros, cama y quirófano, solo los que se necesitan
      */
     public List<Assignable> resources() {
-        List<Assignable> resources = new ArrayList<>();
-        resources.add(doctor);
-        resources.addAll(nurses);
-        if (bed != null) {
-            resources.add(bed);
-        }
-        if (operatingRoom != null) {
-            resources.add(operatingRoom);
-        }
+        List<Assignable> resources = staff();
+        resources.addAll(places());
         return resources;
     }
 }

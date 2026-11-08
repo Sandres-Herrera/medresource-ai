@@ -44,6 +44,22 @@ class AssignmentTest {
     }
 
     @Test
+    void separatesTheStaffFromThePlaces() {
+        Assignment assignment = new Assignment(patient, doctor, List.of(nurse, otherNurse), bed, operatingRoom, 2);
+
+        assertEquals(List.of(doctor, nurse, otherNurse), assignment.staff());
+        assertEquals(List.of(bed, operatingRoom), assignment.places());
+    }
+
+    @Test
+    void aConsultationHasStaffButNoPlace() {
+        Assignment assignment = new Assignment(patient, doctor, List.of(), null, null, 0);
+
+        assertEquals(List.of(doctor), assignment.staff());
+        assertTrue(assignment.places().isEmpty());
+    }
+
+    @Test
     void leavesOutTheResourcesThatAreNotNeeded() {
         Assignment consultation = new Assignment(patient, doctor, List.of(), null, null, 0);
 
