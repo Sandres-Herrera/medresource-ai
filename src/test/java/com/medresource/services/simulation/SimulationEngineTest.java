@@ -317,14 +317,63 @@ class SimulationEngineTest {
     }
 
     @Test
-    void theTreatmentOfAWaitingPatientStartsWhenTheDoctorIsFree() {
+    void theDoctorOfAHospitalizedPatientIsFreeAgainAfterTheAdmission() {
         SimulationCase simulationCase = caseOf(60,
                 profile(1, 0, DENGUE, 30, 80.0),
                 profile(2, 10, DENGUE, 30, 80.0));
         SimulationResult result = run(simulationCase, hospital(Specialty.INTERNAL_MEDICINE));
 
+        assertEquals(TreatmentType.INITIAL_CARE_MINUTES, outcomeOf(result, 1).treatmentStartMinute());
+        assertEquals(TreatmentType.INITIAL_CARE_MINUTES - 10, outcomeOf(result, 1).waitingMinutes());
+        assertTrue(outcomeOf(result, 0).outcomeMinute() > TreatmentType.INITIAL_CARE_MINUTES);
+    }
+
+    @Test
+    void aHospitalizedPatientKeepsTheBedAfterTheDoctorAndTheNurseLeave() {
+        Hospital hospital = hospital(Specialty.INTERNAL_MEDICINE);
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, DENGUE, 30, 80.0)), hospital,
+                new FifoStrategy());
+
+        engine.step();
+        assertEquals(0, hospital.freeDoctors().size());
+        assertEquals(3, hospital.freeNurses().size());
+        for (int minute = 1; minute <= TreatmentType.INITIAL_CARE_MINUTES; minute++) {
+            engine.step();
+        }
+
+        assertEquals(1, hospital.freeDoctors().size());
+        assertEquals(4, hospital.freeNurses().size());
+        assertEquals(3, hospital.freeBeds().size());
+    }
+
+    @Test
+    void aConsultationKeepsTheDoctorUntilItEnds() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 5, FLU, 30, 80.0));
+        SimulationResult result = run(simulationCase, hospital(Specialty.GENERAL_MEDICINE));
+
         assertEquals(outcomeOf(result, 0).outcomeMinute(), outcomeOf(result, 1).treatmentStartMinute());
-        assertEquals(outcomeOf(result, 0).outcomeMinute() - 10, outcomeOf(result, 1).waitingMinutes());
+        assertEquals(outcomeOf(result, 0).outcomeMinute() - 5, outcomeOf(result, 1).waitingMinutes());
+    }
+
+    @Test
+    void aSurgeryKeepsTheSurgeonUntilItEnds() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, APPENDICITIS, 30, 80.0),
+                profile(2, 5, APPENDICITIS, 30, 80.0));
+        SimulationResult result = run(simulationCase, hospital(Specialty.SURGERY));
+
+        assertEquals(outcomeOf(result, 0).outcomeMinute(), outcomeOf(result, 1).treatmentStartMinute());
+    }
+
+    @Test
+    void theStartOfAHospitalizationSaysWhenTheDoctorIsFree() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, DENGUE, 30, 80.0)),
+                hospital(Specialty.INTERNAL_MEDICINE));
+
+        assertTrue(eventOf(result, "P001", EventType.TREATMENT_STARTED).description()
+                .contains("el médico queda libre en el minuto " + TreatmentType.INITIAL_CARE_MINUTES));
     }
 
     @Test

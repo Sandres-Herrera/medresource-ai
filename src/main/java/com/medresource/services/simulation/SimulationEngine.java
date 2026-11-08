@@ -16,6 +16,7 @@ import com.medresource.model.PatientStatus;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.services.strategy.Assignment;
@@ -36,10 +37,16 @@ import java.util.Optional;
  *
  * <p>En cada minuto, en este orden: salen de la morgue los cuerpos que cumplieron
  * su tiempo; los pacientes pierden salud; terminan los tratamientos que
- * correspondan; llegan los pacientes nuevos (se les asigna triage y
- * diagnóstico); la estrategia reparte los recursos libres; y los fallecidos
- * pasan a la morgue si hay cupo. Un fallecido que no cabe en la morgue sigue
- * ocupando su cama.</p>
+ * correspondan; el médico y los enfermeros que terminaron el ingreso de un
+ * paciente hospitalizado quedan libres; llegan los pacientes nuevos (se les
+ * asigna triage y diagnóstico); la estrategia reparte los recursos libres; y los
+ * fallecidos pasan a la morgue si hay cupo. Un fallecido que no cabe en la morgue
+ * sigue ocupando su cama.</p>
+ *
+ * <p>En una consulta o una cirugía el personal acompaña al paciente todo el
+ * tratamiento. En una hospitalización (cama o UCI) solo durante el ingreso
+ * ({@link TreatmentType#staffMinutes(int)}); después el paciente sigue en su cama
+ * a cargo de enfermería hasta el final del tratamiento.</p>
  *
  * <p>Los pacientes que siguen esperando {@value #EXTRA_MINUTES} minutos después
  * de la última hora de llegada se registran como sin atender.</p>
@@ -49,7 +56,8 @@ public class SimulationEngine {
     /** Minutos que se sigue atendiendo después de terminar el periodo de llegadas. */
     public static final int EXTRA_MINUTES = 1440;
 
-    private record ActiveTreatment(Patient patient, Assignment assignment, int endMinute, double effectiveness) {
+    private record ActiveTreatment(Patient patient, Assignment assignment, int staffEndMinute, int endMinute,
+                                   double effectiveness) {
     }
 
     private record PendingBody(Patient patient, Bed bed) {
@@ -105,6 +113,7 @@ public class SimulationEngine {
         releaseBodiesFromMorgue();
         deteriorate();
         finishTreatments();
+        releaseStaffAfterAdmission();
         admitArrivals();
         if (minute >= endLimit) {
             abandonWaitingPatients();
@@ -239,7 +248,25 @@ public class SimulationEngine {
                 emit(EventType.STABILIZED_WITHOUT_CURE, patient, place,
                         patient.getCode() + " queda estabilizado, sin cura.");
             }
-            treatment.assignment().resources().forEach(Assignable::release);
+            releaseHeld(treatment.assignment().resources(), patient);
+        }
+    }
+
+    /** Libera al médico y a los enfermeros de los pacientes hospitalizados que terminaron su ingreso. */
+    private void releaseStaffAfterAdmission() {
+        for (ActiveTreatment treatment : active) {
+            if (treatment.staffEndMinute() <= minute) {
+                releaseHeld(treatment.assignment().staff(), treatment.patient());
+            }
+        }
+    }
+
+    /** Libera los recursos que todavía están ocupados por el paciente (el personal pudo irse antes). */
+    private static void releaseHeld(List<? extends Assignable> resources, Patient patient) {
+        for (Assignable resource : resources) {
+            if (!resource.isAvailable() && resource.getAssignedPatient() == patient) {
+                resource.release();
+            }
         }
     }
 
@@ -302,14 +329,17 @@ public class SimulationEngine {
         Patient patient = assignment.patient();
         requireValid(assignment);
         double effectiveness = assignment.doctor().effectivenessFor(patient.getDisease(), patient.getAge());
-        int endMinute = minute + healthModel.treatmentMinutes(patient, effectiveness);
+        int treatmentMinutes = healthModel.treatmentMinutes(patient, effectiveness);
+        int endMinute = minute + treatmentMinutes;
+        int staffEndMinute = minute + patient.getDisease().getTreatment().staffMinutes(treatmentMinutes);
 
-        assignment.resources().forEach(resource -> resource.assign(patient, endMinute));
+        assignment.staff().forEach(member -> member.assign(patient, staffEndMinute));
+        assignment.places().forEach(place -> place.assign(patient, endMinute));
         if (assignment.bloodUnits() > 0) {
             hospital.getBloodBank().withdraw(patient.getBloodType(), assignment.bloodUnits());
         }
         waiting.remove(patient);
-        active.add(new ActiveTreatment(patient, assignment, endMinute, effectiveness));
+        active.add(new ActiveTreatment(patient, assignment, staffEndMinute, endMinute, effectiveness));
         treatmentStarts.put(patient, minute);
         careLevels.put(patient, assignment.doctor().compatibilityWith(patient.getDisease(), patient.getAge()));
 
@@ -321,9 +351,12 @@ public class SimulationEngine {
         } else {
             patient.startTreatment();
         }
+        String staffNote = staffEndMinute < endMinute
+                ? "; el médico queda libre en el minuto " + staffEndMinute
+                : "";
         emit(EventType.TREATMENT_STARTED, patient, place, patient.getCode() + " inicia tratamiento con "
                 + assignment.doctor().getCode() + " (" + assignment.doctor().getSpecialty().getDisplayName()
-                + "); termina en el minuto " + endMinute + ".");
+                + "); termina en el minuto " + endMinute + staffNote + ".");
     }
 
     /** Comprueba que la decisión de la estrategia se pueda cumplir antes de aplicarla. */
@@ -338,6 +371,10 @@ public class SimulationEngine {
                 throw new IllegalStateException("La estrategia asignó un recurso ocupado a " + patient.getCode() + ".");
             }
         }
+        if (assignment.bed() != null && !hospital.hasNursingCapacityFor(assignment.bed().isIcu())) {
+            throw new IllegalStateException("La estrategia hospitalizó a " + patient.getCode()
+                    + " sin enfermería suficiente para vigilarlo.");
+        }
         if (assignment.doctor().effectivenessFor(patient.getDisease(), patient.getAge()) <= 0.0) {
             throw new IllegalStateException(
                     "La estrategia asignó a " + patient.getCode() + " un médico que no puede tratarlo.");
@@ -351,11 +388,10 @@ public class SimulationEngine {
 
     private void declareDeathInTreatment(ActiveTreatment treatment, CauseOfDeath cause) {
         Assignment assignment = treatment.assignment();
-        for (Assignable resource : assignment.resources()) {
-            if (resource != assignment.bed()) {
-                resource.release();
-            }
-        }
+        List<Assignable> withoutBed = assignment.resources().stream()
+                .filter(resource -> resource != assignment.bed())
+                .toList();
+        releaseHeld(withoutBed, treatment.patient());
         declareDeath(treatment.patient(), cause, placeOf(assignment), assignment.bed());
     }
 
