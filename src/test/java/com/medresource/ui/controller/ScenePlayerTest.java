@@ -10,6 +10,7 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.ui.render.Motion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
@@ -128,7 +129,7 @@ class ScenePlayerTest {
     }
 
     @Test
-    void aPatientIsHalfwayWhenTheAnimationIsHalfDone() {
+    void aPatientIsHalfwayWhenHalfTheTripTimeHasPassed() {
         HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
         ScenePlayer player = new ScenePlayer(engineOf(HospitalConfig.standard(), Scenario.NORMAL, 30), layout, renderer);
         while (player.markers().isEmpty()) {
@@ -138,7 +139,7 @@ class ScenePlayerTest {
         Point2D entrance = renderer.centerOf(layout.getEntrance());
         Point2D place = renderer.centerOf(player.getState().positionOf(first.code()).orElseThrow());
 
-        player.animate(0.5);
+        player.animate(Motion.TRAVEL_SECONDS / 2 / 60);
 
         assertEquals((entrance.getX() + place.getX()) / 2, player.markers().get(0).x(), 1e-9);
         assertEquals((entrance.getY() + place.getY()) / 2, player.markers().get(0).y(), 1e-9);

@@ -25,6 +25,8 @@ import java.util.Map;
  */
 public final class ScenePlayer {
 
+    private static final int SECONDS_PER_MINUTE = 60;
+
     private final SimulationEngine engine;
     private final HospitalLayout layout;
     private final SceneRenderer renderer;
@@ -82,7 +84,11 @@ public final class ScenePlayer {
      * @throws IllegalArgumentException si el avance no está entre 0 y 1
      */
     public void animate(double progress) {
-        motions.values().forEach(motion -> motion.advance(progress));
+        if (progress < 0.0 || progress > 1.0) {
+            throw new IllegalArgumentException("El avance debe estar entre 0 y 1.");
+        }
+        double time = (engine.getMinute() + progress) * SECONDS_PER_MINUTE;
+        motions.values().forEach(motion -> motion.update(time));
     }
 
     /**
@@ -131,7 +137,7 @@ public final class ScenePlayer {
         Map<String, Motion> alive = new HashMap<>();
         for (SceneState.Placement placement : state.placements()) {
             Motion motion = motions.getOrDefault(placement.patientCode(), new Motion(entrance));
-            motion.moveTo(renderer.centerOf(placement.position()));
+            motion.moveTo(renderer.centerOf(placement.position()), engine.getMinute() * (double) SECONDS_PER_MINUTE);
             alive.put(placement.patientCode(), motion);
         }
         motions.clear();
