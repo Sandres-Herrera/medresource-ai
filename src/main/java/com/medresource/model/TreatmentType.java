@@ -2,12 +2,20 @@ package com.medresource.model;
 
 /**
  * Tipo de tratamiento que requiere una enfermedad y los recursos que implica.
+ *
+ * <p>En una consulta y en una cirugía el médico y los enfermeros acompañan al paciente todo el tiempo. En una
+ * hospitalización (en cama o en UCI) solo lo acompañan durante el ingreso, los primeros
+ * {@value #INITIAL_CARE_MINUTES} minutos; después el paciente sigue en su cama a cargo de enfermería y el
+ * médico queda libre para atender a otros.</p>
  */
 public enum TreatmentType {
 
     CONSULTATION("Consulta", false, false, 0),
     HOSPITALIZATION("Hospitalización", true, false, 1),
     SURGERY("Cirugía", false, true, 2);
+
+    /** Minutos que dura el ingreso de un paciente hospitalizado con su médico y su enfermero (supuesto). */
+    public static final int INITIAL_CARE_MINUTES = 30;
 
     private final String displayName;
     private final boolean requiresBed;
@@ -55,5 +63,20 @@ public enum TreatmentType {
      */
     public int getRequiredNurses() {
         return requiredNurses;
+    }
+
+    /**
+     * Minutos que el médico y los enfermeros pasan con el paciente: en una hospitalización, solo el ingreso
+     * (o todo el tratamiento si dura menos); en una consulta o una cirugía, todo el tratamiento.
+     *
+     * @param treatmentMinutes duración total del tratamiento
+     * @return minutos con el personal, entre 1 y {@code treatmentMinutes}
+     * @throws IllegalArgumentException si la duración es menor que 1
+     */
+    public int staffMinutes(int treatmentMinutes) {
+        if (treatmentMinutes < 1) {
+            throw new IllegalArgumentException("La duración del tratamiento debe ser de al menos un minuto.");
+        }
+        return this == HOSPITALIZATION ? Math.min(INITIAL_CARE_MINUTES, treatmentMinutes) : treatmentMinutes;
     }
 }

@@ -65,7 +65,8 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
      *
      * @param candidate paciente con su diagnóstico
      * @param hospital  hospital con sus recursos
-     * @return la asignación, o vacío si falta algún recurso
+     * @return la asignación, o vacío si falta algún recurso (incluida la enfermería para vigilar a un
+     *         paciente más en cama o en UCI)
      */
     protected Optional<Assignment> assignmentFor(WaitingPatient candidate, Hospital hospital) {
         Patient patient = candidate.patient();
@@ -81,7 +82,7 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
         Bed bed = null;
         if (diagnosis.requiresIcu() || treatment.requiresBed()) {
             List<Bed> beds = diagnosis.requiresIcu() ? hospital.freeIcuBeds() : hospital.freeBeds();
-            if (beds.isEmpty()) {
+            if (beds.isEmpty() || !hospital.hasNursingCapacityFor(diagnosis.requiresIcu())) {
                 return Optional.empty();
             }
             bed = beds.get(0);

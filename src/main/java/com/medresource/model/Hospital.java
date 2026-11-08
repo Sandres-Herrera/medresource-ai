@@ -12,8 +12,19 @@ import java.util.List;
  * <p>Las habitaciones, la UCI, los quirófanos, el banco de sangre y la morgue
  * pertenecen al hospital (composición); los médicos y enfermeros son personal
  * que trabaja en él.
+ *
+ * <p>Los pacientes hospitalizados quedan a cargo de la enfermería: cada enfermero
+ * vigila hasta {@value #WARD_PATIENTS_PER_NURSE} pacientes en cama o
+ * {@value #ICU_PATIENTS_PER_NURSE} en UCI. Si la enfermería no alcanza, no se
+ * puede hospitalizar a nadie más aunque haya camas libres.
  */
 public class Hospital {
+
+    /** Pacientes en cama de hospitalización que vigila cada enfermero (supuesto). */
+    public static final int WARD_PATIENTS_PER_NURSE = 4;
+
+    /** Pacientes en UCI que vigila cada enfermero (supuesto). */
+    public static final int ICU_PATIENTS_PER_NURSE = 2;
 
     private final List<Room> rooms;
     private final Room icu;
@@ -90,6 +101,21 @@ public class Hospital {
         return free(operatingRooms);
     }
 
+    /**
+     * Indica si a la enfermería le alcanza para vigilar a un paciente más en una cama. Cuentan los pacientes
+     * vivos que ocupan camas y UCI: cada uno en cama pesa 1/{@value #WARD_PATIENTS_PER_NURSE} de enfermero y
+     * cada uno en UCI, 1/{@value #ICU_PATIENTS_PER_NURSE}.
+     *
+     * @param toIcu {@code true} si el paciente nuevo va a la UCI; {@code false} si va a una cama normal
+     * @return {@code true} si con el paciente nuevo la carga no pasa del número de enfermeros
+     */
+    public boolean hasNursingCapacityFor(boolean toIcu) {
+        int ward = livingPatientsIn(beds) + (toIcu ? 0 : 1);
+        int intensive = livingPatientsIn(icu.getBeds()) + (toIcu ? 1 : 0);
+        return ward * ICU_PATIENTS_PER_NURSE + intensive * WARD_PATIENTS_PER_NURSE
+                <= nurses.size() * WARD_PATIENTS_PER_NURSE * ICU_PATIENTS_PER_NURSE;
+    }
+
     public List<Room> getRooms() {
         return rooms;
     }
@@ -127,6 +153,12 @@ public class Hospital {
 
     public List<Bed> getIcuBeds() {
         return icu.getBeds();
+    }
+
+    private static int livingPatientsIn(List<Bed> someBeds) {
+        return (int) someBeds.stream()
+                .filter(bed -> !bed.isAvailable() && bed.getAssignedPatient().isAlive())
+                .count();
     }
 
     private static <T extends Assignable> List<T> free(List<T> resources) {
