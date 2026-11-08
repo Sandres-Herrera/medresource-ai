@@ -2,10 +2,12 @@ package com.medresource.model;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,6 +33,88 @@ class HospitalTest {
                 List.of(new Nurse(1, 30, Sex.FEMALE), new Nurse(2, 32, Sex.MALE)),
                 new BloodBank(Map.of(BloodType.O_POSITIVE, 5)),
                 new Morgue(2));
+    }
+
+    /** Hospital con 8 camas, 4 de UCI y la cantidad de enfermeros indicada. */
+    private Hospital hospitalWithNurses(int nurseCount) {
+        List<Nurse> nurses = new ArrayList<>();
+        for (int id = 1; id <= nurseCount; id++) {
+            nurses.add(new Nurse(id, 30, Sex.FEMALE));
+        }
+        return new Hospital(
+                List.of(new Room("H1", RoomType.HOSPITALIZATION, 4), new Room("H2", RoomType.HOSPITALIZATION, 4)),
+                new Room("UCI", RoomType.ICU, 4),
+                List.of(new OperatingRoom(1)),
+                List.of(new Doctor(1, Specialty.GENERAL_MEDICINE, 40, Sex.MALE)),
+                nurses,
+                new BloodBank(Map.of(BloodType.O_POSITIVE, 5)),
+                new Morgue(2));
+    }
+
+    @Test
+    void aNurseLooksAfterUpToFourPatientsInBeds() {
+        Hospital hospital = hospitalWithNurses(1);
+        for (int i = 0; i < 3; i++) {
+            hospital.getBeds().get(i).assign(newPatient(), 600);
+        }
+
+        assertTrue(hospital.hasNursingCapacityFor(false));
+        hospital.getBeds().get(3).assign(newPatient(), 600);
+        assertFalse(hospital.hasNursingCapacityFor(false));
+        assertEquals(4, hospital.freeBeds().size());
+    }
+
+    @Test
+    void aNurseLooksAfterUpToTwoPatientsInTheIcu() {
+        Hospital hospital = hospitalWithNurses(1);
+        hospital.getIcuBeds().get(0).assign(newPatient(), 600);
+
+        assertTrue(hospital.hasNursingCapacityFor(true));
+        hospital.getIcuBeds().get(1).assign(newPatient(), 600);
+        assertFalse(hospital.hasNursingCapacityFor(true));
+        assertFalse(hospital.hasNursingCapacityFor(false));
+    }
+
+    @Test
+    void anIcuPatientWeighsAsMuchAsTwoPatientsInBeds() {
+        Hospital hospital = hospitalWithNurses(1);
+        hospital.getIcuBeds().get(0).assign(newPatient(), 600);
+        hospital.getBeds().get(0).assign(newPatient(), 600);
+
+        assertTrue(hospital.hasNursingCapacityFor(false));
+        assertFalse(hospital.hasNursingCapacityFor(true));
+    }
+
+    @Test
+    void moreNursesLookAfterMorePatients() {
+        Hospital hospital = hospitalWithNurses(2);
+        for (int i = 0; i < 7; i++) {
+            hospital.getBeds().get(i).assign(newPatient(), 600);
+        }
+
+        assertTrue(hospital.hasNursingCapacityFor(false));
+    }
+
+    @Test
+    void aDeceasedPatientWaitingForTheMorgueNeedsNoNursing() {
+        Hospital hospital = hospitalWithNurses(1);
+        for (int i = 0; i < 4; i++) {
+            Patient patient = newPatient();
+            hospital.getBeds().get(i).assign(patient, 600);
+            if (i == 0) {
+                patient.die(CauseOfDeath.LACK_OF_TIMELY_CARE, 10);
+            }
+        }
+
+        assertTrue(hospital.hasNursingCapacityFor(false));
+    }
+
+    @Test
+    void withoutNursesNoOneCanBeHospitalized() {
+        Hospital hospital = hospitalWithNurses(0);
+
+        assertFalse(hospital.hasNursingCapacityFor(false));
+        assertFalse(hospital.hasNursingCapacityFor(true));
     }
 
     @Test
