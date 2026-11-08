@@ -8,6 +8,7 @@ import com.medresource.model.SimulationEvent;
 import com.medresource.model.ZoneType;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,7 +40,10 @@ public final class SceneState {
         DECEASED,
         /** Está en un lugar de la morgue. */
         IN_MORGUE,
-        /** Va hacia la salida; desaparece cuando se llama a {@link SceneState#clearDeparted()}. */
+        /**
+         * Va hacia la salida; desaparece con {@link SceneState#clearDeparted()} o
+         * {@link SceneState#removeDeparted(String)}.
+         */
         LEAVING
     }
 
@@ -51,6 +55,12 @@ public final class SceneState {
         private Phase phase = Phase.QUEUED;
         private Position position;
     }
+
+    /** Eventos que cambian el lugar de algún paciente; los demás no mueven a nadie. */
+    private static final Set<EventType> PLACE_CHANGES = EnumSet.of(EventType.ARRIVAL,
+            EventType.TREATMENT_STARTED, EventType.ICU_ADMISSION, EventType.DEATH, EventType.MORGUE_ADMISSION,
+            EventType.MORGUE_RELEASE, EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL,
+            EventType.UNATTENDED);
 
     private final HospitalLayout layout;
     private final Map<String, Entry> patients = new LinkedHashMap<>();
@@ -117,9 +127,39 @@ public final class SceneState {
         }
     }
 
+    /**
+     * Indica si un tipo de evento cambia el lugar de algún paciente.
+     *
+     * @param type tipo de evento
+     * @return {@code true} si el evento mueve a alguien; {@code false} si solo informa (triage, diagnóstico,
+     *         alerta, reevaluación o fin de tratamiento)
+     * @throws IllegalArgumentException si el tipo es nulo
+     */
+    public static boolean changesPlacement(EventType type) {
+        if (type == null) {
+            throw new IllegalArgumentException("El tipo de evento es obligatorio.");
+        }
+        return PLACE_CHANGES.contains(type);
+    }
+
     /** Quita de la escena a los pacientes que iban hacia la salida. */
     public void clearDeparted() {
         patients.values().removeIf(entry -> entry.phase == Phase.LEAVING);
+    }
+
+    /**
+     * Quita de la escena a un paciente que iba hacia la salida (por ejemplo, cuando ya llegó a la puerta).
+     *
+     * @param patientCode código del paciente
+     * @return {@code true} si se quitó; {@code false} si no estaba en la escena o todavía no se iba
+     */
+    public boolean removeDeparted(String patientCode) {
+        Entry entry = patientCode == null ? null : patients.get(patientCode);
+        if (entry == null || entry.phase != Phase.LEAVING) {
+            return false;
+        }
+        patients.remove(patientCode);
+        return true;
     }
 
     /**

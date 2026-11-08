@@ -13,11 +13,13 @@ import com.medresource.ui.render.SceneState.Phase;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -135,6 +137,17 @@ class SceneStateTest {
         arrive("P001");
 
         assertThrows(IllegalStateException.class, () -> arrive("P001"));
+    }
+
+    @Test
+    void saysWhichEventsChangeThePlaceOfAPatient() {
+        Set<EventType> moving = EnumSet.of(EventType.ARRIVAL, EventType.TREATMENT_STARTED,
+                EventType.ICU_ADMISSION, EventType.DEATH, EventType.MORGUE_ADMISSION, EventType.MORGUE_RELEASE,
+                EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL, EventType.UNATTENDED);
+        for (EventType type : EventType.values()) {
+            assertEquals(moving.contains(type), SceneState.changesPlacement(type), type.name());
+        }
+        assertThrows(IllegalArgumentException.class, () -> SceneState.changesPlacement(null));
     }
 
     @Test
@@ -278,6 +291,29 @@ class SceneStateTest {
         assertEquals(1, scene.placements().size());
         assertTrue(scene.phaseOf("P001").isEmpty());
         assertEquals(Phase.QUEUED, scene.phaseOf("P002").orElseThrow());
+    }
+
+    @Test
+    void aPatientWhoLeftCanBeRemovedOnItsOwn() {
+        arrive("P001", "P002", "P003");
+        scene.apply(event(EventType.DISCHARGE, "P001", null));
+        scene.apply(event(EventType.REFERRAL, "P002", null));
+
+        assertTrue(scene.removeDeparted("P001"));
+
+        assertTrue(scene.phaseOf("P001").isEmpty());
+        assertEquals(Phase.LEAVING, scene.phaseOf("P002").orElseThrow());
+        assertEquals(Phase.QUEUED, scene.phaseOf("P003").orElseThrow());
+    }
+
+    @Test
+    void onlyThePatientsWhoAreLeavingCanBeRemoved() {
+        arrive("P001");
+
+        assertFalse(scene.removeDeparted("P001"));
+        assertFalse(scene.removeDeparted("P404"));
+        assertFalse(scene.removeDeparted(null));
+        assertEquals(Phase.QUEUED, scene.phaseOf("P001").orElseThrow());
     }
 
     @Test
