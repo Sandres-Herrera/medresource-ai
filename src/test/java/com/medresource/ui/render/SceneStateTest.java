@@ -280,20 +280,6 @@ class SceneStateTest {
     }
 
     @Test
-    void thePatientsWhoLeftDisappearOnlyWhenTheDeparturesAreCleared() {
-        arrive("P001", "P002");
-        scene.apply(event(EventType.DISCHARGE, "P001", null));
-
-        assertEquals(2, scene.placements().size());
-
-        scene.clearDeparted();
-
-        assertEquals(1, scene.placements().size());
-        assertTrue(scene.phaseOf("P001").isEmpty());
-        assertEquals(Phase.QUEUED, scene.phaseOf("P002").orElseThrow());
-    }
-
-    @Test
     void aPatientWhoLeftCanBeRemovedOnItsOwn() {
         arrive("P001", "P002", "P003");
         scene.apply(event(EventType.DISCHARGE, "P001", null));

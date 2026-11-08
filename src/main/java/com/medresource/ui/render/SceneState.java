@@ -40,10 +40,7 @@ public final class SceneState {
         DECEASED,
         /** Está en un lugar de la morgue. */
         IN_MORGUE,
-        /**
-         * Va hacia la salida; desaparece con {@link SceneState#clearDeparted()} o
-         * {@link SceneState#removeDeparted(String)}.
-         */
+        /** Va hacia la salida; desaparece con {@link SceneState#removeDeparted(String)}. */
         LEAVING
     }
 
@@ -140,11 +137,6 @@ public final class SceneState {
             throw new IllegalArgumentException("El tipo de evento es obligatorio.");
         }
         return PLACE_CHANGES.contains(type);
-    }
-
-    /** Quita de la escena a los pacientes que iban hacia la salida. */
-    public void clearDeparted() {
-        patients.values().removeIf(entry -> entry.phase == Phase.LEAVING);
     }
 
     /**
