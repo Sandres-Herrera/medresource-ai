@@ -142,8 +142,9 @@ class SceneStateTest {
     @Test
     void saysWhichEventsChangeThePlaceOfAPatient() {
         Set<EventType> moving = EnumSet.of(EventType.ARRIVAL, EventType.TREATMENT_STARTED,
-                EventType.ICU_ADMISSION, EventType.DEATH, EventType.MORGUE_ADMISSION, EventType.MORGUE_RELEASE,
-                EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL, EventType.UNATTENDED);
+                EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH, EventType.MORGUE_ADMISSION,
+                EventType.MORGUE_RELEASE, EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE,
+                EventType.REFERRAL, EventType.UNATTENDED);
         for (EventType type : EventType.values()) {
             assertEquals(moving.contains(type), SceneState.changesPlacement(type), type.name());
         }
@@ -196,6 +197,27 @@ class SceneStateTest {
         scene.apply(event(EventType.TREATMENT_STARTED, "P001", "Q2"));
 
         assertEquals(spot("Q2"), positionOf("P001"));
+    }
+
+    @Test
+    void anOperatedPatientMovesFromTheOperatingRoomToTheRecoveryBed() {
+        arrive("P001");
+        scene.apply(event(EventType.TREATMENT_STARTED, "P001", "Q1"));
+
+        scene.apply(event(EventType.RECOVERY_STARTED, "P001", "H1-C3"));
+
+        assertEquals(Phase.TREATING, scene.phaseOf("P001").orElseThrow());
+        assertEquals(spot("H1-C3"), positionOf("P001"));
+    }
+
+    @Test
+    void anOperatedPatientWhoNeedsIntensiveCareRecoversInTheIcu() {
+        arrive("P001");
+        scene.apply(event(EventType.TREATMENT_STARTED, "P001", "Q1"));
+
+        scene.apply(event(EventType.ICU_ADMISSION, "P001", "UCI-C2"));
+
+        assertEquals(spot("UCI-C2"), positionOf("P001"));
     }
 
     @Test
