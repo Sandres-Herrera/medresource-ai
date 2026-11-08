@@ -96,6 +96,20 @@ public final class SimulationClock {
     }
 
     /**
+     * Escribe solo la hora del día con segundos (por ejemplo, el minuto 75 y el segundo 9 es «01:15:09»),
+     * para el registro de eventos.
+     *
+     * @param minute minuto simulado
+     * @param second segundo dentro del minuto, de 0 a 59
+     * @return hora con el formato hh:mm:ss
+     * @throws IllegalArgumentException si el minuto es negativo o el segundo está fuera de rango
+     */
+    public static String formatTimeOfDay(int minute, int second) {
+        String full = format(minute, second);
+        return full.substring(full.length() - "hh:mm:ss".length());
+    }
+
+    /**
      * Escribe un momento de la simulación como día y hora con segundos, empezando el día 1 a las 00:00:00
      * (por ejemplo, el minuto 1515 y el segundo 30 es «Día 2 · 01:15:30»).
      *

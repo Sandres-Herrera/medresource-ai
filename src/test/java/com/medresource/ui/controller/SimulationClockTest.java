@@ -104,6 +104,14 @@ class SimulationClockTest {
     }
 
     @Test
+    void formatsOnlyTheTimeOfDayForTheEventLog() {
+        assertEquals("00:00:00", SimulationClock.formatTimeOfDay(0, 0));
+        assertEquals("01:15:09", SimulationClock.formatTimeOfDay(75, 9));
+        assertEquals("01:15:30", SimulationClock.formatTimeOfDay(1515, 30));
+        assertThrows(IllegalArgumentException.class, () -> SimulationClock.formatTimeOfDay(0, 60));
+    }
+
+    @Test
     void rejectsASpeedOutsideTheList() {
         SimulationClock clock = new SimulationClock();
 
