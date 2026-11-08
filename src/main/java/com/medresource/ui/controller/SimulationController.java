@@ -17,15 +17,17 @@ import com.medresource.ui.render.SceneRenderer;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
- * Controla una simulación que se ve en pantalla: reloj, pausa, paso a paso, reinicio y velocidad.
+ * Controla una simulación que se ve en pantalla: reloj, pausa, paso a paso, salto al siguiente evento,
+ * reinicio y velocidad.
  *
  * <p>No usa Swing: la ventana llama a {@link #advance(double)} en cada cuadro con los milisegundos reales
  * que pasaron. El {@link SimulationClock} los convierte en segundos simulados según la velocidad (×1 es
- * tiempo real); cada vez que se completa un minuto el controlador avanza el motor, y entre minuto y minuto
- * mueve a los pacientes. La velocidad solo cambia lo que se ve: el resultado de la simulación es el mismo
- * con cualquier velocidad.</p>
+ * tiempo real) y el {@link ScenePlayer} lleva la escena hasta ese momento, de forma continua: cada evento se
+ * ve en su propio segundo y los pacientes caminan mientras otros están en tratamiento. La velocidad solo
+ * cambia lo que se ve: el resultado de la simulación es el mismo con cualquier velocidad.</p>
  */
 public final class SimulationController {
 
@@ -37,7 +39,6 @@ public final class SimulationController {
     private String strategyName;
     private final SimulationClock clock = new SimulationClock();
     private boolean running;
-    private int deliveredEvents;
 
     /**
      * Prepara la simulación sin empezarla.
@@ -65,7 +66,6 @@ public final class SimulationController {
         strategyName = strategy.getName();
         running = false;
         clock.reset();
-        deliveredEvents = 0;
     }
 
     /** Empieza o continúa la simulación; no hace nada si ya terminó. */
@@ -96,9 +96,8 @@ public final class SimulationController {
     }
 
     /**
-     * Avanza el reloj con el tiempo real que pasó. Cuando se completa un minuto simulado, avanza el motor;
-     * entre minuto y minuto, mueve a los pacientes. En pausa no hace nada. Cuando la simulación termina, queda
-     * en pausa.
+     * Avanza el reloj con el tiempo real que pasó y lleva la escena hasta ese momento. En pausa no hace nada.
+     * Cuando ya se vio toda la simulación, queda en pausa.
      *
      * @param elapsedMillis milisegundos reales desde el cuadro anterior
      * @throws IllegalArgumentException si el tiempo es negativo
@@ -110,72 +109,51 @@ public final class SimulationController {
         if (!running) {
             return;
         }
-        int minuteBefore = clock.getMinute();
         clock.advance(elapsedMillis);
-        if (clock.getMinute() > minuteBefore) {
-            player.animate(1.0);
-            if (!player.step()) {
-                finishClock();
-                return;
-            }
-        }
-        player.animate(clock.getTime() % SimulationClock.SECONDS_PER_MINUTE / SimulationClock.SECONDS_PER_MINUTE);
-        if (player.isFinished()) {
-            finishClock();
-        }
+        showClockTime();
     }
 
     /**
-     * Simula exactamente un minuto y deja a los pacientes en su lugar; pone la simulación en pausa.
+     * Adelanta hasta el comienzo del minuto siguiente y pone la simulación en pausa.
      *
-     * @return {@code true} si se simuló un minuto; {@code false} si ya había terminado
+     * @return {@code true} si avanzó; {@code false} si ya se había visto toda la simulación
      */
     public boolean stepOnce() {
         running = false;
-        player.animate(1.0);
-        boolean stepped = player.step();
-        player.animate(1.0);
-        syncClockWithEngine();
-        return stepped;
+        if (player.isFinished()) {
+            return false;
+        }
+        clock.jumpTo((player.getMinute() + 1) * (double) SimulationClock.SECONDS_PER_MINUTE);
+        showClockTime();
+        return true;
     }
 
     /**
-     * Avanza minuto a minuto hasta el siguiente minuto en el que pasa algo (llega un paciente, empieza o
-     * termina un tratamiento, alguien muere…) o hasta el final. Sirve para no esperar en tiempo real los
-     * ratos en que nadie se mueve. El reloj queda en el segundo 0 de ese minuto y la simulación sigue
-     * corriendo o en pausa, como estaba.
+     * Adelanta el reloj hasta el siguiente evento (llega un paciente, empieza o termina un tratamiento,
+     * alguien muere…), para no esperar en tiempo real los ratos en que nadie se mueve. El evento se ve en ese
+     * momento y la simulación sigue corriendo o en pausa, como estaba.
      *
-     * @return minutos que se avanzaron; 0 si la simulación ya había terminado
+     * @return minutos que se adelantaron; 0 si ya no quedan eventos
      */
     public int skipToNextEvent() {
-        int eventsBefore = engine.getEvents().size();
-        int skipped = 0;
-        while (!player.isFinished()) {
-            player.animate(1.0);
-            player.step();
-            skipped++;
-            if (engine.getEvents().size() > eventsBefore) {
-                break;
-            }
+        int minuteBefore = player.getMinute();
+        OptionalDouble next = player.nextEventTime();
+        if (next.isEmpty()) {
+            running = false;
+            return 0;
         }
-        syncClockWithEngine();
-        player.animate(0.0);
-        if (player.isFinished()) {
-            finishClock();
-        }
-        return skipped;
+        clock.jumpTo(Math.max(clock.getTime(), next.getAsDouble()));
+        showClockTime();
+        return player.getMinute() - minuteBefore;
     }
 
     /**
-     * Eventos que ocurrieron desde la última llamada, para el registro de la ventana.
+     * Eventos que se vieron desde la última llamada, para el registro de la ventana.
      *
      * @return eventos nuevos en orden cronológico
      */
     public List<SimulationEvent> drainNewEvents() {
-        List<SimulationEvent> events = engine.getEvents();
-        List<SimulationEvent> fresh = List.copyOf(events.subList(deliveredEvents, events.size()));
-        deliveredEvents = events.size();
-        return fresh;
+        return player.drainReleasedEvents();
     }
 
     /**
@@ -184,7 +162,7 @@ public final class SimulationController {
      * @return contadores en vivo
      */
     public LiveCounters counters() {
-        int minute = engine.getMinute();
+        int minute = player.getMinute();
         List<Patient> patients = engine.getPatients();
         int arrived = 0;
         int waiting = 0;
@@ -195,7 +173,7 @@ public final class SimulationController {
         int deceased = 0;
         int unattended = 0;
         for (Patient patient : patients) {
-            if (patient.getArrivalMinute() >= minute) {
+            if (!player.hasArrived(patient.getCode())) {
                 continue;
             }
             arrived++;
@@ -228,7 +206,7 @@ public final class SimulationController {
      * @return métricas si la simulación terminó; vacío si todavía no
      */
     public Optional<RunMetrics> metrics() {
-        if (!engine.isFinished()) {
+        if (!player.isFinished()) {
             return Optional.empty();
         }
         return Optional.of(new MetricsCalculator().calculate(engine.getResult()));
@@ -267,14 +245,11 @@ public final class SimulationController {
         return player.isFinished();
     }
 
-    private void finishClock() {
-        player.animate(1.0);
-        running = false;
-        syncClockWithEngine();
-    }
-
-    /** Pone el reloj en el segundo 0 del minuto en que va el motor. */
-    private void syncClockWithEngine() {
-        clock.jumpTo(Math.max(clock.getTime(), player.getMinute() * (double) SimulationClock.SECONDS_PER_MINUTE));
+    /** Lleva la escena hasta la hora del reloj; si ya se vio todo, pone la simulación en pausa. */
+    private void showClockTime() {
+        player.advanceTo(clock.getTime());
+        if (player.isFinished()) {
+            running = false;
+        }
     }
 }

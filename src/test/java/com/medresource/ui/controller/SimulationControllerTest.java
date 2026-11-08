@@ -1,6 +1,7 @@
 package com.medresource.ui.controller;
 
 import com.medresource.model.CaseConfig;
+import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.Scenario;
@@ -13,7 +14,11 @@ import com.medresource.services.strategy.ClinicalPriorityStrategy;
 import com.medresource.ui.render.Renderer2D;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -126,19 +131,35 @@ class SimulationControllerTest {
     }
 
     @Test
-    void skipToNextEventStopsAtTheNextMinuteWithEvents() {
+    void skipToNextEventShowsTheNextEventRightAway() {
         SimulationController controller = controller();
-        controller.drainNewEvents();
 
         int skipped = controller.skipToNextEvent();
 
-        assertTrue(skipped >= 1);
-        assertEquals(skipped, controller.getMinute());
-        assertEquals(0, controller.getSecond());
         List<SimulationEvent> events = controller.drainNewEvents();
         assertFalse(events.isEmpty());
-        int lastMinute = controller.getMinute() - 1;
-        assertTrue(events.stream().allMatch(event -> event.minute() == lastMinute));
+        assertEquals(controller.getMinute(), events.get(0).minute());
+        assertEquals(skipped, controller.getMinute());
+    }
+
+    @Test
+    void eachEventIsSeenAtItsOwnSecondInRealTime() {
+        SimulationController controller = new SimulationController(SimulationSetup.standard(
+                new CaseConfig(7L, Scenario.CATASTROPHE, 100, 120)), new Renderer2D());
+        controller.play();
+        Map<Integer, Set<Integer>> arrivalSeconds = new HashMap<>();
+        for (int frame = 0; frame < 10 * 60; frame++) {
+            controller.advance(1_000);
+            for (SimulationEvent event : controller.drainNewEvents()) {
+                if (event.type() == EventType.ARRIVAL) {
+                    arrivalSeconds.computeIfAbsent(event.minute(), minute -> new HashSet<>())
+                            .add(controller.getSecond());
+                }
+            }
+        }
+
+        assertTrue(arrivalSeconds.values().stream().anyMatch(seconds -> seconds.size() >= 3),
+                "varios pacientes llegan en el mismo minuto, cada uno en un segundo distinto");
     }
 
     @Test
