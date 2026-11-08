@@ -34,7 +34,9 @@ public final class AnimationDemo {
     private static final int DEFAULT_PATIENTS = 60;
     private static final long DEFAULT_SEED = 1L;
     private static final int FRAME_MILLIS = 40;
-    private static final int FRAMES_PER_MINUTE = 30;
+
+    /** Segundos simulados por cada segundo real (×10, como las demostraciones de la ventana principal). */
+    private static final double SPEED = 10.0;
 
     private AnimationDemo() {
     }
@@ -71,21 +73,18 @@ public final class AnimationDemo {
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
-        int[] frameInMinute = {0};
+        double[] time = {0.0};
         Timer timer = new Timer(FRAME_MILLIS, null);
         timer.addActionListener(event -> {
-            if (frameInMinute[0] == 0 && !player.step()) {
+            time[0] += SPEED * FRAME_MILLIS / 1000.0;
+            player.advanceTo(time[0]);
+            panel.showPatients(player.markers(), player.overflow());
+            if (player.isFinished()) {
                 timer.stop();
                 status.setText(config.scenario().getDisplayName() + " · terminó en el minuto " + player.getMinute());
                 return;
             }
-            frameInMinute[0]++;
-            player.animate(Math.min(1.0, frameInMinute[0] / (double) FRAMES_PER_MINUTE));
-            panel.showPatients(player.markers(), player.overflow());
             status.setText(config.scenario().getDisplayName() + " · minuto " + player.getMinute());
-            if (frameInMinute[0] >= FRAMES_PER_MINUTE) {
-                frameInMinute[0] = 0;
-            }
         });
         timer.start();
     }

@@ -271,8 +271,9 @@ public final class SimulationWindow extends JFrame {
 
     private void appendEvents() {
         StringBuilder text = new StringBuilder();
+        String now = SimulationClock.formatTimeOfDay(controller.getMinute(), controller.getSecond());
         for (SimulationEvent event : controller.drainNewEvents()) {
-            text.append(String.format("[%5d] %-22s %s%n", event.minute(), event.type().getDisplayName(),
+            text.append(String.format("[%s] %-22s %s%n", now, event.type().getDisplayName(),
                     event.description()));
         }
         if (text.isEmpty()) {
