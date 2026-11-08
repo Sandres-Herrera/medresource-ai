@@ -185,6 +185,17 @@ class PriorityBasedStrategyTest {
     }
 
     @Test
+    void waitsWhenTheNursesCannotLookAfterOneMorePatientEvenWithFreeBeds() {
+        Hospital hospital = hospital(1, 5, 1, Specialty.INTERNAL_MEDICINE);
+        hospital.getIcuBeds().get(0).assign(patient(7, 0, HEART_ATTACK, 60), 500);
+        hospital.getBeds().get(0).assign(patient(8, 0, DENGUE, 30), 500);
+        hospital.getBeds().get(1).assign(patient(9, 0, DENGUE, 30), 500);
+
+        assertEquals(2, hospital.freeBeds().size());
+        assertTrue(strategy.nextAssignment(0, List.of(waiting(1, 0, DENGUE, 30)), hospital).isEmpty());
+    }
+
+    @Test
     void aTreatmentThatNeedsBloodTakesTheUnits() {
         Assignment assignment = strategy.nextAssignment(0, List.of(waiting(1, 0, OPEN_FRACTURE, 30)),
                 hospital(Specialty.TRAUMATOLOGY)).orElseThrow();
