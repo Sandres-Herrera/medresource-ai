@@ -3,15 +3,14 @@ package com.medresource.ui.controller;
 import java.util.List;
 
 /**
- * Reloj de la simulación en pantalla, en segundos simulados.
+ * Reloj de la simulación en pantalla: lleva el tiempo simulado en segundos desde el inicio.
  *
- * <p>Con velocidad ×1 un segundo real es un segundo dentro del hospital; con ×10, diez. El motor avanza por
- * minutos, así que el reloj acumula los segundos y avisa cada vez que se completa un minuto. Entre un minuto
- * y otro, {@link #minuteFraction()} dice qué parte del minuto pasó, para mover a los pacientes con suavidad.
- * El reloj solo cambia lo que se ve: no conoce el motor ni el resultado de la simulación.</p>
+ * <p>Con velocidad ×1 un segundo real es un segundo dentro del hospital; con ×10, diez. El reloj solo cambia
+ * lo que se ve: no conoce el motor ni el resultado de la simulación.</p>
  *
- * <p>Si un cuadro llega muy tarde (por ejemplo, porque la ventana se congeló), el reloj completa como mucho
- * un minuto y descarta el tiempo sobrante, para que los pacientes no salten varios lugares de golpe.</p>
+ * <p>Si un cuadro llega muy tarde (por ejemplo, porque la ventana se congeló), el reloj avanza como mucho
+ * {@value #MAX_SECONDS_PER_FRAME} segundos simulados y descarta el resto, para que los pacientes no salten de
+ * un lugar a otro.</p>
  */
 public final class SimulationClock {
 
@@ -24,10 +23,13 @@ public final class SimulationClock {
     /** Segundos que tiene un minuto simulado. */
     public static final int SECONDS_PER_MINUTE = 60;
 
+    /** Máximo de segundos simulados que avanza el reloj en un solo cuadro. */
+    public static final double MAX_SECONDS_PER_FRAME = 5.0;
+
     private static final int SECONDS_PER_DAY = 24 * 60 * SECONDS_PER_MINUTE;
 
     private int speed = DEFAULT_SPEED;
-    private double secondsIntoMinute;
+    private double time;
 
     /**
      * Cambia la velocidad.
@@ -47,40 +49,50 @@ public final class SimulationClock {
     }
 
     /**
-     * Suma el tiempo real que pasó, multiplicado por la velocidad.
+     * Suma el tiempo real que pasó, multiplicado por la velocidad, sin pasar de
+     * {@value #MAX_SECONDS_PER_FRAME} segundos simulados.
      *
      * @param elapsedMillis milisegundos reales desde el cuadro anterior
-     * @return {@code true} si con este tiempo se completó un minuto simulado
      * @throws IllegalArgumentException si el tiempo es negativo
      */
-    public boolean advance(double elapsedMillis) {
+    public void advance(double elapsedMillis) {
         if (elapsedMillis < 0) {
             throw new IllegalArgumentException("El tiempo transcurrido no puede ser negativo.");
         }
-        secondsIntoMinute += speed * elapsedMillis / 1000.0;
-        if (secondsIntoMinute < SECONDS_PER_MINUTE) {
-            return false;
-        }
-        secondsIntoMinute -= SECONDS_PER_MINUTE;
-        if (secondsIntoMinute >= SECONDS_PER_MINUTE) {
-            secondsIntoMinute = 0;
-        }
-        return true;
+        time += Math.min(speed * elapsedMillis / 1000.0, MAX_SECONDS_PER_FRAME);
     }
 
-    /** Vuelve al segundo 0 del minuto actual, sin cambiar la velocidad. */
-    public void restartMinute() {
-        secondsIntoMinute = 0;
+    /**
+     * Adelanta el reloj hasta un momento dado (por ejemplo, para saltar al siguiente evento).
+     *
+     * @param newTime segundos simulados desde el inicio
+     * @throws IllegalArgumentException si el momento es anterior al actual
+     */
+    public void jumpTo(double newTime) {
+        if (newTime < time) {
+            throw new IllegalArgumentException("El reloj no puede retroceder.");
+        }
+        time = newTime;
+    }
+
+    /** Vuelve al segundo 0 de la simulación, sin cambiar la velocidad. */
+    public void reset() {
+        time = 0;
+    }
+
+    /** Segundos simulados desde el inicio. */
+    public double getTime() {
+        return time;
+    }
+
+    /** Minuto simulado actual. */
+    public int getMinute() {
+        return (int) (time / SECONDS_PER_MINUTE);
     }
 
     /** Segundo dentro del minuto actual, de 0 a 59. */
     public int getSecond() {
-        return (int) secondsIntoMinute;
-    }
-
-    /** Parte del minuto actual que ya pasó, de 0 (recién empieza) a casi 1. */
-    public double minuteFraction() {
-        return secondsIntoMinute / SECONDS_PER_MINUTE;
+        return (int) (time % SECONDS_PER_MINUTE);
     }
 
     /**

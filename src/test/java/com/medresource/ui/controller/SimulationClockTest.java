@@ -5,22 +5,28 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas del reloj de la simulación en pantalla.
  */
 class SimulationClockTest {
 
+    /** Avanza el reloj en cuadros cortos, como lo hace la ventana. */
+    private static void play(SimulationClock clock, int millis) {
+        for (int elapsed = 0; elapsed < millis; elapsed += 100) {
+            clock.advance(100);
+        }
+    }
+
     @Test
     void startsInRealTimeAtSecondZero() {
         SimulationClock clock = new SimulationClock();
 
         assertEquals(1, clock.getSpeed());
+        assertEquals(0.0, clock.getTime(), 1e-9);
+        assertEquals(0, clock.getMinute());
         assertEquals(0, clock.getSecond());
-        assertEquals(0.0, clock.minuteFraction(), 1e-9);
         assertEquals(List.of(1, 2, 5, 10), SimulationClock.SPEEDS);
     }
 
@@ -28,21 +34,21 @@ class SimulationClockTest {
     void inRealTimeOneSecondIsOneSimulatedSecond() {
         SimulationClock clock = new SimulationClock();
 
-        assertFalse(clock.advance(30_000));
+        play(clock, 30_000);
 
+        assertEquals(30.0, clock.getTime(), 1e-6);
+        assertEquals(0, clock.getMinute());
         assertEquals(30, clock.getSecond());
-        assertEquals(0.5, clock.minuteFraction(), 1e-9);
     }
 
     @Test
-    void completesAMinuteAfterSixtySimulatedSeconds() {
+    void sixtySecondsMakeAMinute() {
         SimulationClock clock = new SimulationClock();
-        clock.advance(59_000);
 
-        assertTrue(clock.advance(1_500));
+        play(clock, 61_000);
 
-        assertEquals(0, clock.getSecond());
-        assertEquals(0.5 / 60, clock.minuteFraction(), 1e-9);
+        assertEquals(1, clock.getMinute());
+        assertEquals(1, clock.getSecond());
     }
 
     @Test
@@ -50,32 +56,42 @@ class SimulationClockTest {
         SimulationClock clock = new SimulationClock();
         clock.setSpeed(10);
 
-        assertFalse(clock.advance(3_000));
-        assertEquals(30, clock.getSecond());
-        assertTrue(clock.advance(3_000));
-        assertEquals(0, clock.getSecond());
+        play(clock, 6_000);
+
+        assertEquals(60.0, clock.getTime(), 1e-6);
+        assertEquals(1, clock.getMinute());
     }
 
     @Test
-    void aVeryLateFrameCompletesOnlyOneMinuteAndDropsTheRest() {
+    void aVeryLateFrameAdvancesOnlyAFewSeconds() {
         SimulationClock clock = new SimulationClock();
         clock.setSpeed(10);
 
-        assertTrue(clock.advance(600_000));
+        clock.advance(600_000);
 
-        assertEquals(0, clock.getSecond());
-        assertFalse(clock.advance(0));
+        assertEquals(SimulationClock.MAX_SECONDS_PER_FRAME, clock.getTime(), 1e-9);
     }
 
     @Test
-    void restartMinuteGoesBackToSecondZeroAndKeepsTheSpeed() {
+    void jumpsForwardButNeverBack() {
+        SimulationClock clock = new SimulationClock();
+
+        clock.jumpTo(125.5);
+
+        assertEquals(2, clock.getMinute());
+        assertEquals(5, clock.getSecond());
+        assertThrows(IllegalArgumentException.class, () -> clock.jumpTo(100));
+    }
+
+    @Test
+    void resetGoesBackToZeroAndKeepsTheSpeed() {
         SimulationClock clock = new SimulationClock();
         clock.setSpeed(5);
-        clock.advance(4_000);
+        clock.jumpTo(300);
 
-        clock.restartMinute();
+        clock.reset();
 
-        assertEquals(0, clock.getSecond());
+        assertEquals(0.0, clock.getTime(), 1e-9);
         assertEquals(5, clock.getSpeed());
     }
 

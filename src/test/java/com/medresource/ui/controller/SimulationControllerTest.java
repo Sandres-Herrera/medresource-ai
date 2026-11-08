@@ -31,6 +31,13 @@ class SimulationControllerTest {
         return new SimulationController(SimulationSetup.standard(SMALL_CASE), new Renderer2D());
     }
 
+    /** Avanza el controlador en cuadros cortos, como lo hace la ventana. */
+    private static void play(SimulationController controller, int millis) {
+        for (int elapsed = 0; elapsed < millis; elapsed += 100) {
+            controller.advance(100);
+        }
+    }
+
     @Test
     void startsPausedAtMinuteZero() {
         SimulationController controller = controller();
@@ -56,11 +63,11 @@ class SimulationControllerTest {
         SimulationController controller = controller();
         controller.play();
 
-        controller.advance(30_000);
+        play(controller, 30_000);
         assertEquals(0, controller.getMinute());
         assertEquals(30, controller.getSecond());
 
-        controller.advance(30_000);
+        play(controller, 30_000);
         assertEquals(1, controller.getMinute());
         assertEquals(0, controller.getSecond());
     }
@@ -71,20 +78,21 @@ class SimulationControllerTest {
         controller.setSpeed(10);
         controller.play();
 
-        controller.advance(6_000);
+        play(controller, 6_000);
 
         assertEquals(1, controller.getMinute());
     }
 
     @Test
-    void aVeryLateFrameSimulatesOnlyOneMinute() {
+    void aVeryLateFrameAdvancesOnlyAFewSeconds() {
         SimulationController controller = controller();
         controller.setSpeed(10);
         controller.play();
 
         controller.advance(600_000);
 
-        assertEquals(1, controller.getMinute());
+        assertEquals(0, controller.getMinute());
+        assertEquals((int) SimulationClock.MAX_SECONDS_PER_FRAME, controller.getSecond());
     }
 
     @Test
@@ -104,7 +112,7 @@ class SimulationControllerTest {
         controller.setSpeed(10);
         controller.play();
         while (!controller.isFinished()) {
-            controller.advance(2_000);
+            controller.advance(500);
         }
         SimulationEngine engine = new SimulationEngine(new CaseGenerator().generate(SMALL_CASE),
                 new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
@@ -169,7 +177,7 @@ class SimulationControllerTest {
         controller.setSpeed(10);
         controller.play();
         for (int minute = 0; minute < 60; minute++) {
-            controller.advance(6_000);
+            play(controller, 6_000);
         }
 
         List<SimulationEvent> first = controller.drainNewEvents();
@@ -183,8 +191,7 @@ class SimulationControllerTest {
         SimulationController controller = controller();
         controller.setSpeed(10);
         controller.play();
-        controller.advance(6_000);
-        controller.advance(1_000);
+        play(controller, 7_000);
 
         controller.reset();
 

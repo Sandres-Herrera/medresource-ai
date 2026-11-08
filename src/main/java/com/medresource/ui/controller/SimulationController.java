@@ -64,7 +64,7 @@ public final class SimulationController {
         player = new ScenePlayer(engine, layout, renderer);
         strategyName = strategy.getName();
         running = false;
-        clock.restartMinute();
+        clock.reset();
         deliveredEvents = 0;
     }
 
@@ -110,14 +110,16 @@ public final class SimulationController {
         if (!running) {
             return;
         }
-        if (clock.advance(elapsedMillis)) {
+        int minuteBefore = clock.getMinute();
+        clock.advance(elapsedMillis);
+        if (clock.getMinute() > minuteBefore) {
             player.animate(1.0);
             if (!player.step()) {
                 finishClock();
                 return;
             }
         }
-        player.animate(clock.minuteFraction());
+        player.animate(clock.getTime() % SimulationClock.SECONDS_PER_MINUTE / SimulationClock.SECONDS_PER_MINUTE);
         if (player.isFinished()) {
             finishClock();
         }
@@ -133,7 +135,7 @@ public final class SimulationController {
         player.animate(1.0);
         boolean stepped = player.step();
         player.animate(1.0);
-        clock.restartMinute();
+        syncClockWithEngine();
         return stepped;
     }
 
@@ -156,7 +158,7 @@ public final class SimulationController {
                 break;
             }
         }
-        clock.restartMinute();
+        syncClockWithEngine();
         player.animate(0.0);
         if (player.isFinished()) {
             finishClock();
@@ -268,6 +270,11 @@ public final class SimulationController {
     private void finishClock() {
         player.animate(1.0);
         running = false;
-        clock.restartMinute();
+        syncClockWithEngine();
+    }
+
+    /** Pone el reloj en el segundo 0 del minuto en que va el motor. */
+    private void syncClockWithEngine() {
+        clock.jumpTo(Math.max(clock.getTime(), player.getMinute() * (double) SimulationClock.SECONDS_PER_MINUTE));
     }
 }
