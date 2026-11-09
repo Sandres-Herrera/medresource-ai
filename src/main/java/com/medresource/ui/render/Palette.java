@@ -75,6 +75,8 @@ public final class Palette {
             case MORGUE -> new Color(0xB8, 0xB0, 0xC9);
             case DISCHARGE -> new Color(0x8D, 0xC9, 0x8F);
             case STAFF_ROOM -> new Color(0xCF, 0xE0, 0xA8);
+            case CONSULTATION -> new Color(0xD7, 0xCC, 0xEC);
+            case CORRIDOR -> new Color(0xE4, 0xE4, 0xE0);
         };
     }
 

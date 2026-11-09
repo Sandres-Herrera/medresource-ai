@@ -8,12 +8,15 @@ package com.medresource.model;
  * lugares donde van las camas, las sillas o los puestos. Así una vista dibuja el título arriba y los
  * lugares debajo sin calcular nada más. Un lugar se identifica con su {@link Position}.</p>
  *
+ * <p>Un pasillo ({@link ZoneType#CORRIDOR}) no tiene fila de título: todas sus filas son lugares por donde
+ * se camina, así que puede tener una sola fila.</p>
+ *
  * @param zone  tipo de zona del área
  * @param title título que se escribe en la primera fila
  * @param col   primera columna del área, desde 0
  * @param row   primera fila del área (la del título), desde 0
  * @param cols  columnas del área, al menos 1
- * @param rows  filas del área contando la del título, al menos 2
+ * @param rows  filas del área contando la del título, al menos 2 (al menos 1 en un pasillo)
  */
 public record Area(ZoneType zone, String title, int col, int row, int cols, int rows) {
 
@@ -21,8 +24,7 @@ public record Area(ZoneType zone, String title, int col, int row, int cols, int 
      * Valida el área.
      *
      * @throws IllegalArgumentException si falta la zona o el título, si la posición es negativa, si tiene
-     *                                  menos de una columna o si tiene menos de dos filas (título y un
-     *                                  lugar)
+     *                                  menos de una columna o si no le queda al menos una fila de lugares
      */
     public Area {
         if (zone == null) {
@@ -37,14 +39,19 @@ public record Area(ZoneType zone, String title, int col, int row, int cols, int 
         if (cols < 1) {
             throw new IllegalArgumentException("El área debe tener al menos una columna.");
         }
-        if (rows < 2) {
+        if (rows < (zone == ZoneType.CORRIDOR ? 1 : 2)) {
             throw new IllegalArgumentException("El área debe tener la fila del título y al menos una de lugares.");
         }
     }
 
-    /** Filas de lugares: todas menos la del título. */
+    /** Indica si el área tiene fila de título; los pasillos no la tienen. */
+    public boolean hasTitleRow() {
+        return zone != ZoneType.CORRIDOR;
+    }
+
+    /** Filas de lugares: todas menos la del título, si la tiene. */
     public int slotRows() {
-        return rows - 1;
+        return rows - firstSlotRowOffset();
     }
 
     /** Cantidad de lugares del área. */
@@ -73,18 +80,18 @@ public record Area(ZoneType zone, String title, int col, int row, int cols, int 
         if (index < 0 || index >= slotCount()) {
             throw new IllegalArgumentException("El área no tiene el lugar " + index + ".");
         }
-        return new Position(col + index % cols, row + 1 + index / cols);
+        return new Position(col + index % cols, row + firstSlotRowOffset() + index / cols);
     }
 
     /**
      * Indica si una casilla es un lugar de esta área; la fila del título no cuenta.
      *
      * @param position casilla
-     * @return {@code true} si está dentro del área y debajo del título
+     * @return {@code true} si está dentro del área y debajo del título (en un pasillo, en cualquier fila)
      */
     public boolean containsSlot(Position position) {
         return position != null && position.col() >= col && position.col() < right()
-                && position.row() > row && position.row() < bottom();
+                && position.row() >= row + firstSlotRowOffset() && position.row() < bottom();
     }
 
     /**
@@ -99,5 +106,10 @@ public record Area(ZoneType zone, String title, int col, int row, int cols, int 
             throw new IllegalArgumentException("La otra área es obligatoria.");
         }
         return col < other.right() && other.col < right() && row < other.bottom() && other.row < bottom();
+    }
+
+    /** Filas que ocupa el título antes del primer lugar: una, o ninguna en un pasillo. */
+    private int firstSlotRowOffset() {
+        return hasTitleRow() ? 1 : 0;
     }
 }
