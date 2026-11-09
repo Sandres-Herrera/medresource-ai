@@ -354,6 +354,30 @@ class LayoutFactoryTest {
     }
 
     @Test
+    void eachTriageStationOfTheHospitalHasItsPlace() {
+        for (HospitalConfig config : sizes()) {
+            Hospital hospital = hospital(config);
+            HospitalLayout layout = new LayoutFactory().create(hospital);
+
+            for (int index = 0; index < hospital.getTriageStations().size(); index++) {
+                assertEquals(layout.getTriageSpots().get(index),
+                        layout.positionOf(hospital.getTriageStations().get(index).getCode()).orElseThrow());
+            }
+        }
+    }
+
+    @Test
+    void theTriageHasRoomForAQueueNextToTheEntrance() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+            Area triage = onlyAreaOf(layout, ZoneType.TRIAGE);
+
+            assertTrue(layout.getTriageQueueSpots().size() >= 6);
+            layout.getTriageQueueSpots().forEach(spot -> assertEquals(triage, layout.areaAt(spot).orElseThrow()));
+        }
+    }
+
+    @Test
     void theBloodBankHasOnePlaceForEachBloodType() {
         for (HospitalConfig config : sizes()) {
             HospitalLayout layout = layoutOf(config);

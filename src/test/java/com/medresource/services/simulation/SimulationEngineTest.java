@@ -129,6 +129,166 @@ class SimulationEngineTest {
         return result.outcomes().get(index);
     }
 
+    /** Minutos que dura en el triage la valoración de un paciente con esa enfermedad. */
+    private static int triageMinutes(int diseaseId) {
+        return new TriageService().classify(profile(1, 0, diseaseId, 30, 80.0).toPatient()).getAssessmentMinutes();
+    }
+
+    /** Avanza el motor hasta el minuto en que empieza el primer tratamiento, incluido. */
+    private static void stepUntilATreatmentStarts(SimulationEngine engine) {
+        while (engine.getEvents().stream().noneMatch(event -> event.type() == EventType.TREATMENT_STARTED)) {
+            engine.step();
+        }
+    }
+
+    // ---------- triage ----------
+
+    @Test
+    void aPatientIsAssessedAtATriageStationBeforeWaiting() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE));
+
+        SimulationEvent start = eventOf(result, "P001", EventType.TRIAGE_STARTED);
+        SimulationEvent end = eventOf(result, "P001", EventType.TRIAGE_ASSIGNED);
+        assertEquals(0, start.minute());
+        assertEquals("T1", start.resourceCode());
+        assertEquals(TriageLevel.IV, outcomeOf(result, 0).triage());
+        assertEquals(TriageLevel.IV.getAssessmentMinutes(), end.minute());
+        assertEquals(end.minute(), eventOf(result, "P001", EventType.DIAGNOSIS).minute());
+        assertEquals(end.minute(), outcomeOf(result, 0).treatmentStartMinute());
+    }
+
+    @Test
+    void theAssessmentLastsAccordingToTheTriageLevel() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 80.0),
+                profile(3, 0, APPENDICITIS, 30, 80.0));
+        SimulationResult result = run(simulationCase,
+                hospital(Specialty.GENERAL_MEDICINE, Specialty.INTERNAL_MEDICINE, Specialty.SURGERY));
+
+        for (int index = 0; index < 3; index++) {
+            String code = outcomeOf(result, index).patientCode();
+            assertEquals(outcomeOf(result, index).triage().getAssessmentMinutes(),
+                    eventOf(result, code, EventType.TRIAGE_ASSIGNED).minute()
+                            - eventOf(result, code, EventType.TRIAGE_STARTED).minute());
+        }
+    }
+
+    @Test
+    void aCriticalPatientSkipsTheTriageStationAndIsTreatedAtOnce() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, HEART_ATTACK, 60, 80.0)),
+                hospital(Specialty.INTERNAL_MEDICINE));
+
+        SimulationEvent start = eventOf(result, "P001", EventType.TRIAGE_STARTED);
+        assertNull(start.resourceCode());
+        assertEquals(0, start.minute());
+        assertEquals(0, eventOf(result, "P001", EventType.TRIAGE_ASSIGNED).minute());
+        assertEquals(0, outcomeOf(result, 0).treatmentStartMinute());
+    }
+
+    @Test
+    void whenEveryStationIsBusyThePatientsQueueInOrderOfArrival() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 0, FLU, 30, 80.0),
+                profile(3, 0, FLU, 30, 80.0),
+                profile(4, 0, FLU, 30, 80.0),
+                profile(5, 1, FLU, 30, 80.0));
+        SimulationResult result = run(simulationCase, hospital(Specialty.GENERAL_MEDICINE));
+
+        int assessment = triageMinutes(FLU);
+        assertEquals("T1", eventOf(result, "P001", EventType.TRIAGE_STARTED).resourceCode());
+        assertEquals("T2", eventOf(result, "P002", EventType.TRIAGE_STARTED).resourceCode());
+        assertEquals("T3", eventOf(result, "P003", EventType.TRIAGE_STARTED).resourceCode());
+        assertEquals(assessment, eventOf(result, "P004", EventType.TRIAGE_STARTED).minute());
+        assertEquals("T1", eventOf(result, "P004", EventType.TRIAGE_STARTED).resourceCode());
+        assertEquals(assessment, eventOf(result, "P005", EventType.TRIAGE_STARTED).minute());
+        assertEquals("T2", eventOf(result, "P005", EventType.TRIAGE_STARTED).resourceCode());
+    }
+
+    @Test
+    void aCriticalPatientDoesNotQueueBehindTheOthers() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 0, FLU, 30, 80.0),
+                profile(3, 0, FLU, 30, 80.0),
+                profile(4, 0, FLU, 30, 80.0),
+                profile(5, 0, HEART_ATTACK, 60, 80.0));
+        SimulationResult result = run(simulationCase,
+                hospital(Specialty.GENERAL_MEDICINE, Specialty.INTERNAL_MEDICINE));
+
+        assertEquals(0, outcomeOf(result, 4).treatmentStartMinute());
+    }
+
+    @Test
+    void theNursesOfTheHospitalDoNotWorkInTheTriage() {
+        Hospital hospital = hospital(Specialty.GENERAL_MEDICINE);
+        SimulationEngine engine = new SimulationEngine(caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 0, FLU, 30, 80.0)), hospital, new FifoStrategy());
+
+        engine.step();
+
+        assertEquals(1, hospital.freeTriageStations().size());
+        assertEquals(4, hospital.freeNurses().size());
+        assertEquals(1, hospital.freeDoctors().size());
+    }
+
+    @Test
+    void aPatientCanDieWhileQueuingForTheTriage() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, FLU, 30, 80.0),
+                profile(2, 0, FLU, 30, 80.0),
+                profile(3, 0, FLU, 30, 80.0),
+                profile(4, 0, OPEN_FRACTURE, 30, 0.2));
+        SimulationResult result = run(simulationCase,
+                hospital(Specialty.GENERAL_MEDICINE, Specialty.TRAUMATOLOGY));
+
+        PatientOutcome outcome = outcomeOf(result, 3);
+        assertEquals(PatientStatus.DECEASED, outcome.status());
+        assertEquals(CauseOfDeath.LACK_OF_TIMELY_CARE, outcome.causeOfDeath());
+        assertNull(eventOf(result, "P004", EventType.DEATH).resourceCode());
+        assertFalse(typesOf(result, "P004").contains(EventType.TRIAGE_STARTED));
+    }
+
+    @Test
+    void aPatientWhoDiesAtATriageStationFreesIt() {
+        Hospital hospital = hospital(Specialty.TRAUMATOLOGY);
+        SimulationResult result = run(caseOf(60, profile(1, 0, OPEN_FRACTURE, 30, 0.2)), hospital);
+
+        assertEquals(PatientStatus.DECEASED, outcomeOf(result, 0).status());
+        assertEquals("T1", eventOf(result, "P001", EventType.DEATH).resourceCode());
+        assertFalse(typesOf(result, "P001").contains(EventType.TRIAGE_ASSIGNED));
+        assertEquals(Hospital.TRIAGE_STATIONS, hospital.freeTriageStations().size());
+    }
+
+    @Test
+    void theStrategyOnlySeesPatientsWhoFinishedTheTriage() {
+        List<Integer> waitingSizes = new ArrayList<>();
+        AllocationStrategy spy = new AllocationStrategy() {
+            @Override
+            public String getName() {
+                return "Espía";
+            }
+
+            @Override
+            public Optional<Assignment> nextAssignment(int minute, List<WaitingPatient> waiting, Hospital hospital) {
+                waitingSizes.add(waiting.size());
+                return Optional.empty();
+            }
+        };
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), spy);
+
+        for (int minute = 0; minute <= triageMinutes(FLU); minute++) {
+            engine.step();
+        }
+
+        assertEquals(0, (int) waitingSizes.get(0));
+        assertEquals(1, (int) waitingSizes.get(waitingSizes.size() - 1));
+    }
+
     // ---------- tratamientos completos ----------
 
     @Test
@@ -138,22 +298,26 @@ class SimulationEngineTest {
 
         PatientOutcome outcome = outcomeOf(result, 0);
         assertEquals(PatientStatus.DISCHARGED, outcome.status());
-        assertEquals(0, outcome.treatmentStartMinute());
+        assertEquals(triageMinutes(FLU), outcome.treatmentStartMinute());
         assertEquals(CompatibilityLevel.PRIMARY, outcome.careLevel());
-        assertEquals(List.of(EventType.ARRIVAL, EventType.TRIAGE_ASSIGNED, EventType.DIAGNOSIS,
-                        EventType.TREATMENT_STARTED, EventType.TREATMENT_FINISHED, EventType.DISCHARGE),
+        assertEquals(List.of(EventType.ARRIVAL, EventType.TRIAGE_STARTED, EventType.TRIAGE_ASSIGNED,
+                        EventType.DIAGNOSIS, EventType.TREATMENT_STARTED, EventType.TREATMENT_FINISHED,
+                        EventType.DISCHARGE),
                 typesOf(result, outcome.patientCode()));
     }
 
     @Test
     void theTreatmentLastsAsLongAsTheHealthModelSays() {
+        // Durante el triage el paciente pierde salud, y con ella se calcula la duración.
+        HealthModel model = new HealthModel();
         Patient patient = profile(1, 0, FLU, 30, 80.0).toPatient();
-        int expected = new HealthModel().treatmentMinutes(patient, 1.0);
+        patient.deteriorate(model.deteriorationPerMinute(patient, 0.0) * triageMinutes(FLU));
+        int expected = model.treatmentMinutes(patient, 1.0);
 
         SimulationResult result = run(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
                 hospital(Specialty.GENERAL_MEDICINE));
 
-        assertEquals(expected, outcomeOf(result, 0).outcomeMinute());
+        assertEquals(expected, outcomeOf(result, 0).outcomeMinute() - outcomeOf(result, 0).treatmentStartMinute());
     }
 
     @Test
@@ -309,9 +473,10 @@ class SimulationEngineTest {
 
     @Test
     void aCriticalPatientWhoWaitsWhileTheIcuIsFreeDiesForLackOfTimelyCare() {
+        // El infarto llega cuando el único médico ya atiende al paciente con dengue.
         SimulationCase simulationCase = caseOf(60,
                 profile(1, 0, DENGUE, 30, 80.0),
-                profile(2, 0, HEART_ATTACK, 60, 3.0));
+                profile(2, 5, HEART_ATTACK, 60, 3.0));
         SimulationResult result = run(simulationCase, hospital(Specialty.INTERNAL_MEDICINE));
 
         assertEquals(CauseOfDeath.LACK_OF_TIMELY_CARE, outcomeOf(result, 1).causeOfDeath());
@@ -324,9 +489,10 @@ class SimulationEngineTest {
                 profile(2, 10, DENGUE, 30, 80.0));
         SimulationResult result = run(simulationCase, hospital(Specialty.INTERNAL_MEDICINE));
 
-        assertEquals(TreatmentType.INITIAL_CARE_MINUTES, outcomeOf(result, 1).treatmentStartMinute());
-        assertEquals(TreatmentType.INITIAL_CARE_MINUTES - 10, outcomeOf(result, 1).waitingMinutes());
-        assertTrue(outcomeOf(result, 0).outcomeMinute() > TreatmentType.INITIAL_CARE_MINUTES);
+        int doctorFree = triageMinutes(DENGUE) + TreatmentType.INITIAL_CARE_MINUTES;
+        assertEquals(doctorFree, outcomeOf(result, 1).treatmentStartMinute());
+        assertEquals(doctorFree - 10, outcomeOf(result, 1).waitingMinutes());
+        assertTrue(outcomeOf(result, 0).outcomeMinute() > doctorFree);
     }
 
     @Test
@@ -335,7 +501,7 @@ class SimulationEngineTest {
         SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, DENGUE, 30, 80.0)), hospital,
                 new FifoStrategy());
 
-        engine.step();
+        stepUntilATreatmentStarts(engine);
         assertEquals(0, hospital.freeDoctors().size());
         assertEquals(3, hospital.freeNurses().size());
         for (int minute = 1; minute <= TreatmentType.INITIAL_CARE_MINUTES; minute++) {
@@ -376,9 +542,9 @@ class SimulationEngineTest {
         SimulationResult result = run(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
                 hospital(Specialty.SURGERY));
 
-        assertEquals(List.of(EventType.ARRIVAL, EventType.TRIAGE_ASSIGNED, EventType.DIAGNOSIS,
-                        EventType.TREATMENT_STARTED, EventType.RECOVERY_STARTED, EventType.TREATMENT_FINISHED,
-                        EventType.DISCHARGE),
+        assertEquals(List.of(EventType.ARRIVAL, EventType.TRIAGE_STARTED, EventType.TRIAGE_ASSIGNED,
+                        EventType.DIAGNOSIS, EventType.TREATMENT_STARTED, EventType.RECOVERY_STARTED,
+                        EventType.TREATMENT_FINISHED, EventType.DISCHARGE),
                 typesOf(result, "P001"));
         assertEquals("Q1", eventOf(result, "P001", EventType.TREATMENT_STARTED).resourceCode());
         assertEquals("H1-C1", eventOf(result, "P001", EventType.RECOVERY_STARTED).resourceCode());
@@ -396,7 +562,7 @@ class SimulationEngineTest {
         SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
                 hospital, new FifoStrategy());
 
-        engine.step();
+        stepUntilATreatmentStarts(engine);
         assertEquals(0, hospital.freeOperatingRooms().size());
         assertEquals(3, hospital.freeBeds().size());
         assertEquals(2, hospital.freeNurses().size());
@@ -454,7 +620,8 @@ class SimulationEngineTest {
                 hospital(Specialty.INTERNAL_MEDICINE));
 
         assertTrue(eventOf(result, "P001", EventType.TREATMENT_STARTED).description()
-                .contains("el médico queda libre en el minuto " + TreatmentType.INITIAL_CARE_MINUTES));
+                .contains("el médico queda libre en el minuto "
+                        + (triageMinutes(DENGUE) + TreatmentType.INITIAL_CARE_MINUTES)));
     }
 
     @Test
@@ -462,8 +629,8 @@ class SimulationEngineTest {
         SimulationResult result = run(caseOf(60, profile(1, 30, FLU, 30, 80.0)),
                 hospital(Specialty.GENERAL_MEDICINE));
 
-        assertEquals(30, outcomeOf(result, 0).treatmentStartMinute());
-        assertEquals(0, outcomeOf(result, 0).waitingMinutes());
+        assertEquals(30 + triageMinutes(FLU), outcomeOf(result, 0).treatmentStartMinute());
+        assertEquals(triageMinutes(FLU), outcomeOf(result, 0).waitingMinutes());
     }
 
     @Test
@@ -530,13 +697,13 @@ class SimulationEngineTest {
     // ---------- remisión y abandono ----------
 
     @Test
-    void aPatientNobodyCanTreatIsReferredAtOnce() {
+    void aPatientNobodyCanTreatIsReferredAsSoonAsTheTriageEnds() {
         Hospital hospital = hospital(Specialty.PEDIATRICS);
         SimulationResult result = run(caseOf(60, profile(1, 5, APPENDICITIS, 30, 80.0)), hospital);
 
         PatientOutcome outcome = outcomeOf(result, 0);
         assertEquals(PatientStatus.REFERRED, outcome.status());
-        assertEquals(5, outcome.outcomeMinute());
+        assertEquals(5 + triageMinutes(APPENDICITIS), outcome.outcomeMinute());
         assertEquals(-1, outcome.treatmentStartMinute());
         assertNull(outcome.careLevel());
         assertTrue(typesOf(result, outcome.patientCode()).contains(EventType.REFERRAL));
@@ -715,7 +882,8 @@ class SimulationEngineTest {
 
         @Override
         public Optional<Assignment> nextAssignment(int minute, List<WaitingPatient> waiting, Hospital hospital) {
-            return Optional.ofNullable(decision.apply(waiting, hospital));
+            // Espera a que alguien termine el triage para equivocarse con él.
+            return waiting.isEmpty() ? Optional.empty() : Optional.ofNullable(decision.apply(waiting, hospital));
         }
     }
 
@@ -725,7 +893,7 @@ class SimulationEngineTest {
                 hospital(Specialty.GENERAL_MEDICINE), new RogueStrategy((waiting, hospital) -> new Assignment(
                 profile(99, 0, FLU, 30, 80.0).toPatient(), hospital.getDoctors().get(0), List.of(), null, null, 0)));
 
-        assertThrows(IllegalStateException.class, engine::step);
+        assertThrows(IllegalStateException.class, engine::run);
     }
 
     @Test
@@ -737,7 +905,7 @@ class SimulationEngineTest {
             return new Assignment(waiting.get(0).patient(), doctor, List.of(), null, null, 0);
         }));
 
-        assertThrows(IllegalStateException.class, engine::step);
+        assertThrows(IllegalStateException.class, engine::run);
     }
 
     @Test
@@ -747,7 +915,7 @@ class SimulationEngineTest {
                 new Assignment(waiting.get(0).patient(), hospital.getDoctors().get(1), List.of(),
                         null, hospital.getOperatingRooms().get(0), 0)));
 
-        assertThrows(IllegalStateException.class, engine::step);
+        assertThrows(IllegalStateException.class, engine::run);
     }
 
     @Test
@@ -757,7 +925,7 @@ class SimulationEngineTest {
                 new Assignment(waiting.get(0).patient(), hospital.getDoctors().get(0),
                         hospital.getNurses().subList(0, 2), null, hospital.getOperatingRooms().get(0), 2)));
 
-        assertThrows(IllegalStateException.class, engine::step);
+        assertThrows(IllegalStateException.class, engine::run);
     }
 
     // ---------- invariantes ----------

@@ -130,6 +130,25 @@ class HospitalTest {
     }
 
     @Test
+    void hasItsOwnTriageStationsApartFromTheNurses() {
+        Hospital hospital = newHospital();
+
+        assertEquals(Hospital.TRIAGE_STATIONS, hospital.getTriageStations().size());
+        assertEquals(List.of("T1", "T2", "T3"),
+                hospital.getTriageStations().stream().map(TriageStation::getCode).toList());
+        assertEquals(2, hospital.getNurses().size());
+    }
+
+    @Test
+    void anOccupiedTriageStationIsNoLongerFree() {
+        Hospital hospital = newHospital();
+        hospital.getTriageStations().get(0).assign(newPatient(), 2);
+
+        assertEquals(2, hospital.freeTriageStations().size());
+        assertEquals("T2", hospital.freeTriageStations().get(0).getCode());
+    }
+
+    @Test
     void assignedStaffIsNoLongerFree() {
         Hospital hospital = newHospital();
         hospital.getDoctors().get(0).assign(newPatient(), 60);

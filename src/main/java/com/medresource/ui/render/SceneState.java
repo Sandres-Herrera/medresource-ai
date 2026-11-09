@@ -20,8 +20,9 @@ import java.util.Set;
  * Dónde está cada paciente en el plano, según los eventos de la simulación.
  *
  * <p>Lee los eventos en el orden en que el motor los emite y deduce el lugar de cada paciente: aparece en la
- * entrada al llegar, espera en una silla de la sala de espera (por orden de llegada, y todos avanzan una silla
- * cuando alguien sale de la cola), pasa al lugar de su recurso (cama, quirófano o médico) al empezar su
+ * entrada al llegar y hace fila en el triage hasta que una estación lo recibe; cuando lo clasifican pasa a una
+ * silla de la sala de espera (por orden de llegada, y todos avanzan una silla cuando alguien sale de la cola,
+ * igual que en la fila del triage), pasa al lugar de su recurso (cama, quirófano o médico) al empezar su
  * tratamiento, se queda donde está al morir y pasa a un lugar de la morgue cuando el motor lo manda; quien
  * recibe el alta, es remitido o se va sin atención sale por la zona de alta o salida.</p>
  *
@@ -32,7 +33,11 @@ public final class SceneState {
 
     /** Etapa de un paciente dentro de la escena. */
     public enum Phase {
-        /** Espera en la sala de espera (o llegó hace un instante y va hacia ella). */
+        /** Acaba de llegar y hace fila en el triage hasta que una estación lo recibe. */
+        TRIAGE_QUEUE,
+        /** Lo están valorando en una estación de triage. */
+        IN_TRIAGE,
+        /** Ya clasificado, espera en la sala de espera. */
         QUEUED,
         /** Está en su cama, su quirófano o con su médico. */
         TREATING,
@@ -49,13 +54,14 @@ public final class SceneState {
     }
 
     private static final class Entry {
-        private Phase phase = Phase.QUEUED;
+        private Phase phase = Phase.TRIAGE_QUEUE;
         private Position position;
     }
 
     /** Eventos que cambian el lugar de algún paciente; los demás no mueven a nadie. */
     private static final Set<EventType> PLACE_CHANGES = EnumSet.of(EventType.ARRIVAL,
-            EventType.TREATMENT_STARTED, EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH,
+            EventType.TRIAGE_STARTED, EventType.TRIAGE_ASSIGNED, EventType.TREATMENT_STARTED,
+            EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH,
             EventType.MORGUE_ADMISSION, EventType.MORGUE_RELEASE, EventType.DISCHARGE,
             EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL, EventType.UNATTENDED);
 
@@ -95,8 +101,9 @@ public final class SceneState {
     }
 
     /**
-     * Aplica un evento. Los eventos que no cambian el lugar de nadie (triage, diagnóstico, alerta de
-     * emergencia, reevaluación y fin de tratamiento) se ignoran.
+     * Aplica un evento. Los eventos que no cambian el lugar de nadie (diagnóstico, alerta de emergencia,
+     * reevaluación y fin de tratamiento) se ignoran. Un inicio de triage sin estación (el paciente pasa
+     * directo, sin detenerse) deja al paciente donde está.
      *
      * @param event evento de la simulación
      * @throws IllegalArgumentException si el evento es nulo
@@ -113,13 +120,15 @@ public final class SceneState {
             return;
         }
         switch (type) {
+            case TRIAGE_STARTED -> startTriage(event);
+            case TRIAGE_ASSIGNED -> known(event.patientCode()).phase = Phase.QUEUED;
             case TREATMENT_STARTED, ICU_ADMISSION, RECOVERY_STARTED -> startTreatment(event);
             case DEATH -> die(event);
             case MORGUE_ADMISSION -> enterMorgue(event.patientCode());
             case MORGUE_RELEASE -> leaveMorgue(event.patientCode());
             case DISCHARGE, STABILIZED_WITHOUT_CURE, REFERRAL, UNATTENDED -> leave(event.patientCode());
             default -> {
-                // Triage, diagnóstico, alerta, reevaluación y fin de tratamiento no mueven a nadie.
+                // Diagnóstico, alerta, reevaluación y fin de tratamiento no mueven a nadie.
             }
         }
     }
@@ -128,8 +137,8 @@ public final class SceneState {
      * Indica si un tipo de evento cambia el lugar de algún paciente.
      *
      * @param type tipo de evento
-     * @return {@code true} si el evento mueve a alguien; {@code false} si solo informa (triage, diagnóstico,
-     *         alerta, reevaluación o fin de tratamiento)
+     * @return {@code true} si el evento mueve a alguien; {@code false} si solo informa (diagnóstico, alerta,
+     *         reevaluación o fin de tratamiento)
      * @throws IllegalArgumentException si el tipo es nulo
      */
     public static boolean changesPlacement(EventType type) {
@@ -162,9 +171,14 @@ public final class SceneState {
     public List<Placement> placements() {
         List<Placement> result = new ArrayList<>();
         int rank = 0;
+        int triageRank = 0;
         for (Map.Entry<String, Entry> patient : patients.entrySet()) {
             Entry entry = patient.getValue();
-            Position position = entry.phase == Phase.QUEUED ? seat(rank++) : entry.position;
+            Position position = switch (entry.phase) {
+                case QUEUED -> seat(rank++);
+                case TRIAGE_QUEUE -> triageQueueSpot(triageRank++);
+                default -> entry.position;
+            };
             result.add(new Placement(patient.getKey(), entry.phase, position));
         }
         return List.copyOf(result);
@@ -209,6 +223,18 @@ public final class SceneState {
             throw new IllegalStateException("El paciente " + code + " ya llegó.");
         }
         patients.put(code, new Entry());
+    }
+
+    /** Lleva al paciente a su estación de triage; sin estación, pasa directo y se queda donde está. */
+    private void startTriage(SimulationEvent event) {
+        Entry entry = known(event.patientCode());
+        if (event.resourceCode() == null) {
+            return;
+        }
+        entry.position = layout.positionOf(event.resourceCode())
+                .orElseThrow(() -> new IllegalStateException(
+                        "El plano no tiene la estación de triage " + event.resourceCode() + "."));
+        entry.phase = Phase.IN_TRIAGE;
     }
 
     private void startTreatment(SimulationEvent event) {
@@ -265,6 +291,15 @@ public final class SceneState {
     /** Lugar actual de un paciente que está en escena; la entrada si todavía no tiene otro. */
     private Position currentPosition(String code) {
         return positionOf(code).orElse(layout.getEntrance());
+    }
+
+    /**
+     * Lugar de la fila del triage que le toca al paciente que va en ese puesto; los que no caben usan el
+     * último. Sin lugares de fila, esperan en la entrada.
+     */
+    private Position triageQueueSpot(int rank) {
+        List<Position> spots = layout.getTriageQueueSpots();
+        return spots.isEmpty() ? layout.getEntrance() : spots.get(Math.min(rank, spots.size() - 1));
     }
 
     /** Silla que le toca al paciente que va en ese puesto de la cola; los que no caben usan la última. */

@@ -17,6 +17,10 @@ import java.util.List;
  * vigila hasta {@value #WARD_PATIENTS_PER_NURSE} pacientes en cama o
  * {@value #ICU_PATIENTS_PER_NURSE} en UCI. Si la enfermería no alcanza, no se
  * puede hospitalizar a nadie más aunque haya camas libres.
+ *
+ * <p>Los pacientes que llegan pasan por {@value #TRIAGE_STATIONS} estaciones de
+ * triage, cada una con su propia enfermera de triage (no cuenta entre los
+ * enfermeros del hospital).
  */
 public class Hospital {
 
@@ -26,6 +30,9 @@ public class Hospital {
     /** Pacientes en UCI que vigila cada enfermero (supuesto). */
     public static final int ICU_PATIENTS_PER_NURSE = 2;
 
+    /** Estaciones de triage que valoran pacientes al mismo tiempo (supuesto). */
+    public static final int TRIAGE_STATIONS = 3;
+
     private final List<Room> rooms;
     private final Room icu;
     private final List<OperatingRoom> operatingRooms;
@@ -34,6 +41,7 @@ public class Hospital {
     private final BloodBank bloodBank;
     private final Morgue morgue;
     private final List<Bed> beds;
+    private final List<TriageStation> triageStations;
 
     /**
      * Crea el hospital validando que esté completo y sin códigos repetidos.
@@ -79,6 +87,11 @@ public class Hospital {
         this.bloodBank = bloodBank;
         this.morgue = morgue;
         this.beds = this.rooms.stream().flatMap(room -> room.getBeds().stream()).toList();
+        List<TriageStation> stations = new ArrayList<>();
+        for (int number = 1; number <= TRIAGE_STATIONS; number++) {
+            stations.add(new TriageStation(number));
+        }
+        this.triageStations = List.copyOf(stations);
     }
 
     public List<Doctor> freeDoctors() {
@@ -99,6 +112,10 @@ public class Hospital {
 
     public List<OperatingRoom> freeOperatingRooms() {
         return free(operatingRooms);
+    }
+
+    public List<TriageStation> freeTriageStations() {
+        return free(triageStations);
     }
 
     /**
@@ -153,6 +170,10 @@ public class Hospital {
 
     public List<Bed> getIcuBeds() {
         return icu.getBeds();
+    }
+
+    public List<TriageStation> getTriageStations() {
+        return triageStations;
     }
 
     private static int livingPatientsIn(List<Bed> someBeds) {

@@ -18,6 +18,7 @@ import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
+import com.medresource.model.TriageStation;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.services.strategy.Assignment;
 import com.medresource.services.strategy.WaitingPatient;
@@ -41,10 +42,18 @@ import java.util.Set;
  * su tiempo; los pacientes pierden salud; terminan los tratamientos que
  * correspondan; el médico y los enfermeros que terminaron el ingreso de un
  * paciente hospitalizado o una operación quedan libres; los operados pasan del
- * quirófano a su cama de recuperación; llegan los pacientes nuevos (se les
- * asigna triage y diagnóstico); la estrategia reparte los recursos libres; y los
- * fallecidos pasan a la morgue si hay cupo. Un fallecido que no cabe en la morgue
- * sigue ocupando su cama.</p>
+ * quirófano a su cama de recuperación; terminan las valoraciones de triage que
+ * correspondan (al paciente se le asigna nivel y diagnóstico y pasa a la sala
+ * de espera); llegan los pacientes nuevos y hacen fila en el triage; las
+ * estaciones de triage libres reciben a los primeros de la fila; la estrategia
+ * reparte los recursos libres; y los fallecidos pasan a la morgue si hay cupo.
+ * Un fallecido que no cabe en la morgue sigue ocupando su cama.</p>
+ *
+ * <p>La valoración de triage dura según el nivel del paciente
+ * ({@link TriageLevel#getAssessmentMinutes()}); mientras tanto el paciente no
+ * está en la sala de espera, así que la estrategia todavía no puede atenderlo, y
+ * sigue perdiendo salud igual que en la espera. Un paciente de nivel I no hace
+ * fila ni ocupa una estación: se reconoce en la puerta y pasa directo.</p>
  *
  * <p>En una consulta el personal acompaña al paciente todo el tratamiento. En una
  * hospitalización (cama o UCI) solo durante el ingreso
@@ -66,6 +75,9 @@ public class SimulationEngine {
                                    double effectiveness) {
     }
 
+    private record TriageInProgress(Patient patient, TriageStation station, int endMinute) {
+    }
+
     private record PendingBody(Patient patient, Bed bed) {
     }
 
@@ -76,6 +88,8 @@ public class SimulationEngine {
     private final HealthModel healthModel = new HealthModel();
 
     private final List<Patient> patients;
+    private final List<Patient> triageQueue = new ArrayList<>();
+    private final List<TriageInProgress> inTriage = new ArrayList<>();
     private final List<Patient> waiting = new ArrayList<>();
     private final List<ActiveTreatment> active = new ArrayList<>();
     private final List<PendingBody> pendingBodies = new ArrayList<>();
@@ -122,7 +136,9 @@ public class SimulationEngine {
         finishTreatments();
         releaseStaffAfterAdmission();
         moveOperatedPatientsToRecovery();
+        finishTriages();
         admitArrivals();
+        startTriages();
         if (minute >= endLimit) {
             abandonWaitingPatients();
         }
@@ -145,12 +161,13 @@ public class SimulationEngine {
 
     /**
      * Indica si ya no queda nada por simular: llegaron todos los pacientes y
-     * ninguno espera ni está en tratamiento.
+     * ninguno está en el triage, espera ni está en tratamiento.
      *
      * @return {@code true} si la simulación terminó
      */
     public boolean isFinished() {
-        return nextArrival == patients.size() && waiting.isEmpty() && active.isEmpty();
+        return nextArrival == patients.size() && triageQueue.isEmpty() && inTriage.isEmpty()
+                && waiting.isEmpty() && active.isEmpty();
     }
 
     /**
@@ -214,6 +231,22 @@ public class SimulationEngine {
     }
 
     private void deteriorate() {
+        for (Patient patient : List.copyOf(triageQueue)) {
+            patient.deteriorate(healthModel.deteriorationPerMinute(patient, 0.0));
+            if (!patient.isAlive()) {
+                triageQueue.remove(patient);
+                declareDeath(patient, CauseOfDeath.LACK_OF_TIMELY_CARE, null, null);
+            }
+        }
+        for (TriageInProgress triage : List.copyOf(inTriage)) {
+            Patient patient = triage.patient();
+            patient.deteriorate(healthModel.deteriorationPerMinute(patient, 0.0));
+            if (!patient.isAlive()) {
+                inTriage.remove(triage);
+                triage.station().release();
+                declareDeath(patient, CauseOfDeath.LACK_OF_TIMELY_CARE, triage.station().getCode(), null);
+            }
+        }
         for (Patient patient : List.copyOf(waiting)) {
             patient.deteriorate(healthModel.deteriorationPerMinute(patient, 0.0));
             if (!patient.isAlive()) {
@@ -313,11 +346,56 @@ public class SimulationEngine {
         }
     }
 
+    /**
+     * Recibe a un paciente. Su nivel de triage se calcula de una vez porque de él depende cuánto dura su
+     * valoración, pero solo se anuncia cuando la valoración termina.
+     */
     private void arrive(Patient patient) {
         emit(EventType.ARRIVAL, patient, null,
                 patient.getCode() + " llega al hospital (" + patient.getAge() + " años).");
-        TriageLevel triage = triageService.classify(patient);
-        patient.assignTriage(triage);
+        patient.assignTriage(triageService.classify(patient));
+        if (patient.getTriageLevel().skipsTriageStation()) {
+            emit(EventType.TRIAGE_STARTED, patient, null,
+                    patient.getCode() + " llega en estado crítico y pasa directo, sin hacer fila en el triage.");
+            classify(patient);
+        } else {
+            triageQueue.add(patient);
+        }
+    }
+
+    /** Las estaciones de triage libres reciben, en orden de llegada, a los primeros de la fila. */
+    private void startTriages() {
+        for (TriageStation station : hospital.freeTriageStations()) {
+            if (triageQueue.isEmpty()) {
+                return;
+            }
+            Patient patient = triageQueue.remove(0);
+            int minutes = patient.getTriageLevel().getAssessmentMinutes();
+            station.assign(patient, minute + minutes);
+            inTriage.add(new TriageInProgress(patient, station, minute + minutes));
+            emit(EventType.TRIAGE_STARTED, patient, station.getCode(), patient.getCode() + " pasa al triage en "
+                    + station.getCode() + " (" + minutes + " min).");
+        }
+    }
+
+    /** Termina las valoraciones de triage que cumplieron su tiempo y libera sus estaciones. */
+    private void finishTriages() {
+        for (TriageInProgress triage : List.copyOf(inTriage)) {
+            if (triage.endMinute() > minute) {
+                continue;
+            }
+            inTriage.remove(triage);
+            triage.station().release();
+            classify(triage.patient());
+        }
+    }
+
+    /**
+     * Anuncia el nivel de triage y el diagnóstico del paciente y lo pasa a la sala de espera, o lo remite si
+     * ningún médico del hospital puede tratarlo.
+     */
+    private void classify(Patient patient) {
+        TriageLevel triage = patient.getTriageLevel();
         emit(EventType.TRIAGE_ASSIGNED, patient, null,
                 patient.getCode() + " clasificado: " + triage.getDisplayName() + ".");
         if (triage == TriageLevel.I) {

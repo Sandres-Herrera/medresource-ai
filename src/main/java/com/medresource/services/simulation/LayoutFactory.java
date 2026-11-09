@@ -38,9 +38,6 @@ import java.util.Map;
 public class LayoutFactory {
 
     private static final int TRIAGE_COLS = 2;
-    /** Puestos de triage, en la segunda columna del área. */
-    private static final int TRIAGE_STATIONS = 3;
-    private static final int TRIAGE_MIN_ROWS = 1 + TRIAGE_STATIONS;
     /** Columnas de la sala de espera. */
     private static final int WAITING_COLS = 6;
     /** Filas de lugares de la sala de espera: {@code 6 × 6 = 36} sillas. */
@@ -79,6 +76,9 @@ public class LayoutFactory {
         int operatingRooms = hospital.getOperatingRooms().size();
         int morgueCapacity = hospital.getMorgue().getCapacity();
         int staffCount = hospital.getDoctors().size() + hospital.getNurses().size();
+        // Un puesto por estación de triage, uno debajo de otro en la segunda columna del área.
+        int triageStations = hospital.getTriageStations().size();
+        int triageMinRows = 1 + triageStations;
 
         // Anchos de las franjas: la más ancha manda y la otra reparte lo que le sobra.
         int bedCols = columnsFor(beds.size(), MIN_BED_COLS, MAX_BED_COLS);
@@ -94,7 +94,7 @@ public class LayoutFactory {
         int dischargeCols = planCols - icuCols - BLOOD_COLS - operatingCols - morgueCols;
 
         // Alturas de las franjas: la sala más alta manda y las demás se estiran hasta ella.
-        int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, TRIAGE_MIN_ROWS), 1 + rowsFor(beds.size(), wardCols));
+        int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, triageMinRows), 1 + rowsFor(beds.size(), wardCols));
         int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
         int staffTop = topHeight + middleHeight;
@@ -136,7 +136,7 @@ public class LayoutFactory {
         placeStaff(spots, staff, hospital.getDoctors(), hospital.getNurses());
 
         List<Position> triageSpots = new ArrayList<>();
-        for (int index = 0; index < TRIAGE_STATIONS; index++) {
+        for (int index = 0; index < triageStations; index++) {
             triageSpots.add(triage.slot(1 + 2 * index));
         }
         List<Position> waitingSpots = new ArrayList<>();

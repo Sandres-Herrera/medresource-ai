@@ -36,6 +36,25 @@ class TriageLevelTest {
     }
 
     @Test
+    void theMoreStableThePatientTheLongerTheTriageAssessment() {
+        assertEquals(0, TriageLevel.I.getAssessmentMinutes());
+        assertEquals(1, TriageLevel.II.getAssessmentMinutes());
+        assertEquals(2, TriageLevel.III.getAssessmentMinutes());
+        assertEquals(3, TriageLevel.IV.getAssessmentMinutes());
+        assertEquals(3, TriageLevel.V.getAssessmentMinutes());
+    }
+
+    @Test
+    void onlyLevelOneSkipsTheTriageStation() {
+        assertTrue(TriageLevel.I.skipsTriageStation());
+        for (TriageLevel level : TriageLevel.values()) {
+            if (level != TriageLevel.I) {
+                assertFalse(level.skipsTriageStation());
+            }
+        }
+    }
+
+    @Test
     void unconsciousPatientIsTriageOne() {
         assertEquals(TriageLevel.I, Symptom.UNCONSCIOUS.getTriageLevel());
     }
