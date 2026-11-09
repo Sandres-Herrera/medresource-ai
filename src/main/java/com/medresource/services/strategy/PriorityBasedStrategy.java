@@ -63,6 +63,9 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
     /**
      * Busca los recursos que necesita un paciente.
      *
+     * <p>Una cirugía reserva también la cama donde el paciente se recuperará (en UCI si la enfermedad lo
+     * requiere), para que al salir del quirófano tenga a dónde ir.</p>
+     *
      * @param candidate paciente con su diagnóstico
      * @param hospital  hospital con sus recursos
      * @return la asignación, o vacío si falta algún recurso (incluida la enfermería para vigilar a un
@@ -80,7 +83,7 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
         }
 
         Bed bed = null;
-        if (diagnosis.requiresIcu() || treatment.requiresBed()) {
+        if (diagnosis.requiresIcu() || treatment.requiresBed() || treatment.hasRecovery()) {
             List<Bed> beds = diagnosis.requiresIcu() ? hospital.freeIcuBeds() : hospital.freeBeds();
             if (beds.isEmpty() || !hospital.hasNursingCapacityFor(diagnosis.requiresIcu())) {
                 return Optional.empty();
