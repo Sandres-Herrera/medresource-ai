@@ -78,6 +78,7 @@ public final class AnimationDemo {
         timer.addActionListener(event -> {
             time[0] += SPEED * FRAME_MILLIS / 1000.0;
             player.advanceTo(time[0]);
+            panel.showStaff(player.staffMarkers());
             panel.showPatients(player.markers(), player.overflow());
             if (player.isFinished()) {
                 timer.stop();

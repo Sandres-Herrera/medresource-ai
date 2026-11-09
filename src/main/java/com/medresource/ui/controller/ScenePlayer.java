@@ -1,9 +1,11 @@
 package com.medresource.ui.controller;
 
+import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Patient;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.StaffMember;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.ui.render.Motion;
 import com.medresource.ui.render.PatientMarker;
@@ -11,11 +13,13 @@ import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.SceneState;
 import com.medresource.ui.render.SceneTimeline;
 import com.medresource.ui.render.SceneTimeline.TimedEvent;
+import com.medresource.ui.render.StaffMarker;
 
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -31,11 +35,18 @@ import java.util.Set;
  * empiezan a caminar justo entonces; así los pacientes llegan uno tras otro y se mueven al mismo tiempo que
  * otros están en tratamiento. Quien sale de la escena desaparece cuando llega a la puerta de salida.</p>
  *
+ * <p>Los médicos y enfermeros también se mueven: libres, están sentados en su puesto de la sala del personal;
+ * ocupados, se paran junto al paciente que atienden desde que se ve que su tratamiento empezó, y vuelven a su
+ * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
+ * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
+ *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
 public final class ScenePlayer {
 
     private static final double SECONDS_PER_MINUTE = 60.0;
+    /** Dónde se para cada miembro del personal junto a su paciente, a la izquierda del centro de su lugar. */
+    private static final double[] STAFF_OFFSETS_X = {-32.0, -16.0, 0.0};
 
     private final SimulationEngine engine;
     private final HospitalLayout layout;
@@ -46,8 +57,12 @@ public final class ScenePlayer {
     private final Map<String, Motion> motions = new HashMap<>();
     private final Set<String> arrived = new HashSet<>();
     private final List<SimulationEvent> released = new ArrayList<>();
+    private final Map<String, StaffMember> staff = new LinkedHashMap<>();
+    private final Map<String, Motion> staffMotions = new HashMap<>();
+    private final Map<Integer, Map<String, String>> attendedByMinute = new HashMap<>();
     private int fedEvents;
     private double time;
+    private int staffMinute = -1;
 
     /**
      * Prepara la reproducción de una simulación que todavía no empezó.
@@ -70,6 +85,14 @@ public final class ScenePlayer {
         this.renderer = renderer;
         this.state = new SceneState(layout);
         engine.getPatients().forEach(patient -> patients.put(patient.getCode(), patient));
+        List<StaffMember> members = new ArrayList<>(engine.getHospital().getDoctors());
+        members.addAll(engine.getHospital().getNurses());
+        for (StaffMember member : members) {
+            layout.staffSeatOf(member.getCode()).ifPresent(seat -> {
+                staff.put(member.getCode(), member);
+                staffMotions.put(member.getCode(), new Motion(renderer.seatOf(seat)));
+            });
+        }
     }
 
     /**
@@ -85,10 +108,13 @@ public final class ScenePlayer {
         }
         loadUntil((int) (newTime / SECONDS_PER_MINUTE));
         for (TimedEvent timed : timeline.releaseUntil(newTime)) {
+            followStaffMinute(timed.time());
             apply(timed);
         }
+        followStaffMinute(newTime);
         time = newTime;
         motions.values().forEach(motion -> motion.update(time));
+        staffMotions.values().forEach(motion -> motion.update(time));
         removeArrivedDepartures();
     }
 
@@ -128,6 +154,23 @@ public final class ScenePlayer {
             Point2D at = motions.get(placement.patientCode()).getCurrent();
             markers.add(new PatientMarker(patient.getCode(), patient.getTriageLevel(), patient.getSex(),
                     patient.isMinor(), isDead(placement.phase()), at.getX(), at.getY()));
+        }
+        return markers;
+    }
+
+    /**
+     * Médicos y enfermeros que hay que dibujar ahora: primero los médicos y después los enfermeros.
+     *
+     * @return un {@link StaffMarker} por miembro del personal que tiene puesto en el plano
+     */
+    public List<StaffMarker> staffMarkers() {
+        List<StaffMarker> markers = new ArrayList<>();
+        for (StaffMember member : staff.values()) {
+            Point2D at = staffMotions.get(member.getCode()).getCurrent();
+            boolean seated = at.equals(renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow()));
+            markers.add(new StaffMarker(member.getCode(),
+                    member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
+                    at.getX(), at.getY()));
         }
         return markers;
     }
@@ -185,6 +228,51 @@ public final class ScenePlayer {
         List<SimulationEvent> events = engine.getEvents();
         timeline.schedule(minute, events.subList(fedEvents, events.size()));
         fedEvents = events.size();
+        attendedByMinute.put(minute, whoAttendsWhom());
+    }
+
+    /** Anota a qué paciente atiende cada médico y enfermero ocupado, después de simular un minuto. */
+    private Map<String, String> whoAttendsWhom() {
+        Map<String, String> attended = new LinkedHashMap<>();
+        for (StaffMember member : staff.values()) {
+            if (!member.isAvailable() && member.getAssignedPatient() != null) {
+                attended.put(member.getCode(), member.getAssignedPatient().getCode());
+            }
+        }
+        return attended;
+    }
+
+    /** Cuando lo que se ve pasa a otro minuto, el personal toma las tareas que tenía en ese minuto. */
+    private void followStaffMinute(double at) {
+        int minute = (int) (at / SECONDS_PER_MINUTE);
+        if (minute == staffMinute) {
+            return;
+        }
+        staffMinute = minute;
+        attendedByMinute.keySet().removeIf(old -> old < minute);
+        retargetStaff(Math.max(time, minute * SECONDS_PER_MINUTE));
+    }
+
+    /**
+     * Da a cada miembro del personal su destino: junto a su paciente si se ve que el tratamiento ya empezó, o
+     * su puesto en la sala del personal si está libre.
+     */
+    private void retargetStaff(double at) {
+        Map<String, String> attended = attendedByMinute.getOrDefault(staffMinute, Map.of());
+        Map<String, Integer> companions = new HashMap<>();
+        for (StaffMember member : staff.values()) {
+            Point2D target = renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow());
+            String patient = attended.get(member.getCode());
+            if (patient != null && state.phaseOf(patient).orElse(null) == SceneState.Phase.TREATING) {
+                int index = companions.merge(patient, 1, Integer::sum) - 1;
+                Point2D place = renderer.centerOf(state.positionOf(patient).orElseThrow());
+                target = new Point2D.Double(place.getX() + STAFF_OFFSETS_X[Math.min(index,
+                        STAFF_OFFSETS_X.length - 1)], place.getY());
+            }
+            Motion motion = staffMotions.get(member.getCode());
+            motion.update(at);
+            motion.moveTo(target, at);
+        }
     }
 
     /** Aplica un evento a la escena y pone a caminar, desde ese momento, a quien cambió de lugar. */
@@ -197,6 +285,7 @@ public final class ScenePlayer {
         }
         if (SceneState.changesPlacement(event.type())) {
             retarget(timed.time());
+            retargetStaff(timed.time());
         }
     }
 

@@ -12,6 +12,7 @@ import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.Renderer2D;
+import com.medresource.ui.render.StaffMarker;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Dimension;
@@ -191,5 +192,25 @@ class HospitalMapPanelTest {
     void doesNotShowMissingPatientsOrANegativeOverflow() {
         assertThrows(IllegalArgumentException.class, () -> panel.showPatients(null, 0));
         assertThrows(IllegalArgumentException.class, () -> panel.showPatients(List.of(), -1));
+    }
+
+    // ---------- personal ----------
+
+    @Test
+    void showsTheStaffOnTopOfThePlan() {
+        Point2D seat = renderer.seatOf(standard.staffSeatOf("E01").orElseThrow());
+        int x = MARGIN + (int) seat.getX();
+        int y = MARGIN + (int) seat.getY() + 7;
+        int without = fullSizePicture().getRGB(x, y);
+
+        panel.showStaff(List.of(new StaffMarker("E01", null, Sex.FEMALE, true, seat.getX(), seat.getY())));
+
+        assertNotEquals(without, fullSizePicture().getRGB(x, y));
+        assertEquals(Palette.NURSE_UNIFORM.getRGB(), fullSizePicture().getRGB(x, y));
+    }
+
+    @Test
+    void doesNotShowAMissingStaff() {
+        assertThrows(IllegalArgumentException.class, () -> panel.showStaff(null));
     }
 }

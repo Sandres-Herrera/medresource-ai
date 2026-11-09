@@ -1,12 +1,19 @@
 package com.medresource.ui.controller;
 
+import com.medresource.model.BloodType;
 import com.medresource.model.CaseConfig;
+import com.medresource.model.Disease;
+import com.medresource.model.DiseaseCatalog;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Patient;
+import com.medresource.model.PatientProfile;
 import com.medresource.model.Scenario;
+import com.medresource.model.Sex;
+import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.TreatmentType;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
@@ -17,6 +24,7 @@ import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
 import com.medresource.ui.render.SceneState.Phase;
+import com.medresource.ui.render.StaffMarker;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Dimension;
@@ -24,6 +32,7 @@ import java.awt.geom.Point2D;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Set;
@@ -323,5 +332,79 @@ class ScenePlayerTest {
             assertEquals(first.overflow(), second.overflow());
         }
         assertFalse(tick(second));
+    }
+
+    // ---------- personal ----------
+
+    /** Caso de un solo paciente con dengue, que se hospitaliza con un médico de medicina interna y un enfermero. */
+    private static SimulationCase oneDenguePatient() {
+        Disease dengue = DiseaseCatalog.findById(2).orElseThrow();
+        PatientProfile profile = new PatientProfile(1, 30, Sex.MALE, BloodType.O_POSITIVE, dengue,
+                dengue.getSymptoms(), 0, 80.0, false);
+        return new SimulationCase(new CaseConfig(1L, Scenario.NORMAL, 1, 60), List.of(profile));
+    }
+
+    private Point2D staffAt(ScenePlayer player, String code) {
+        StaffMarker marker = player.staffMarkers().stream()
+                .filter(member -> member.code().equals(code))
+                .findFirst()
+                .orElseThrow();
+        return new Point2D.Double(marker.x(), marker.y());
+    }
+
+    @Test
+    void theStaffStartsSeatedInTheStaffRoom() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        ScenePlayer player = new ScenePlayer(engineOf(HospitalConfig.standard(), Scenario.NORMAL, 5), layout,
+                renderer);
+
+        player.advanceTo(0);
+
+        List<StaffMarker> staff = player.staffMarkers();
+        assertEquals(40, staff.size());
+        for (StaffMarker member : staff) {
+            Point2D seat = renderer.seatOf(layout.staffSeatOf(member.code()).orElseThrow());
+            assertEquals(seat, new Point2D.Double(member.x(), member.y()), member.code());
+            assertTrue(member.seated(), member.code());
+        }
+    }
+
+    @Test
+    void theDoctorsComeFirstAndOnlyTheyHaveASpecialty() {
+        List<StaffMarker> staff = standard().staffMarkers();
+
+        assertEquals("D01", staff.get(0).code());
+        assertTrue(staff.get(0).isDoctor());
+        assertEquals("E01", staff.get(16).code());
+        assertFalse(staff.get(16).isDoctor());
+    }
+
+    @Test
+    void theDoctorAndTheNurseStandNextToTheirPatientAndThenGoBackToTheirSeats() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P001").orElse(null) != Phase.TREATING) {
+            tick(player);
+        }
+        String doctor = engine.getHospital().getDoctors().stream()
+                .filter(member -> !member.isAvailable()).findFirst().orElseThrow().getCode();
+        String nurse = engine.getHospital().getNurses().stream()
+                .filter(member -> !member.isAvailable()).findFirst().orElseThrow().getCode();
+
+        player.advanceTo(player.getTime() + Motion.TRAVEL_SECONDS + 1);
+
+        Point2D bed = renderer.centerOf(player.getState().positionOf("P001").orElseThrow());
+        assertEquals(new Point2D.Double(bed.getX() - 32, bed.getY()), staffAt(player, doctor));
+        assertEquals(new Point2D.Double(bed.getX() - 16, bed.getY()), staffAt(player, nurse));
+        assertFalse(player.staffMarkers().stream().filter(member -> member.code().equals(doctor))
+                .findFirst().orElseThrow().seated());
+
+        player.advanceTo(player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0 + Motion.TRAVEL_SECONDS);
+
+        assertEquals(renderer.seatOf(layout.staffSeatOf(doctor).orElseThrow()), staffAt(player, doctor));
+        assertEquals(renderer.seatOf(layout.staffSeatOf(nurse).orElseThrow()), staffAt(player, nurse));
+        assertEquals(Phase.TREATING, player.getState().phaseOf("P001").orElseThrow());
     }
 }
