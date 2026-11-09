@@ -63,7 +63,7 @@ class SceneTimelineTest {
         timeline.schedule(0, List.of(
                 event(0, EventType.TREATMENT_FINISHED, "P009"),
                 event(0, EventType.ARRIVAL, "P001"),
-                event(0, EventType.TRIAGE_ASSIGNED, "P001"),
+                event(0, EventType.EMERGENCY_ALERT, "P001"),
                 event(0, EventType.DIAGNOSIS, "P001")));
 
         List<TimedEvent> all = timeline.releaseUntil(60);

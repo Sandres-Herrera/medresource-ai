@@ -35,9 +35,18 @@ class SceneStateTest {
         return new SimulationEvent(0, type, patient, resource, "evento de prueba");
     }
 
+    /** Los pacientes llegan y hacen fila en el triage, sin que los clasifiquen todavía. */
+    private void walkIn(String... patients) {
+        for (String patient : patients) {
+            scene.apply(event(EventType.ARRIVAL, patient, null));
+        }
+    }
+
+    /** Los pacientes llegan y los clasifican, así que pasan a la sala de espera. */
     private void arrive(String... patients) {
         for (String patient : patients) {
             scene.apply(event(EventType.ARRIVAL, patient, null));
+            scene.apply(event(EventType.TRIAGE_ASSIGNED, patient, null));
         }
     }
 
@@ -82,7 +91,86 @@ class SceneStateTest {
     // ---------- llegada y espera ----------
 
     @Test
-    void aPatientThatArrivesWaitsInTheFirstSeat() {
+    void aPatientThatArrivesQueuesInTheTriage() {
+        walkIn("P001");
+
+        assertEquals(Phase.TRIAGE_QUEUE, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getTriageQueueSpots().get(0), positionOf("P001"));
+    }
+
+    @Test
+    void thePatientsQueueInTheTriageInOrderOfArrival() {
+        walkIn("P001", "P002", "P003");
+
+        assertEquals(layout.getTriageQueueSpots().get(0), positionOf("P001"));
+        assertEquals(layout.getTriageQueueSpots().get(1), positionOf("P002"));
+        assertEquals(layout.getTriageQueueSpots().get(2), positionOf("P003"));
+    }
+
+    @Test
+    void aPatientWhoStartsTriageGoesToTheStationAndTheQueueMovesUp() {
+        walkIn("P001", "P002");
+
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", "T2"));
+
+        assertEquals(Phase.IN_TRIAGE, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getTriageSpots().get(1), positionOf("P001"));
+        assertEquals(layout.getTriageQueueSpots().get(0), positionOf("P002"));
+    }
+
+    @Test
+    void aPatientWhoSkipsTheStationStaysWhereHeIsUntilClassified() {
+        walkIn("P001");
+
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", null));
+
+        assertEquals(Phase.TRIAGE_QUEUE, scene.phaseOf("P001").orElseThrow());
+        scene.apply(event(EventType.TRIAGE_ASSIGNED, "P001", null));
+        assertEquals(Phase.QUEUED, scene.phaseOf("P001").orElseThrow());
+    }
+
+    @Test
+    void aTriageStationThatIsNotOnThePlanIsRejected() {
+        walkIn("P001");
+
+        assertThrows(IllegalStateException.class, () -> scene.apply(event(EventType.TRIAGE_STARTED, "P001", "T9")));
+    }
+
+    @Test
+    void thePatientsWhoDoNotFitInTheTriageQueueShareItsLastPlace() {
+        int places = layout.getTriageQueueSpots().size();
+        for (int number = 1; number <= places + 2; number++) {
+            walkIn("P" + number);
+        }
+
+        assertEquals(layout.getTriageQueueSpots().get(places - 1), positionOf("P" + (places + 2)));
+        assertEquals(0, scene.overflow());
+    }
+
+    @Test
+    void aClassifiedPatientLeavesTheStationForTheFirstSeat() {
+        walkIn("P001");
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", "T1"));
+
+        scene.apply(event(EventType.TRIAGE_ASSIGNED, "P001", null));
+
+        assertEquals(Phase.QUEUED, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getWaitingSpots().get(0), positionOf("P001"));
+    }
+
+    @Test
+    void aPatientWhoDiesInTriageStaysAtTheStation() {
+        walkIn("P001");
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", "T3"));
+
+        scene.apply(event(EventType.DEATH, "P001", "T3"));
+
+        assertEquals(Phase.DECEASED, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getTriageSpots().get(2), positionOf("P001"));
+    }
+
+    @Test
+    void aPatientThatIsClassifiedWaitsInTheFirstSeat() {
         arrive("P001");
 
         assertEquals(Phase.QUEUED, scene.phaseOf("P001").orElseThrow());
@@ -141,7 +229,8 @@ class SceneStateTest {
 
     @Test
     void saysWhichEventsChangeThePlaceOfAPatient() {
-        Set<EventType> moving = EnumSet.of(EventType.ARRIVAL, EventType.TREATMENT_STARTED,
+        Set<EventType> moving = EnumSet.of(EventType.ARRIVAL, EventType.TRIAGE_STARTED,
+                EventType.TRIAGE_ASSIGNED, EventType.TREATMENT_STARTED,
                 EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH, EventType.MORGUE_ADMISSION,
                 EventType.MORGUE_RELEASE, EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE,
                 EventType.REFERRAL, EventType.UNATTENDED);
@@ -154,7 +243,7 @@ class SceneStateTest {
     @Test
     void theEventsThatMoveNoOneAreIgnored() {
         arrive("P001");
-        List<EventType> quiet = List.of(EventType.TRIAGE_ASSIGNED, EventType.DIAGNOSIS, EventType.EMERGENCY_ALERT,
+        List<EventType> quiet = List.of(EventType.DIAGNOSIS, EventType.EMERGENCY_ALERT,
                 EventType.REEVALUATION, EventType.TREATMENT_FINISHED);
 
         for (EventType type : quiet) {
