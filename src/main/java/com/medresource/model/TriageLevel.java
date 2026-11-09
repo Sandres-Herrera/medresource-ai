@@ -6,23 +6,29 @@ package com.medresource.model;
  *
  * <p>El nivel I es el más urgente y el V el menos urgente. El tiempo objetivo
  * de atención de los niveles III a V es un supuesto de la simulación.</p>
+ *
+ * <p>Cada nivel indica además cuánto dura su valoración en una estación de triage
+ * (supuesto): cuanto más estable el paciente, más completa es la valoración. El
+ * nivel I no se detiene en el triage: se reconoce en la puerta y pasa directo.</p>
  */
 public enum TriageLevel {
 
-    I(1, "Triage I — Inmediato", 0),
-    II(2, "Triage II — Emergencia", 30),
-    III(3, "Triage III — Urgente", 120),
-    IV(4, "Triage IV — Menos urgente", 240),
-    V(5, "Triage V — No urgente", 480);
+    I(1, "Triage I — Inmediato", 0, 0),
+    II(2, "Triage II — Emergencia", 30, 1),
+    III(3, "Triage III — Urgente", 120, 2),
+    IV(4, "Triage IV — Menos urgente", 240, 3),
+    V(5, "Triage V — No urgente", 480, 3);
 
     private final int level;
     private final String displayName;
     private final int targetMinutes;
+    private final int assessmentMinutes;
 
-    TriageLevel(int level, String displayName, int targetMinutes) {
+    TriageLevel(int level, String displayName, int targetMinutes, int assessmentMinutes) {
         this.level = level;
         this.displayName = displayName;
         this.targetMinutes = targetMinutes;
+        this.assessmentMinutes = assessmentMinutes;
     }
 
     /**
@@ -50,6 +56,24 @@ public enum TriageLevel {
      */
     public int getTargetMinutes() {
         return targetMinutes;
+    }
+
+    /**
+     * Devuelve cuántos minutos pasa el paciente en una estación de triage mientras lo valoran.
+     *
+     * @return minutos de valoración; 0 si pasa directo sin detenerse (nivel I)
+     */
+    public int getAssessmentMinutes() {
+        return assessmentMinutes;
+    }
+
+    /**
+     * Indica si el paciente pasa directo, sin hacer fila ni ocupar una estación de triage.
+     *
+     * @return {@code true} si su valoración no toma tiempo
+     */
+    public boolean skipsTriageStation() {
+        return assessmentMinutes == 0;
     }
 
     /**
