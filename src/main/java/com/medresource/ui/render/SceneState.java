@@ -22,9 +22,10 @@ import java.util.Set;
  * <p>Lee los eventos en el orden en que el motor los emite y deduce el lugar de cada paciente: aparece en la
  * entrada al llegar y hace fila en el triage hasta que una estación lo recibe; cuando lo clasifican pasa a una
  * silla de la sala de espera (por orden de llegada, y todos avanzan una silla cuando alguien sale de la cola,
- * igual que en la fila del triage), pasa al lugar de su recurso (cama, quirófano o médico) al empezar su
- * tratamiento, se queda donde está al morir y pasa a un lugar de la morgue cuando el motor lo manda; quien
- * recibe el alta, es remitido o se va sin atención sale por la zona de alta o salida.</p>
+ * igual que en la fila del triage), pasa al lugar de su recurso (cama, quirófano o, en una consulta, el
+ * escritorio de su médico en los consultorios) al empezar su tratamiento, se queda donde está al morir y pasa
+ * a un lugar de la morgue cuando el motor lo manda; quien recibe el alta, es remitido o se va sin atención
+ * sale por la zona de alta o salida.</p>
  *
  * <p>No tiene nada de Swing: solo calcula lugares. Cuando hay más pacientes esperando que sillas, los que no
  * caben se acumulan en la última silla y {@link #overflow()} dice cuántos son.</p>
@@ -239,7 +240,7 @@ public final class SceneState {
 
     private void startTreatment(SimulationEvent event) {
         Entry entry = known(event.patientCode());
-        Position place = layout.positionOf(event.resourceCode())
+        Position place = layout.treatmentPlaceOf(event.resourceCode())
                 .orElseThrow(() -> new IllegalStateException(
                         "El plano no tiene el recurso " + event.resourceCode() + "."));
         entry.phase = Phase.TREATING;
@@ -248,7 +249,7 @@ public final class SceneState {
 
     private void die(SimulationEvent event) {
         Entry entry = known(event.patientCode());
-        Position where = layout.positionOf(event.resourceCode()).orElse(currentPosition(event.patientCode()));
+        Position where = layout.treatmentPlaceOf(event.resourceCode()).orElse(currentPosition(event.patientCode()));
         entry.phase = Phase.DECEASED;
         entry.position = where;
     }

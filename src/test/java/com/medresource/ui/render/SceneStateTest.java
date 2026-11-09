@@ -310,12 +310,23 @@ class SceneStateTest {
     }
 
     @Test
-    void aPatientSeenOnlyByADoctorGoesToTheDoctor() {
+    void aPatientInAConsultationGoesToTheDeskOfTheDoctorInTheConsultingRooms() {
         arrive("P001");
 
         scene.apply(event(EventType.TREATMENT_STARTED, "P001", "D03"));
 
-        assertEquals(spot("D03"), positionOf("P001"));
+        assertEquals(layout.consultDeskOf("D03").orElseThrow(), positionOf("P001"));
+        assertEquals(ZoneType.CONSULTATION, layout.areaAt(positionOf("P001")).orElseThrow().zone());
+    }
+
+    @Test
+    void aPatientWhoDiesInAConsultationStaysAtTheDesk() {
+        arrive("P001");
+        scene.apply(event(EventType.TREATMENT_STARTED, "P001", "D03"));
+
+        scene.apply(event(EventType.DEATH, "P001", "D03"));
+
+        assertEquals(layout.consultDeskOf("D03").orElseThrow(), positionOf("P001"));
     }
 
     @Test

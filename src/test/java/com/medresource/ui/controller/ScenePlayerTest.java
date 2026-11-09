@@ -336,12 +336,17 @@ class ScenePlayerTest {
 
     // ---------- personal ----------
 
+    /** Caso de un solo paciente con la enfermedad indicada, que llega en el minuto 0. */
+    private static SimulationCase onePatientWith(int diseaseId) {
+        Disease disease = DiseaseCatalog.findById(diseaseId).orElseThrow();
+        PatientProfile profile = new PatientProfile(1, 30, Sex.MALE, BloodType.O_POSITIVE, disease,
+                disease.getSymptoms(), 0, 80.0, false);
+        return new SimulationCase(new CaseConfig(1L, Scenario.NORMAL, 1, 60), List.of(profile));
+    }
+
     /** Caso de un solo paciente con dengue, que se hospitaliza con un médico de medicina interna y un enfermero. */
     private static SimulationCase oneDenguePatient() {
-        Disease dengue = DiseaseCatalog.findById(2).orElseThrow();
-        PatientProfile profile = new PatientProfile(1, 30, Sex.MALE, BloodType.O_POSITIVE, dengue,
-                dengue.getSymptoms(), 0, 80.0, false);
-        return new SimulationCase(new CaseConfig(1L, Scenario.NORMAL, 1, 60), List.of(profile));
+        return onePatientWith(2);
     }
 
     private Point2D staffAt(ScenePlayer player, String code) {
@@ -406,5 +411,24 @@ class ScenePlayerTest {
         assertEquals(renderer.seatOf(layout.staffSeatOf(doctor).orElseThrow()), staffAt(player, doctor));
         assertEquals(renderer.seatOf(layout.staffSeatOf(nurse).orElseThrow()), staffAt(player, nurse));
         assertEquals(Phase.TREATING, player.getState().phaseOf("P001").orElseThrow());
+    }
+
+    @Test
+    void theDoctorAttendsAConsultationAtTheirDeskInTheConsultingRooms() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(1),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P001").orElse(null) != Phase.TREATING) {
+            tick(player);
+        }
+        String doctor = engine.getHospital().getDoctors().stream()
+                .filter(member -> !member.isAvailable()).findFirst().orElseThrow().getCode();
+
+        player.advanceTo(player.getTime() + Motion.TRAVEL_SECONDS + 1);
+
+        Point2D desk = renderer.centerOf(layout.consultDeskOf(doctor).orElseThrow());
+        assertEquals(layout.consultDeskOf(doctor).orElseThrow(), player.getState().positionOf("P001").orElseThrow());
+        assertEquals(new Point2D.Double(desk.getX() - 32, desk.getY()), staffAt(player, doctor));
     }
 }
