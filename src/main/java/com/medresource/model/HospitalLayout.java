@@ -17,6 +17,9 @@ import java.util.Set;
  * sillas de la sala de espera, la fila del triage, los tipos de sangre del banco de sangre y los lugares de
  * la morgue) son listas ordenadas.</p>
  *
+ * <p>Los médicos y enfermeros tienen su {@linkplain StaffSeat puesto} en una mesa de la sala del personal,
+ * dos por mesa; se buscan por su código ({@code D01}, {@code E01}) igual que los demás recursos.</p>
+ *
  * <p>Los pacientes llegan por la {@linkplain #getEntrance() entrada}, que está en el área de triage. Es
  * inmutable: las listas que devuelve no se pueden modificar.</p>
  */
@@ -31,6 +34,7 @@ public final class HospitalLayout {
     private final List<Position> waitingSpots;
     private final List<Position> bloodSpots;
     private final List<Position> morgueSpots;
+    private final Map<String, StaffSeat> staffSeats;
 
     /**
      * Crea el plano validando que sea coherente.
@@ -52,8 +56,32 @@ public final class HospitalLayout {
     public HospitalLayout(int cols, int rows, List<Area> areas, Map<String, Position> spots,
                           Position entrance, List<Position> triageSpots, List<Position> waitingSpots,
                           List<Position> bloodSpots, List<Position> morgueSpots) {
+        this(cols, rows, areas, spots, entrance, triageSpots, waitingSpots, bloodSpots, morgueSpots, Map.of());
+    }
+
+    /**
+     * Crea el plano con los puestos del personal en las mesas de su sala.
+     *
+     * @param cols         columnas del plano, al menos 1
+     * @param rows         filas del plano, al menos 1
+     * @param areas        áreas del plano; deben quedar dentro del plano y no pisarse
+     * @param spots        lugar de cada recurso según su código; cada lugar debe estar en un área
+     * @param entrance     lugar por donde llegan los pacientes, dentro de un área de triage
+     * @param triageSpots  puestos de triage, al menos uno, dentro de áreas de triage
+     * @param waitingSpots lugares de la sala de espera, al menos uno, dentro de salas de espera
+     * @param bloodSpots   lugares del banco de sangre, dentro de áreas de banco de sangre
+     * @param morgueSpots  lugares de la morgue, dentro de áreas de morgue
+     * @param staffSeats   puesto de cada médico y enfermero según su código, en mesas de una sala del personal
+     * @throws IllegalArgumentException si falta algún dato o el plano no es coherente (ver el otro
+     *                                  constructor), si un puesto queda fuera de una sala del personal, si dos
+     *                                  personas comparten el mismo puesto, si una mesa coincide con otro lugar
+     *                                  o si un código tiene a la vez lugar y puesto
+     */
+    public HospitalLayout(int cols, int rows, List<Area> areas, Map<String, Position> spots,
+                          Position entrance, List<Position> triageSpots, List<Position> waitingSpots,
+                          List<Position> bloodSpots, List<Position> morgueSpots, Map<String, StaffSeat> staffSeats) {
         if (areas == null || spots == null || entrance == null || triageSpots == null
-                || waitingSpots == null || bloodSpots == null || morgueSpots == null) {
+                || waitingSpots == null || bloodSpots == null || morgueSpots == null || staffSeats == null) {
             throw new IllegalArgumentException("Faltan datos del plano del hospital.");
         }
         if (cols < 1 || rows < 1) {
@@ -68,6 +96,7 @@ public final class HospitalLayout {
         this.waitingSpots = List.copyOf(waitingSpots);
         this.bloodSpots = List.copyOf(bloodSpots);
         this.morgueSpots = List.copyOf(morgueSpots);
+        this.staffSeats = Map.copyOf(staffSeats);
         validate();
     }
 
@@ -103,6 +132,24 @@ public final class HospitalLayout {
             }
             claim(used, spot.getValue());
         }
+        validateStaffSeats(used);
+    }
+
+    /** Cada puesto va en una mesa de la sala del personal, sin repetirse; las mesas no pisan otros lugares. */
+    private void validateStaffSeats(Set<Position> used) {
+        Set<StaffSeat> taken = new HashSet<>();
+        Set<Position> tables = new HashSet<>();
+        for (Map.Entry<String, StaffSeat> seat : staffSeats.entrySet()) {
+            if (spots.containsKey(seat.getKey())) {
+                throw new IllegalArgumentException("El código " + seat.getKey() + " tiene lugar y puesto a la vez.");
+            }
+            requireIn(seat.getValue().table(), ZoneType.STAFF_ROOM, "El puesto de " + seat.getKey());
+            if (!taken.add(seat.getValue())) {
+                throw new IllegalArgumentException("Dos personas comparten el puesto de " + seat.getKey() + ".");
+            }
+            tables.add(seat.getValue().table());
+        }
+        tables.forEach(table -> claim(used, table));
     }
 
     private void claim(Set<Position> used, Position spot) {
@@ -152,7 +199,7 @@ public final class HospitalLayout {
 
     /**
      * Busca el lugar de un recurso por su código. Una estación de triage ({@code T1}, {@code T2}…) está en
-     * el puesto de triage de su mismo número.
+     * el puesto de triage de su mismo número, y un médico o enfermero, en la mesa de su puesto.
      *
      * @param code código del recurso, el mismo que usa el motor en sus eventos
      * @return la casilla del recurso, o vacío si el plano no tiene ese código
@@ -165,10 +212,29 @@ public final class HospitalLayout {
         if (spot != null) {
             return Optional.of(spot);
         }
+        StaffSeat seat = staffSeats.get(code);
+        if (seat != null) {
+            return Optional.of(seat.table());
+        }
         int station = TriageStation.numberOf(code);
         return station >= 1 && station <= triageSpots.size()
                 ? Optional.of(triageSpots.get(station - 1))
                 : Optional.empty();
+    }
+
+    /**
+     * Busca el puesto de un médico o enfermero en la sala del personal.
+     *
+     * @param code código del médico o enfermero
+     * @return su puesto, o vacío si el plano no le asigna uno
+     */
+    public Optional<StaffSeat> staffSeatOf(String code) {
+        return code == null ? Optional.empty() : Optional.ofNullable(staffSeats.get(code));
+    }
+
+    /** Códigos de los médicos y enfermeros que tienen puesto en la sala del personal. */
+    public Set<String> getStaffCodes() {
+        return new HashSet<>(staffSeats.keySet());
     }
 
     /** Códigos de todos los recursos que tienen un lugar en el plano. */
