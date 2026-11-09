@@ -49,9 +49,10 @@ class PaletteTest {
     @Test
     void theMarksAreDifferentFromEachOtherSoTheyCanBeTellApart() {
         Set<Color> marks = Set.of(Palette.CARD, Palette.OPERATING_TABLE, Palette.MORGUE_SLAB, Palette.STAFF_SEAT,
-                Palette.WAITING_SEAT, Palette.TRIAGE_STATION, Palette.BLOOD_UNIT, Palette.ENTRANCE);
+                Palette.STAFF_TABLE, Palette.WAITING_SEAT, Palette.TRIAGE_STATION, Palette.BLOOD_UNIT,
+                Palette.ENTRANCE);
 
-        assertEquals(8, marks.size());
+        assertEquals(9, marks.size());
     }
 
     @Test

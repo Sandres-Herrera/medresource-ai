@@ -25,8 +25,10 @@ public final class Palette {
     public static final Color OPERATING_TABLE = new Color(0xB0, 0xBE, 0xC5);
     /** Lugar de la morgue. */
     public static final Color MORGUE_SLAB = new Color(0x78, 0x90, 0x9C);
-    /** Puesto del personal en su sala. */
+    /** Silla de un médico o enfermero en la sala del personal. */
     public static final Color STAFF_SEAT = new Color(0x4F, 0x7C, 0xAC);
+    /** Mesa de la sala del personal, con dos sillas. */
+    public static final Color STAFF_TABLE = new Color(0xE6, 0xDC, 0xC8);
     /** Silla de la sala de espera. */
     public static final Color WAITING_SEAT = new Color(0xA1, 0x88, 0x7F);
     /** Puesto de triage. */

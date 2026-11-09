@@ -10,6 +10,7 @@ import com.medresource.model.HospitalLayout;
 import com.medresource.model.Nurse;
 import com.medresource.model.OperatingRoom;
 import com.medresource.model.Position;
+import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
 
@@ -72,10 +73,12 @@ class LayoutFactoryTest {
             hospital.getBeds().forEach(bed -> expected.add(bed.getCode()));
             hospital.getIcuBeds().forEach(bed -> expected.add(bed.getCode()));
             hospital.getOperatingRooms().forEach(room -> expected.add(room.getCode()));
-            hospital.getDoctors().forEach(doctor -> expected.add(doctor.getCode()));
-            hospital.getNurses().forEach(nurse -> expected.add(nurse.getCode()));
+            Set<String> staff = new HashSet<>();
+            hospital.getDoctors().forEach(doctor -> staff.add(doctor.getCode()));
+            hospital.getNurses().forEach(nurse -> staff.add(nurse.getCode()));
 
             assertEquals(expected, layout.getResourceCodes());
+            assertEquals(staff, layout.getStaffCodes());
         }
     }
 
@@ -123,17 +126,30 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
         Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-        assertEquals(staff.slot(0), layout.positionOf("D01").orElseThrow());
-        assertEquals(staff.slot(16), layout.positionOf("E01").orElseThrow());
+        assertEquals(new StaffSeat(staff.slot(0), 0), layout.staffSeatOf("D01").orElseThrow());
+        assertEquals(new StaffSeat(staff.slot(0), 1), layout.staffSeatOf("D02").orElseThrow());
+        assertEquals(new StaffSeat(staff.slot(8), 0), layout.staffSeatOf("E01").orElseThrow());
     }
 
     @Test
-    void theStaffRoomHasASpotForEveryone() {
+    void theStaffRoomHasASeatForEveryone() {
         for (HospitalConfig config : sizes()) {
-            Area staff = onlyAreaOf(layoutOf(config), ZoneType.STAFF_ROOM);
+            HospitalLayout layout = layoutOf(config);
+            Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-            assertTrue(staff.slotCount() >= config.doctors() + config.nurses());
+            assertEquals(config.doctors() + config.nurses(), layout.getStaffCodes().size());
+            assertTrue(staff.slotCount() * StaffSeat.SEATS_PER_TABLE >= config.doctors() + config.nurses());
         }
+    }
+
+    @Test
+    void twoStaffMembersShareEachTableSoTheStaffRoomIsShort() {
+        HospitalLayout layout = layoutOf(HospitalConfig.standard());
+        Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
+
+        assertEquals(2, staff.rows());
+        assertEquals(layout.staffSeatOf("D03").orElseThrow().table(),
+                layout.staffSeatOf("D04").orElseThrow().table());
     }
 
     // ---------- áreas ----------
@@ -419,7 +435,7 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
 
         assertEquals(20, layout.getCols());
-        assertEquals(14, layout.getRows());
+        assertEquals(13, layout.getRows());
     }
 
     @Test

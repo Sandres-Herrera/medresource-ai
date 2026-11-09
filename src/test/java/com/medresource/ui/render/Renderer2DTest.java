@@ -4,6 +4,7 @@ import com.medresource.model.Area;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
+import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
@@ -13,6 +14,7 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -116,9 +118,29 @@ class Renderer2DTest {
     }
 
     @Test
-    void drawsASeatWhereEachMemberOfTheStaffIs() {
-        assertEquals(Palette.STAFF_SEAT.getRGB(), cardCornerOf(layout.positionOf("D01").orElseThrow()));
-        assertEquals(Palette.STAFF_SEAT.getRGB(), cardCornerOf(layout.positionOf("E01").orElseThrow()));
+    void drawsATableForEveryTwoMembersOfTheStaff() {
+        assertEquals(Palette.STAFF_TABLE.getRGB(), cardCornerOf(layout.positionOf("D01").orElseThrow()));
+        assertEquals(Palette.STAFF_TABLE.getRGB(), cardCornerOf(layout.positionOf("E01").orElseThrow()));
+    }
+
+    @Test
+    void drawsAChairWhereEachMemberOfTheStaffSits() {
+        for (String code : List.of("D01", "D02", "E01", "E24")) {
+            Point2D seat = renderer.seatOf(layout.staffSeatOf(code).orElseThrow());
+
+            assertEquals(Palette.STAFF_SEAT.getRGB(), image.getRGB((int) seat.getX(), (int) seat.getY()), code);
+        }
+    }
+
+    @Test
+    void theTwoSeatsOfATableAreAQuarterOfACellLeftAndRightOfItsCenter() {
+        Position table = new Position(2, 3);
+        Point2D center = renderer.centerOf(table);
+
+        assertEquals(center.getX() - CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 0)).getX(), 0.0);
+        assertEquals(center.getX() + CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 1)).getX(), 0.0);
+        assertEquals(center.getY(), renderer.seatOf(new StaffSeat(table, 1)).getY(), 0.0);
+        assertThrows(IllegalArgumentException.class, () -> renderer.seatOf(null));
     }
 
     @Test
@@ -183,21 +205,6 @@ class Renderer2DTest {
             assertTrue(countLabelPixels(area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W, 30) > 0,
                     "Título de " + area.title());
         }
-    }
-
-    @Test
-    void writesTheCodeOfTheStaffInWhiteOverTheirBlueCard() {
-        Position doctor = layout.positionOf("D01").orElseThrow();
-        int white = 0;
-        for (int y = 0; y < CELL_H; y++) {
-            for (int x = 0; x < CELL_W; x++) {
-                if (image.getRGB(doctor.col() * CELL_W + x, doctor.row() * CELL_H + y) == Palette.CARD.getRGB()) {
-                    white++;
-                }
-            }
-        }
-
-        assertTrue(white > 0);
     }
 
     @Test
