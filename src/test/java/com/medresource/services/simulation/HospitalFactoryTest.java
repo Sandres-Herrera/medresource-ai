@@ -105,8 +105,37 @@ class HospitalFactoryTest {
         for (Specialty specialty : Specialty.values()) {
             assertTrue(countSpecialty(hospital, specialty) >= 1, specialty.name());
         }
-        assertEquals(3, countSpecialty(hospital, Specialty.EMERGENCY_MEDICINE));
-        assertEquals(3, countSpecialty(hospital, Specialty.GENERAL_MEDICINE));
+    }
+
+    @Test
+    void standardDoctorsFollowTheDemandOfEachSpecialty() {
+        Hospital hospital = standardHospital();
+
+        assertEquals(5, countSpecialty(hospital, Specialty.INTERNAL_MEDICINE));
+        assertEquals(3, countSpecialty(hospital, Specialty.SURGERY));
+        assertEquals(3, countSpecialty(hospital, Specialty.TRAUMATOLOGY));
+        assertEquals(2, countSpecialty(hospital, Specialty.GENERAL_MEDICINE));
+        assertEquals(2, countSpecialty(hospital, Specialty.EMERGENCY_MEDICINE));
+        assertEquals(1, countSpecialty(hospital, Specialty.PEDIATRICS));
+    }
+
+    @Test
+    void theFirstSixDoctorsAreOneOfEachSpecialty() {
+        Hospital hospital = factory.create(new HospitalConfig(10, 2, 1, 6, 4, 5, 3));
+
+        for (Specialty specialty : Specialty.values()) {
+            assertEquals(1, countSpecialty(hospital, specialty), specialty.name());
+        }
+    }
+
+    @Test
+    void aBiggerHospitalKeepsTheProportionOfSpecialties() {
+        Hospital hospital = factory.create(new HospitalConfig(60, 12, 8, 32, 48, 20, 10));
+
+        assertEquals(10, countSpecialty(hospital, Specialty.INTERNAL_MEDICINE));
+        assertEquals(6, countSpecialty(hospital, Specialty.SURGERY));
+        assertEquals(6, countSpecialty(hospital, Specialty.TRAUMATOLOGY));
+        assertEquals(2, countSpecialty(hospital, Specialty.PEDIATRICS));
     }
 
     @Test
