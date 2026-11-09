@@ -21,7 +21,7 @@ import java.util.List;
  * <p>Cada persona es una figura del mismo tamaño que la de un paciente, centrada en su punto. Mientras está
  * sentada en su puesto lleva su código debajo; junto a un paciente no, para no tapar el código de la cama. El
  * médico lleva bata blanca con una franja del color de su especialidad a la altura del pecho; el
- * enfermero, uniforme azul y gorro blanco. Igual que los pacientes, el cuerpo es un vestido para las mujeres
+ * enfermero, uniforme verde agua y gorro blanco. Igual que los pacientes, el cuerpo es un vestido para las mujeres
  * y un tronco para los hombres.</p>
  *
  * <p>Solo usa puntos del mundo, así sirve igual para la vista 2D y para la 2.5D.</p>

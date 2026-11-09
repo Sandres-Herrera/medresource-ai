@@ -90,4 +90,18 @@ class PaletteTest {
     void doctorsAndNursesAreDressedDifferently() {
         assertNotEquals(Palette.DOCTOR_COAT, Palette.NURSE_UNIFORM);
     }
+
+    private static double distance(Color first, Color second) {
+        int red = first.getRed() - second.getRed();
+        int green = first.getGreen() - second.getGreen();
+        int blue = first.getBlue() - second.getBlue();
+        return Math.sqrt(red * red + green * green + blue * blue);
+    }
+
+    @Test
+    void aNurseCannotBeMistakenForAPatientOfAnyTriageLevel() {
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.NURSE_UNIFORM, Palette.triage(level)) > 80, level.name());
+        }
+    }
 }

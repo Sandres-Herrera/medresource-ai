@@ -52,8 +52,8 @@ public final class Palette {
     public static final Color ENTRANCE = new Color(0x2E, 0x9E, 0x4F);
     /** Bata de los médicos. */
     public static final Color DOCTOR_COAT = new Color(0xFA, 0xFA, 0xFA);
-    /** Uniforme de los enfermeros. */
-    public static final Color NURSE_UNIFORM = new Color(0x1E, 0x88, 0xE5);
+    /** Uniforme de los enfermeros: verde agua, lejos de los colores de triage para no confundirlos con pacientes. */
+    public static final Color NURSE_UNIFORM = new Color(0x4D, 0xB6, 0xAC);
 
     private Palette() {
     }
