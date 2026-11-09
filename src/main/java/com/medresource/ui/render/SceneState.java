@@ -55,9 +55,9 @@ public final class SceneState {
 
     /** Eventos que cambian el lugar de algún paciente; los demás no mueven a nadie. */
     private static final Set<EventType> PLACE_CHANGES = EnumSet.of(EventType.ARRIVAL,
-            EventType.TREATMENT_STARTED, EventType.ICU_ADMISSION, EventType.DEATH, EventType.MORGUE_ADMISSION,
-            EventType.MORGUE_RELEASE, EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL,
-            EventType.UNATTENDED);
+            EventType.TREATMENT_STARTED, EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH,
+            EventType.MORGUE_ADMISSION, EventType.MORGUE_RELEASE, EventType.DISCHARGE,
+            EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL, EventType.UNATTENDED);
 
     private final HospitalLayout layout;
     private final Map<String, Entry> patients = new LinkedHashMap<>();
@@ -113,7 +113,7 @@ public final class SceneState {
             return;
         }
         switch (type) {
-            case TREATMENT_STARTED, ICU_ADMISSION -> startTreatment(event);
+            case TREATMENT_STARTED, ICU_ADMISSION, RECOVERY_STARTED -> startTreatment(event);
             case DEATH -> die(event);
             case MORGUE_ADMISSION -> enterMorgue(event.patientCode());
             case MORGUE_RELEASE -> leaveMorgue(event.patientCode());

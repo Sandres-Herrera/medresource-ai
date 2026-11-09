@@ -160,13 +160,23 @@ class PriorityBasedStrategyTest {
     }
 
     @Test
-    void surgeryNeedsAnOperatingRoomAndTwoNurses() {
+    void surgeryNeedsAnOperatingRoomTwoNursesAndARecoveryBed() {
         Assignment assignment = strategy.nextAssignment(0, List.of(waiting(1, 0, APPENDICITIS, 30)),
                 hospital(Specialty.SURGERY)).orElseThrow();
 
         assertEquals(2, assignment.nurses().size());
         assertEquals("Q1", assignment.operatingRoom().getCode());
-        assertNull(assignment.bed());
+        assertEquals("H1-C1", assignment.bed().getCode());
+        assertFalse(assignment.bed().isIcu());
+    }
+
+    @Test
+    void aSurgeryWaitsWhenThereIsNoBedToRecoverIn() {
+        Hospital hospital = hospital(Specialty.SURGERY);
+        hospital.getBeds().forEach(bed -> bed.assign(patient(9, 0, DENGUE, 30), 100));
+
+        assertEquals(1, hospital.freeOperatingRooms().size());
+        assertTrue(strategy.nextAssignment(0, List.of(waiting(1, 0, APPENDICITIS, 30)), hospital).isEmpty());
     }
 
     @Test

@@ -13,6 +13,7 @@ public enum EventType {
     TREATMENT_STARTED("Inicio de tratamiento"),
     TREATMENT_FINISHED("Fin de tratamiento"),
     ICU_ADMISSION("Ingreso a UCI"),
+    RECOVERY_STARTED("Paso a recuperación"),
     DISCHARGE("Alta"),
     STABILIZED_WITHOUT_CURE("Estabilizado sin cura"),
     REFERRAL("Remisión"),
