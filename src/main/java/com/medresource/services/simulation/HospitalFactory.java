@@ -32,8 +32,13 @@ public class HospitalFactory {
     private static final int BEDS_PER_ROOM = 4;
 
     /**
-     * Orden en que se asignan las especialidades a los médicos. Con seis médicos o
-     * más ya hay uno de cada especialidad; los siguientes repiten desde urgencias.
+     * Orden en que se asignan las especialidades a los médicos, según la demanda de cada una.
+     *
+     * <p>Con seis médicos o más ya hay uno de cada especialidad. Los siguientes van primero a las que más
+     * tiempo de médico piden los pacientes: medicina interna (dengue, neumonía, trombosis, infarto y cáncer,
+     * cerca de un tercio de la demanda), traumatología y cirugía. Con los 16 médicos del hospital estándar
+     * quedan 5 de medicina interna, 3 de cirugía, 3 de traumatología, 2 de medicina general, 2 de urgencias
+     * y 1 de pediatría. Con más de 16 el orden vuelve a empezar, así que se conserva la proporción.</p>
      */
     private static final List<Specialty> DOCTOR_ROTATION = List.of(
             Specialty.EMERGENCY_MEDICINE,
@@ -41,7 +46,17 @@ public class HospitalFactory {
             Specialty.INTERNAL_MEDICINE,
             Specialty.SURGERY,
             Specialty.TRAUMATOLOGY,
-            Specialty.PEDIATRICS);
+            Specialty.PEDIATRICS,
+            Specialty.INTERNAL_MEDICINE,
+            Specialty.TRAUMATOLOGY,
+            Specialty.SURGERY,
+            Specialty.INTERNAL_MEDICINE,
+            Specialty.GENERAL_MEDICINE,
+            Specialty.INTERNAL_MEDICINE,
+            Specialty.EMERGENCY_MEDICINE,
+            Specialty.TRAUMATOLOGY,
+            Specialty.SURGERY,
+            Specialty.INTERNAL_MEDICINE);
 
     /**
      * Crea un hospital nuevo con todos sus recursos libres.
