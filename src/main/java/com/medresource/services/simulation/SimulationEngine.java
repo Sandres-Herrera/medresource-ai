@@ -24,9 +24,11 @@ import com.medresource.services.strategy.WaitingPatient;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 /**
  * Motor de simulación: avanza el hospital minuto a minuto aplicando las
  * decisiones de una estrategia.
@@ -38,15 +40,19 @@ import java.util.Optional;
  * <p>En cada minuto, en este orden: salen de la morgue los cuerpos que cumplieron
  * su tiempo; los pacientes pierden salud; terminan los tratamientos que
  * correspondan; el médico y los enfermeros que terminaron el ingreso de un
- * paciente hospitalizado quedan libres; llegan los pacientes nuevos (se les
+ * paciente hospitalizado o una operación quedan libres; los operados pasan del
+ * quirófano a su cama de recuperación; llegan los pacientes nuevos (se les
  * asigna triage y diagnóstico); la estrategia reparte los recursos libres; y los
  * fallecidos pasan a la morgue si hay cupo. Un fallecido que no cabe en la morgue
  * sigue ocupando su cama.</p>
  *
- * <p>En una consulta o una cirugía el personal acompaña al paciente todo el
- * tratamiento. En una hospitalización (cama o UCI) solo durante el ingreso
+ * <p>En una consulta el personal acompaña al paciente todo el tratamiento. En una
+ * hospitalización (cama o UCI) solo durante el ingreso
  * ({@link TreatmentType#staffMinutes(int)}); después el paciente sigue en su cama
- * a cargo de enfermería hasta el final del tratamiento.</p>
+ * a cargo de enfermería hasta el final del tratamiento. Una cirugía ocupa al
+ * cirujano, a los enfermeros y al quirófano solo durante la operación
+ * ({@link TreatmentType#operationMinutes(int)}); el resto del tratamiento el
+ * paciente se recupera en la cama que se le reservó (en UCI si la necesita).</p>
  *
  * <p>Los pacientes que siguen esperando {@value #EXTRA_MINUTES} minutos después
  * de la última hora de llegada se registran como sin atender.</p>
@@ -76,6 +82,7 @@ public class SimulationEngine {
     private final List<SimulationEvent> events = new ArrayList<>();
     private final Map<Patient, Integer> treatmentStarts = new HashMap<>();
     private final Map<Patient, CompatibilityLevel> careLevels = new HashMap<>();
+    private final Set<Patient> recovering = new HashSet<>();
     private final int endLimit;
 
     private int minute;
@@ -114,6 +121,7 @@ public class SimulationEngine {
         deteriorate();
         finishTreatments();
         releaseStaffAfterAdmission();
+        moveOperatedPatientsToRecovery();
         admitArrivals();
         if (minute >= endLimit) {
             abandonWaitingPatients();
@@ -237,7 +245,7 @@ public class SimulationEngine {
                 declareDeathInTreatment(treatment, CauseOfDeath.IRREDUCIBLE_MORTALITY);
                 continue;
             }
-            String place = placeOf(treatment.assignment());
+            String place = placeOf(treatment);
             emit(EventType.TREATMENT_FINISHED, patient, place, patient.getCode() + " termina su tratamiento.");
             patient.improve(healthModel.recoveryPoints(patient, treatment.effectiveness()));
             if (patient.getDisease().isCurable()) {
@@ -249,14 +257,41 @@ public class SimulationEngine {
                         patient.getCode() + " queda estabilizado, sin cura.");
             }
             releaseHeld(treatment.assignment().resources(), patient);
+            recovering.remove(patient);
         }
     }
 
-    /** Libera al médico y a los enfermeros de los pacientes hospitalizados que terminaron su ingreso. */
+    /** Libera al médico y a los enfermeros que terminaron el ingreso de un hospitalizado o una operación. */
     private void releaseStaffAfterAdmission() {
         for (ActiveTreatment treatment : active) {
             if (treatment.staffEndMinute() <= minute) {
                 releaseHeld(treatment.assignment().staff(), treatment.patient());
+            }
+        }
+    }
+
+    /**
+     * Pasa a recuperación a los pacientes cuya operación terminó: el quirófano queda libre y el paciente sigue
+     * en la cama que se le reservó, o ingresa a la UCI si la cama es de UCI.
+     */
+    private void moveOperatedPatientsToRecovery() {
+        for (ActiveTreatment treatment : active) {
+            Patient patient = treatment.patient();
+            Assignment assignment = treatment.assignment();
+            if (!patient.getDisease().getTreatment().hasRecovery() || treatment.staffEndMinute() > minute
+                    || recovering.contains(patient)) {
+                continue;
+            }
+            releaseHeld(List.of(assignment.operatingRoom()), patient);
+            recovering.add(patient);
+            String bedCode = assignment.bed().getCode();
+            if (assignment.bed().isIcu()) {
+                patient.admitToIcu();
+                emit(EventType.ICU_ADMISSION, patient, bedCode,
+                        patient.getCode() + " sale del quirófano e ingresa a la UCI (" + bedCode + ").");
+            } else {
+                emit(EventType.RECOVERY_STARTED, patient, bedCode,
+                        patient.getCode() + " sale del quirófano y se recupera en " + bedCode + ".");
             }
         }
     }
@@ -334,7 +369,12 @@ public class SimulationEngine {
         int staffEndMinute = minute + patient.getDisease().getTreatment().staffMinutes(treatmentMinutes);
 
         assignment.staff().forEach(member -> member.assign(patient, staffEndMinute));
-        assignment.places().forEach(place -> place.assign(patient, endMinute));
+        if (assignment.operatingRoom() != null) {
+            assignment.operatingRoom().assign(patient, staffEndMinute);
+        }
+        if (assignment.bed() != null) {
+            assignment.bed().assign(patient, endMinute);
+        }
         if (assignment.bloodUnits() > 0) {
             hospital.getBloodBank().withdraw(patient.getBloodType(), assignment.bloodUnits());
         }
@@ -344,16 +384,19 @@ public class SimulationEngine {
         careLevels.put(patient, assignment.doctor().compatibilityWith(patient.getDisease(), patient.getAge()));
 
         String place = placeOf(assignment);
-        if (assignment.bed() != null && assignment.bed().isIcu()) {
+        if (assignment.operatingRoom() == null && assignment.bed() != null && assignment.bed().isIcu()) {
             patient.admitToIcu();
             emit(EventType.ICU_ADMISSION, patient, assignment.bed().getCode(),
                     patient.getCode() + " ingresa a la UCI (" + assignment.bed().getCode() + ").");
         } else {
             patient.startTreatment();
         }
-        String staffNote = staffEndMinute < endMinute
-                ? "; el médico queda libre en el minuto " + staffEndMinute
-                : "";
+        String staffNote = "";
+        if (staffEndMinute < endMinute) {
+            staffNote = assignment.operatingRoom() != null
+                    ? "; pasa a recuperación en el minuto " + staffEndMinute
+                    : "; el médico queda libre en el minuto " + staffEndMinute;
+        }
         emit(EventType.TREATMENT_STARTED, patient, place, patient.getCode() + " inicia tratamiento con "
                 + assignment.doctor().getCode() + " (" + assignment.doctor().getSpecialty().getDisplayName()
                 + "); termina en el minuto " + endMinute + staffNote + ".");
@@ -386,13 +429,21 @@ public class SimulationEngine {
         }
     }
 
+    /**
+     * Registra la muerte de un paciente en tratamiento. El cuerpo sigue ocupando su cama hasta pasar a la
+     * morgue; quien muere en el quirófano no llegó a su cama de recuperación, así que esa cama queda libre.
+     */
     private void declareDeathInTreatment(ActiveTreatment treatment, CauseOfDeath cause) {
         Assignment assignment = treatment.assignment();
-        List<Assignable> withoutBed = assignment.resources().stream()
-                .filter(resource -> resource != assignment.bed())
+        boolean inOperatingRoom = assignment.operatingRoom() != null && !recovering.contains(treatment.patient());
+        Bed bodyBed = inOperatingRoom ? null : assignment.bed();
+        List<Assignable> withoutBodyBed = assignment.resources().stream()
+                .filter(resource -> resource != bodyBed)
                 .toList();
-        releaseHeld(withoutBed, treatment.patient());
-        declareDeath(treatment.patient(), cause, placeOf(assignment), assignment.bed());
+        String place = placeOf(treatment);
+        releaseHeld(withoutBodyBed, treatment.patient());
+        recovering.remove(treatment.patient());
+        declareDeath(treatment.patient(), cause, place, bodyBed);
     }
 
     private void declareDeath(Patient patient, CauseOfDeath cause, String place, Bed bed) {
@@ -440,6 +491,14 @@ public class SimulationEngine {
      */
     private Disease diagnose(Patient patient) {
         return patient.getDisease();
+    }
+
+    /** Lugar donde está el paciente en tratamiento: su cama si ya salió del quirófano a recuperación. */
+    private String placeOf(ActiveTreatment treatment) {
+        if (recovering.contains(treatment.patient())) {
+            return treatment.assignment().bed().getCode();
+        }
+        return placeOf(treatment.assignment());
     }
 
     /** Lugar donde está el paciente durante el tratamiento: quirófano, cama o consultorio del médico. */

@@ -3,14 +3,14 @@ package com.medresource.model;
 /**
  * Tipo de tratamiento que requiere una enfermedad y los recursos que implica.
  *
- * <p>En una consulta y en una cirugía el médico y los enfermeros acompañan al paciente todo el tiempo. En una
+ * <p>En una consulta el médico y los enfermeros acompañan al paciente todo el tiempo. En una
  * hospitalización (en cama o en UCI) solo lo acompañan durante el ingreso, los primeros
  * {@value #INITIAL_CARE_MINUTES} minutos; después el paciente sigue en su cama a cargo de enfermería y el
  * médico queda libre para atender a otros.</p>
  *
- * <p>Una cirugía tiene dos fases: la operación en el quirófano, que dura la parte
- * {@value #OPERATION_SHARE} del tratamiento, y la recuperación en una cama (o en UCI si la enfermedad lo
- * requiere) durante el resto.</p>
+ * <p>Una cirugía tiene dos fases: la operación en el quirófano con el cirujano y los enfermeros, que dura la
+ * parte {@value #OPERATION_SHARE} del tratamiento, y la recuperación en una cama (o en UCI si la enfermedad lo
+ * requiere) durante el resto, ya sin el personal.</p>
  */
 public enum TreatmentType {
 
@@ -74,7 +74,8 @@ public enum TreatmentType {
 
     /**
      * Minutos que el médico y los enfermeros pasan con el paciente: en una hospitalización, solo el ingreso
-     * (o todo el tratamiento si dura menos); en una consulta o una cirugía, todo el tratamiento.
+     * (o todo el tratamiento si dura menos); en una cirugía, la operación; en una consulta, todo el
+     * tratamiento.
      *
      * @param treatmentMinutes duración total del tratamiento
      * @return minutos con el personal, entre 1 y {@code treatmentMinutes}
@@ -84,7 +85,11 @@ public enum TreatmentType {
         if (treatmentMinutes < 1) {
             throw new IllegalArgumentException("La duración del tratamiento debe ser de al menos un minuto.");
         }
-        return this == HOSPITALIZATION ? Math.min(INITIAL_CARE_MINUTES, treatmentMinutes) : treatmentMinutes;
+        return switch (this) {
+            case HOSPITALIZATION -> Math.min(INITIAL_CARE_MINUTES, treatmentMinutes);
+            case SURGERY -> operationMinutes(treatmentMinutes);
+            case CONSULTATION -> treatmentMinutes;
+        };
     }
 
     /** Indica si el tratamiento termina con una recuperación en cama después del quirófano. */

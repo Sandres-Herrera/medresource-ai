@@ -60,6 +60,7 @@ class SimulationEngineTest {
     private static final int OPEN_FRACTURE = 7;
     private static final int APPENDICITIS = 8;
     private static final int HEART_ATTACK = 9;
+    private static final int SEVERE_HEAD_TRAUMA = 10;
     private static final int ADVANCED_CANCER = 11;
 
     // ---------- armado de casos y hospitales ----------
@@ -358,13 +359,93 @@ class SimulationEngineTest {
     }
 
     @Test
-    void aSurgeryKeepsTheSurgeonUntilItEnds() {
+    void theSurgeonAndTheOperatingRoomAreFreeAgainWhenTheOperationEnds() {
         SimulationCase simulationCase = caseOf(60,
                 profile(1, 0, APPENDICITIS, 30, 80.0),
                 profile(2, 5, APPENDICITIS, 30, 80.0));
         SimulationResult result = run(simulationCase, hospital(Specialty.SURGERY));
 
-        assertEquals(outcomeOf(result, 0).outcomeMinute(), outcomeOf(result, 1).treatmentStartMinute());
+        int recoveryMinute = eventOf(result, "P001", EventType.RECOVERY_STARTED).minute();
+        assertEquals(recoveryMinute, outcomeOf(result, 1).treatmentStartMinute());
+        assertTrue(recoveryMinute < outcomeOf(result, 0).outcomeMinute());
+        assertEquals("Q1", eventOf(result, "P002", EventType.TREATMENT_STARTED).resourceCode());
+    }
+
+    @Test
+    void anOperatedPatientRecoversInTheReservedBed() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
+                hospital(Specialty.SURGERY));
+
+        assertEquals(List.of(EventType.ARRIVAL, EventType.TRIAGE_ASSIGNED, EventType.DIAGNOSIS,
+                        EventType.TREATMENT_STARTED, EventType.RECOVERY_STARTED, EventType.TREATMENT_FINISHED,
+                        EventType.DISCHARGE),
+                typesOf(result, "P001"));
+        assertEquals("Q1", eventOf(result, "P001", EventType.TREATMENT_STARTED).resourceCode());
+        assertEquals("H1-C1", eventOf(result, "P001", EventType.RECOVERY_STARTED).resourceCode());
+        assertEquals("H1-C1", eventOf(result, "P001", EventType.DISCHARGE).resourceCode());
+
+        int start = eventOf(result, "P001", EventType.TREATMENT_STARTED).minute();
+        int end = eventOf(result, "P001", EventType.TREATMENT_FINISHED).minute();
+        assertEquals(start + TreatmentType.SURGERY.operationMinutes(end - start),
+                eventOf(result, "P001", EventType.RECOVERY_STARTED).minute());
+    }
+
+    @Test
+    void duringTheRecoveryOnlyTheBedStaysOccupied() {
+        Hospital hospital = hospital(Specialty.SURGERY);
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
+                hospital, new FifoStrategy());
+
+        engine.step();
+        assertEquals(0, hospital.freeOperatingRooms().size());
+        assertEquals(3, hospital.freeBeds().size());
+        assertEquals(2, hospital.freeNurses().size());
+        while (engine.getEvents().stream().noneMatch(event -> event.type() == EventType.RECOVERY_STARTED)) {
+            engine.step();
+        }
+
+        assertEquals(1, hospital.freeOperatingRooms().size());
+        assertEquals(1, hospital.freeDoctors().size());
+        assertEquals(4, hospital.freeNurses().size());
+        assertEquals(3, hospital.freeBeds().size());
+    }
+
+    @Test
+    void anOperatedPatientWhoNeedsIntensiveCareGoesToTheIcuWhenTheOperationEnds() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, SEVERE_HEAD_TRAUMA, 30, 80.0)),
+                hospital(Specialty.SURGERY));
+
+        List<EventType> types = typesOf(result, "P001");
+        assertTrue(types.indexOf(EventType.TREATMENT_STARTED) < types.indexOf(EventType.ICU_ADMISSION));
+        assertFalse(types.contains(EventType.RECOVERY_STARTED));
+        assertEquals("Q1", eventOf(result, "P001", EventType.TREATMENT_STARTED).resourceCode());
+        assertEquals("UCI-C1", eventOf(result, "P001", EventType.ICU_ADMISSION).resourceCode());
+        assertTrue(eventOf(result, "P001", EventType.ICU_ADMISSION).minute()
+                > eventOf(result, "P001", EventType.TREATMENT_STARTED).minute());
+    }
+
+    @Test
+    void aPatientWhoDiesDuringTheOperationFreesTheReservedBed() {
+        Hospital hospital = hospital(Specialty.SURGERY);
+        // Lo opera un cirujano, que no es el ideal para una fractura expuesta, y llega muy grave.
+        SimulationResult result = run(caseOf(60, profile(1, 0, OPEN_FRACTURE, 30, 3.0)), hospital);
+
+        assertEquals(PatientStatus.DECEASED, outcomeOf(result, 0).status());
+        assertFalse(typesOf(result, "P001").contains(EventType.RECOVERY_STARTED));
+        assertEquals("Q1", eventOf(result, "P001", EventType.DEATH).resourceCode());
+        assertNull(eventOf(result, "P001", EventType.MORGUE_ADMISSION).resourceCode());
+        assertEquals(4, hospital.freeBeds().size());
+        assertEquals(1, hospital.freeOperatingRooms().size());
+    }
+
+    @Test
+    void theStartOfASurgerySaysWhenThePatientGoesToRecovery() {
+        SimulationResult result = run(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
+                hospital(Specialty.SURGERY));
+
+        int recoveryMinute = eventOf(result, "P001", EventType.RECOVERY_STARTED).minute();
+        assertTrue(eventOf(result, "P001", EventType.TREATMENT_STARTED).description()
+                .contains("pasa a recuperación en el minuto " + recoveryMinute));
     }
 
     @Test

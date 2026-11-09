@@ -26,9 +26,14 @@ class TreatmentTypeTest {
     }
 
     @Test
-    void consultationsAndSurgeriesKeepTheStaffTheWholeTime() {
+    void aConsultationKeepsTheStaffTheWholeTime() {
         assertEquals(25, TreatmentType.CONSULTATION.staffMinutes(25));
-        assertEquals(200, TreatmentType.SURGERY.staffMinutes(200));
+    }
+
+    @Test
+    void aSurgeryKeepsTheStaffOnlyDuringTheOperation() {
+        assertEquals(100, TreatmentType.SURGERY.staffMinutes(200));
+        assertEquals(TreatmentType.SURGERY.operationMinutes(91), TreatmentType.SURGERY.staffMinutes(91));
     }
 
     @Test
