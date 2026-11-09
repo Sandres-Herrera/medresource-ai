@@ -128,4 +128,13 @@ class AreaTest {
         assertThrows(IllegalArgumentException.class, () -> new Area(ZoneType.CONSULTATION, "Consultorios", 0, 0, 2, 1));
         assertThrows(IllegalArgumentException.class, () -> new Area(ZoneType.CORRIDOR, "Pasillo", 0, 0, 2, 0));
     }
+
+    @Test
+    void coversItsCellsIncludingTheTitleRow() {
+        assertTrue(area.covers(new Position(2, 1)));
+        assertTrue(area.covers(new Position(4, 3)));
+        assertFalse(area.covers(new Position(5, 1)));
+        assertFalse(area.covers(new Position(2, 4)));
+        assertFalse(area.covers(null));
+    }
 }

@@ -95,6 +95,17 @@ public record Area(ZoneType zone, String title, int col, int row, int cols, int 
     }
 
     /**
+     * Indica si una casilla queda dentro del área, incluida la fila del título.
+     *
+     * @param position casilla
+     * @return {@code true} si está dentro del rectángulo del área
+     */
+    public boolean covers(Position position) {
+        return position != null && position.col() >= col && position.col() < right()
+                && position.row() >= row && position.row() < bottom();
+    }
+
+    /**
      * Indica si dos áreas se pisan. Dos áreas pegadas por un borde no se pisan.
      *
      * @param other otra área

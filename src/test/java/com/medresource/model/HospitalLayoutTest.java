@@ -429,4 +429,76 @@ class HospitalLayoutTest {
     void rejectsMissingSeats() {
         assertThrows(IllegalArgumentException.class, () -> layoutWithStaff(null));
     }
+
+    // ---------- pasillos, puertas y consultorios ----------
+
+    private final Area corridor = new Area(ZoneType.CORRIDOR, "Pasillo", 0, 5, 6, 1);
+    private final Area consult = new Area(ZoneType.CONSULTATION, "Consultorios", 0, 6, 6, 2);
+
+    private HospitalLayout layoutWithDoorsAndDesks(List<Door> doors, Map<String, Position> desks) {
+        List<Area> withCorridor = areas();
+        withCorridor.add(corridor);
+        withCorridor.add(consult);
+        return new HospitalLayout(6, 8, withCorridor, spots(), triage.slot(0), triageSpots(), waitingSpots(),
+                bloodSpots(), morgueSpots(), Map.of(), desks, doors);
+    }
+
+    private final Door bloodDoor = new Door(new Position(1, 4), new Position(1, 5));
+
+    @Test
+    void eachCellMeasuresOneMeter() {
+        assertEquals(1.0, HospitalLayout.METERS_PER_CELL, 0.0);
+    }
+
+    @Test
+    void keepsTheDoorsOfTheRooms() {
+        Door consultDoor = new Door(new Position(2, 6), new Position(2, 5));
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(bloodDoor, consultDoor), Map.of());
+
+        assertEquals(List.of(bloodDoor, consultDoor), layout.getDoors());
+        assertEquals(List.of(bloodDoor), layout.doorsOf(blood));
+        assertEquals(List.of(consultDoor), layout.doorsOf(consult));
+        assertTrue(layout.doorsOf(morgue).isEmpty());
+        assertTrue(layout().getDoors().isEmpty());
+    }
+
+    @Test
+    void rejectsADoorThatDoesNotGoFromARoomToACorridor() {
+        Door fromCorridor = new Door(new Position(1, 5), new Position(1, 4));
+        Door betweenRooms = new Door(new Position(2, 4), new Position(3, 4));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWithDoorsAndDesks(List.of(fromCorridor), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> layoutWithDoorsAndDesks(List.of(betweenRooms), Map.of()));
+    }
+
+    @Test
+    void aDoctorAttendsConsultationsAtTheirDesk() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(), Map.of("D01", consult.slot(0)));
+
+        assertEquals(consult.slot(0), layout.consultDeskOf("D01").orElseThrow());
+        assertEquals(consult.slot(0), layout.treatmentPlaceOf("D01").orElseThrow());
+        assertEquals(ward.slot(0), layout.treatmentPlaceOf("B1").orElseThrow());
+        assertTrue(layout.consultDeskOf("D02").isEmpty());
+        assertTrue(layout.treatmentPlaceOf("X9").isEmpty());
+    }
+
+    @Test
+    void rejectsADeskOutsideTheConsultingRoomsOrOnAnotherPlace() {
+        Map<String, Position> outside = Map.of("D01", waiting.slot(0));
+        Map<String, Position> twice = Map.of("D01", consult.slot(0), "D02", consult.slot(0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWithDoorsAndDesks(List.of(), outside));
+        assertThrows(IllegalArgumentException.class, () -> layoutWithDoorsAndDesks(List.of(), twice));
+    }
+
+    @Test
+    void rejectsMissingDoorsOrDesks() {
+        List<Area> withCorridor = areas();
+        withCorridor.add(corridor);
+
+        assertThrows(IllegalArgumentException.class, () -> new HospitalLayout(6, 8, withCorridor, spots(),
+                triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots(), Map.of(), null, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new HospitalLayout(6, 8, withCorridor, spots(),
+                triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots(), Map.of(), Map.of(), null));
+    }
 }
