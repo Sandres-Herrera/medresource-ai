@@ -353,4 +353,80 @@ class HospitalLayoutTest {
         assertThrows(IllegalArgumentException.class, () -> layoutWith(7, areas(), spots(), triage.slot(0),
                 triageSpots(), waitingSpots(), places, morgueSpots()));
     }
+
+    // ---------- puestos del personal ----------
+
+    private final Area staffRoom = new Area(ZoneType.STAFF_ROOM, "Sala del personal", 0, 5, 6, 2);
+
+    private List<Area> areasWithStaffRoom() {
+        List<Area> withStaff = areas();
+        withStaff.add(staffRoom);
+        return withStaff;
+    }
+
+    private Map<String, StaffSeat> staffSeats() {
+        Map<String, StaffSeat> seats = new HashMap<>();
+        seats.put("D01", new StaffSeat(staffRoom.slot(0), 0));
+        seats.put("E01", new StaffSeat(staffRoom.slot(0), 1));
+        seats.put("E02", new StaffSeat(staffRoom.slot(1), 0));
+        return seats;
+    }
+
+    private HospitalLayout layoutWithStaff(Map<String, StaffSeat> seats) {
+        return new HospitalLayout(6, 7, areasWithStaffRoom(), spots(), triage.slot(0), triageSpots(),
+                waitingSpots(), bloodSpots(), morgueSpots(), seats);
+    }
+
+    @Test
+    void twoStaffMembersShareATableOfTheStaffRoom() {
+        HospitalLayout layout = layoutWithStaff(staffSeats());
+
+        assertEquals(new StaffSeat(staffRoom.slot(0), 0), layout.staffSeatOf("D01").orElseThrow());
+        assertEquals(new StaffSeat(staffRoom.slot(0), 1), layout.staffSeatOf("E01").orElseThrow());
+        assertEquals(Set.of("D01", "E01", "E02"), layout.getStaffCodes());
+    }
+
+    @Test
+    void aStaffMemberIsFoundAtTheTableOfTheirSeat() {
+        HospitalLayout layout = layoutWithStaff(staffSeats());
+
+        assertEquals(staffRoom.slot(0), layout.positionOf("E01").orElseThrow());
+        assertEquals(staffRoom.slot(1), layout.positionOf("E02").orElseThrow());
+        assertTrue(layout.staffSeatOf("E09").isEmpty());
+        assertTrue(layout.staffSeatOf(null).isEmpty());
+    }
+
+    @Test
+    void aPlanWithoutSeatsHasNoStaffCodes() {
+        assertTrue(layout().getStaffCodes().isEmpty());
+    }
+
+    @Test
+    void rejectsTwoStaffMembersInTheSameSeat() {
+        Map<String, StaffSeat> seats = staffSeats();
+        seats.put("E03", new StaffSeat(staffRoom.slot(1), 0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWithStaff(seats));
+    }
+
+    @Test
+    void rejectsASeatOutsideTheStaffRoom() {
+        Map<String, StaffSeat> seats = staffSeats();
+        seats.put("E03", new StaffSeat(waiting.slot(0), 0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWithStaff(seats));
+    }
+
+    @Test
+    void rejectsACodeThatHasBothAPlaceAndASeat() {
+        Map<String, StaffSeat> seats = staffSeats();
+        seats.put("B1", new StaffSeat(staffRoom.slot(2), 0));
+
+        assertThrows(IllegalArgumentException.class, () -> layoutWithStaff(seats));
+    }
+
+    @Test
+    void rejectsMissingSeats() {
+        assertThrows(IllegalArgumentException.class, () -> layoutWithStaff(null));
+    }
 }

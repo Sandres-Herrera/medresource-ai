@@ -1,5 +1,6 @@
 package com.medresource.ui.render;
 
+import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -49,9 +51,10 @@ class PaletteTest {
     @Test
     void theMarksAreDifferentFromEachOtherSoTheyCanBeTellApart() {
         Set<Color> marks = Set.of(Palette.CARD, Palette.OPERATING_TABLE, Palette.MORGUE_SLAB, Palette.STAFF_SEAT,
-                Palette.WAITING_SEAT, Palette.TRIAGE_STATION, Palette.BLOOD_UNIT, Palette.ENTRANCE);
+                Palette.STAFF_TABLE, Palette.WAITING_SEAT, Palette.TRIAGE_STATION, Palette.BLOOD_UNIT,
+                Palette.ENTRANCE);
 
-        assertEquals(8, marks.size());
+        assertEquals(9, marks.size());
     }
 
     @Test
@@ -68,5 +71,23 @@ class PaletteTest {
     void doesNotColorNothing() {
         assertThrows(IllegalArgumentException.class, () -> Palette.zone(null));
         assertThrows(IllegalArgumentException.class, () -> Palette.triage(null));
+    }
+
+    @Test
+    void eachSpecialtyHasItsOwnColorDifferentFromTheTriageColors() {
+        Set<Color> colors = new HashSet<>();
+        for (Specialty specialty : Specialty.values()) {
+            colors.add(Palette.specialty(specialty));
+        }
+        assertEquals(Specialty.values().length, colors.size());
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(!colors.contains(Palette.triage(level)), level.name());
+        }
+        assertThrows(IllegalArgumentException.class, () -> Palette.specialty(null));
+    }
+
+    @Test
+    void doctorsAndNursesAreDressedDifferently() {
+        assertNotEquals(Palette.DOCTOR_COAT, Palette.NURSE_UNIFORM);
     }
 }

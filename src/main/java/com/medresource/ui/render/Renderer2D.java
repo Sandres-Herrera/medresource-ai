@@ -4,6 +4,7 @@ import com.medresource.model.Area;
 import com.medresource.model.BloodType;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
+import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 
 import java.awt.BasicStroke;
@@ -14,19 +15,23 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Dibuja el plano como un tablero de salas: cada área es una caja con su título y cada lugar es una
  * tarjeta de {@value #CELL_W} × {@value #CELL_H} píxeles.
  *
- * <p>Las camas, los quirófanos, los médicos y los enfermeros se dibujan como tarjetas con su código; los
- * tipos de sangre del banco de sangre, como tarjetas rojas con su etiqueta; los lugares de la morgue, los
- * puestos de triage y las sillas de la sala de espera, como tarjetas más pequeñas sin texto. La entrada
- * lleva una flecha verde y el rótulo "ENTRADA". El color de cada tarjeta depende del área donde está, no de
- * su código.</p>
+ * <p>Las camas y los quirófanos se dibujan como tarjetas con su código; la sala del personal, como mesas
+ * con dos sillas (una por persona); los tipos de sangre del banco de sangre, como tarjetas rojas con su
+ * etiqueta; los lugares de la morgue, los puestos de triage y las sillas de la sala de espera, como tarjetas
+ * más pequeñas sin texto. La entrada lleva una flecha verde y el rótulo "ENTRADA". El color de cada tarjeta
+ * depende del área donde está, no de su código.</p>
  */
 public class Renderer2D implements SceneRenderer {
 
@@ -41,6 +46,9 @@ public class Renderer2D implements SceneRenderer {
     private static final int ARC = 12;
     private static final int TITLE_SIZE = 13;
     private static final int CODE_SIZE = 11;
+    /** Cuánto se separa cada puesto del personal del centro de su mesa: un cuarto de casilla. */
+    private static final double SEAT_OFFSET = CELL_W / 4.0;
+    private static final int CHAIR_SIZE = 18;
 
     @Override
     public Dimension worldSize(HospitalLayout layout) {
@@ -57,6 +65,16 @@ public class Renderer2D implements SceneRenderer {
     }
 
     @Override
+    public Point2D seatOf(StaffSeat seat) {
+        if (seat == null) {
+            throw new IllegalArgumentException("El puesto es obligatorio.");
+        }
+        Point2D table = centerOf(seat.table());
+        double side = seat.side() == 0 ? -SEAT_OFFSET : SEAT_OFFSET;
+        return new Point2D.Double(table.getX() + side, table.getY());
+    }
+
+    @Override
     public void render(Graphics2D graphics, HospitalLayout layout) {
         if (graphics == null) {
             throw new IllegalArgumentException("La superficie de dibujo es obligatoria.");
@@ -68,6 +86,7 @@ public class Renderer2D implements SceneRenderer {
             paintArea(graphics, area);
         }
         paintResources(graphics, layout);
+        paintStaffTables(graphics, layout);
         for (Position spot : layout.getMorgueSpots()) {
             card(graphics, spot, SMALL_INSET, Palette.MORGUE_SLAB);
         }
@@ -106,15 +125,40 @@ public class Renderer2D implements SceneRenderer {
         graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, CODE_SIZE));
         for (Map.Entry<String, Position> resource : ordered.entrySet()) {
             Position spot = resource.getValue();
-            Color color = switch (layout.areaAt(spot).orElseThrow().zone()) {
-                case OPERATING_ROOM -> Palette.OPERATING_TABLE;
-                case STAFF_ROOM -> Palette.STAFF_SEAT;
-                default -> Palette.CARD;
-            };
+            Color color = layout.areaAt(spot).orElseThrow().zone() == ZoneType.OPERATING_ROOM
+                    ? Palette.OPERATING_TABLE
+                    : Palette.CARD;
             card(graphics, spot, CARD_INSET, color);
-            graphics.setColor(color == Palette.STAFF_SEAT ? Palette.CARD : Palette.LABEL);
+            graphics.setColor(Palette.LABEL);
             graphics.drawString(resource.getKey(), spot.col() * CELL_W + CARD_INSET + 5,
                     spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
+        }
+    }
+
+    /** Dibuja cada mesa de la sala del personal con una silla en cada puesto. */
+    private void paintStaffTables(Graphics2D graphics, HospitalLayout layout) {
+        Set<Position> tables = new TreeSet<>(
+                Comparator.comparingInt(Position::row).thenComparingInt(Position::col));
+        Set<StaffSeat> seats = new HashSet<>();
+        for (String code : layout.getStaffCodes()) {
+            StaffSeat seat = layout.staffSeatOf(code).orElseThrow();
+            tables.add(seat.table());
+            seats.add(seat);
+        }
+        for (Position table : tables) {
+            card(graphics, table, CARD_INSET, Palette.STAFF_TABLE);
+            for (int side = 0; side < StaffSeat.SEATS_PER_TABLE; side++) {
+                StaffSeat seat = new StaffSeat(table, side);
+                if (seats.contains(seat)) {
+                    Point2D at = seatOf(seat);
+                    RoundRectangle2D chair = new RoundRectangle2D.Double(at.getX() - CHAIR_SIZE / 2.0,
+                            at.getY() - CHAIR_SIZE / 2.0, CHAIR_SIZE, CHAIR_SIZE, 6, 6);
+                    graphics.setColor(Palette.STAFF_SEAT);
+                    graphics.fill(chair);
+                    graphics.setColor(Palette.CARD_BORDER);
+                    graphics.draw(chair);
+                }
+            }
         }
     }
 

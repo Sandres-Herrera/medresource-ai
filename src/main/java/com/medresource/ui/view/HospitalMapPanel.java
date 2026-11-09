@@ -7,6 +7,8 @@ import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.SceneRenderer;
+import com.medresource.ui.render.StaffMarker;
+import com.medresource.ui.render.StaffPainter;
 
 import javax.swing.JPanel;
 import java.awt.Dimension;
@@ -21,8 +23,8 @@ import java.util.List;
  *
  * <p>Dibuja el plano con el {@link SceneRenderer} que recibe y lo ajusta al tamaño del panel con una
  * {@link Camera}: se ve completo y centrado, y se reajusta solo cuando la ventana cambia de tamaño. Encima
- * del plano dibuja a los pacientes que le den con {@link #showPatients}. No tiene reglas de simulación: solo
- * muestra lo que le dan.</p>
+ * del plano dibuja al personal que le den con {@link #showStaff} y a los pacientes que le den con
+ * {@link #showPatients}. No tiene reglas de simulación: solo muestra lo que le dan.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -37,6 +39,8 @@ public final class HospitalMapPanel extends JPanel {
     private transient HospitalLayout layout;
     private final transient SceneRenderer renderer;
     private final transient PatientPainter patientPainter = new PatientPainter();
+    private final transient StaffPainter staffPainter = new StaffPainter();
+    private transient List<StaffMarker> staffMarkers = List.of();
     private transient List<PatientMarker> markers = List.of();
     private int overflow;
 
@@ -89,6 +93,20 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     /**
+     * Cambia los médicos y enfermeros que se dibujan encima del plano y vuelve a dibujar.
+     *
+     * @param markers médicos y enfermeros con su posición en el mundo
+     * @throws IllegalArgumentException si la lista es nula
+     */
+    public void showStaff(List<StaffMarker> markers) {
+        if (markers == null) {
+            throw new IllegalArgumentException("La lista del personal es obligatoria.");
+        }
+        this.staffMarkers = List.copyOf(markers);
+        repaint();
+    }
+
+    /**
      * Dibuja el plano en una imagen, igual que se vería en un panel de ese tamaño; sirve para las
      * capturas de los documentos.
      *
@@ -134,6 +152,7 @@ public final class HospitalMapPanel extends JPanel {
         Dimension world = renderer.worldSize(layout);
         Camera.fit(world.width, world.height, width, height, MARGIN).applyTo(graphics);
         renderer.render(graphics, layout);
+        staffPainter.paint(graphics, staffMarkers);
         patientPainter.paint(graphics, markers);
         List<Position> seats = layout.getWaitingSpots();
         patientPainter.paintOverflow(graphics, renderer.centerOf(seats.get(seats.size() - 1)), overflow);

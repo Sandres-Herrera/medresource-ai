@@ -1,5 +1,6 @@
 package com.medresource.ui.render;
 
+import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 
@@ -8,8 +9,8 @@ import java.awt.Color;
 /**
  * Colores de la interfaz del hospital, en un solo lugar para que todas las vistas se vean igual.
  *
- * <p>Cada zona tiene un color de fondo y cada nivel de triage un color de aviso (rojo para el más
- * urgente, azul para el menos urgente).</p>
+ * <p>Cada zona tiene un color de fondo, cada nivel de triage un color de aviso (rojo para el más
+ * urgente, azul para el menos urgente) y cada especialidad médica un color para el distintivo de la bata.</p>
  */
 public final class Palette {
 
@@ -25,8 +26,10 @@ public final class Palette {
     public static final Color OPERATING_TABLE = new Color(0xB0, 0xBE, 0xC5);
     /** Lugar de la morgue. */
     public static final Color MORGUE_SLAB = new Color(0x78, 0x90, 0x9C);
-    /** Puesto del personal en su sala. */
+    /** Silla de un médico o enfermero en la sala del personal. */
     public static final Color STAFF_SEAT = new Color(0x4F, 0x7C, 0xAC);
+    /** Mesa de la sala del personal, con dos sillas. */
+    public static final Color STAFF_TABLE = new Color(0xE6, 0xDC, 0xC8);
     /** Silla de la sala de espera. */
     public static final Color WAITING_SEAT = new Color(0xA1, 0x88, 0x7F);
     /** Puesto de triage. */
@@ -43,6 +46,10 @@ public final class Palette {
     public static final Color BADGE = new Color(0x21, 0x21, 0x21);
     /** Marca de la entrada de pacientes. */
     public static final Color ENTRANCE = new Color(0x2E, 0x9E, 0x4F);
+    /** Bata de los médicos. */
+    public static final Color DOCTOR_COAT = new Color(0xFA, 0xFA, 0xFA);
+    /** Uniforme de los enfermeros. */
+    public static final Color NURSE_UNIFORM = new Color(0x1E, 0x88, 0xE5);
 
     private Palette() {
     }
@@ -88,6 +95,27 @@ public final class Palette {
             case III -> new Color(0xFB, 0xC0, 0x2D);
             case IV -> new Color(0x38, 0x8E, 0x3C);
             case V -> new Color(0x19, 0x76, 0xD2);
+        };
+    }
+
+    /**
+     * Color del distintivo de la bata de un médico según su especialidad.
+     *
+     * @param specialty especialidad médica
+     * @return un color distinto para cada especialidad, distinto también de los colores de triage
+     * @throws IllegalArgumentException si la especialidad es nula
+     */
+    public static Color specialty(Specialty specialty) {
+        if (specialty == null) {
+            throw new IllegalArgumentException("La especialidad es obligatoria.");
+        }
+        return switch (specialty) {
+            case GENERAL_MEDICINE -> new Color(0x6D, 0x4C, 0x41);
+            case PEDIATRICS -> new Color(0xF0, 0x62, 0x92);
+            case INTERNAL_MEDICINE -> new Color(0x5E, 0x35, 0xB1);
+            case SURGERY -> new Color(0x00, 0x83, 0x8F);
+            case TRAUMATOLOGY -> new Color(0x45, 0x5A, 0x64);
+            case EMERGENCY_MEDICINE -> new Color(0xC2, 0x18, 0x5B);
         };
     }
 }

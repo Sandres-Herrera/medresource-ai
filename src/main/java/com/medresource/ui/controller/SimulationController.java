@@ -14,6 +14,7 @@ import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.SceneRenderer;
+import com.medresource.ui.render.StaffMarker;
 
 import java.util.List;
 import java.util.Optional;
@@ -218,6 +219,10 @@ public final class SimulationController {
 
     public int overflow() {
         return player.overflow();
+    }
+
+    public List<StaffMarker> staffMarkers() {
+        return player.staffMarkers();
     }
 
     public HospitalLayout getLayout() {

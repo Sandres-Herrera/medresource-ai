@@ -2,6 +2,7 @@ package com.medresource.ui.render;
 
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
+import com.medresource.model.StaffSeat;
 
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -34,6 +35,15 @@ public interface SceneRenderer {
      * @throws IllegalArgumentException si la casilla es nula
      */
     Point2D centerOf(Position position);
+
+    /**
+     * Punto del mundo donde se sienta un médico o enfermero en su mesa de la sala del personal.
+     *
+     * @param seat puesto en una mesa
+     * @return punto del puesto, a la izquierda o a la derecha del centro de la mesa
+     * @throws IllegalArgumentException si el puesto es nulo
+     */
+    Point2D seatOf(StaffSeat seat);
 
     /**
      * Dibuja el plano completo.

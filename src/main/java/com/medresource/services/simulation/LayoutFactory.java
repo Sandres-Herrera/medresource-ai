@@ -8,6 +8,7 @@ import com.medresource.model.Hospital;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Nurse;
 import com.medresource.model.Position;
+import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ import java.util.Map;
  *       con todas sus camas.</li>
  *   <li>En medio: la UCI, el banco de sangre (entre la UCI y los quirófanos, que son los que más lo usan), un
  *       área por cada quirófano, la morgue y la zona de alta o salida.</li>
- *   <li>Abajo, a todo lo ancho: la sala del personal.</li>
+ *   <li>Abajo, a todo lo ancho: la sala del personal, con mesas de dos puestos para que ocupe poco alto.</li>
  * </ol>
  *
  * <p>Las salas con muchas camas se ensanchan en columnas para que el plano no se alargue demasiado, y el
@@ -98,7 +99,7 @@ public class LayoutFactory {
         int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
         int staffTop = topHeight + middleHeight;
-        int staffRows = 1 + rowsFor(staffCount, planCols);
+        int staffRows = 1 + rowsFor(staffCount, planCols * StaffSeat.SEATS_PER_TABLE);
 
         List<Area> areas = new ArrayList<>();
         Map<String, Position> spots = new HashMap<>();
@@ -133,7 +134,7 @@ public class LayoutFactory {
         Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", 0, staffTop,
                 planCols, staffRows);
         areas.add(staff);
-        placeStaff(spots, staff, hospital.getDoctors(), hospital.getNurses());
+        Map<String, StaffSeat> staffSeats = seatStaff(staff, hospital.getDoctors(), hospital.getNurses());
 
         List<Position> triageSpots = new ArrayList<>();
         for (int index = 0; index < triageStations; index++) {
@@ -152,7 +153,7 @@ public class LayoutFactory {
             morgueSpots.add(morgue.slot(index));
         }
         return new HospitalLayout(planCols, staffTop + staffRows, areas, spots, triage.slot(0), triageSpots,
-                waitingSpots, bloodSpots, morgueSpots);
+                waitingSpots, bloodSpots, morgueSpots, staffSeats);
     }
 
     /**
@@ -182,14 +183,17 @@ public class LayoutFactory {
         }
     }
 
-    /** Pone primero a los médicos y después a los enfermeros, un lugar cada uno. */
-    private void placeStaff(Map<String, Position> spots, Area area, List<Doctor> doctors, List<Nurse> nurses) {
+    /** Sienta al personal en las mesas de su sala, dos por mesa: primero los médicos y después los enfermeros. */
+    private Map<String, StaffSeat> seatStaff(Area area, List<Doctor> doctors, List<Nurse> nurses) {
         List<String> codes = new ArrayList<>();
         doctors.forEach(doctor -> codes.add(doctor.getCode()));
         nurses.forEach(nurse -> codes.add(nurse.getCode()));
+        Map<String, StaffSeat> seats = new HashMap<>();
         for (int index = 0; index < codes.size(); index++) {
-            spots.put(codes.get(index), area.slot(index));
+            seats.put(codes.get(index), new StaffSeat(area.slot(index / StaffSeat.SEATS_PER_TABLE),
+                    index % StaffSeat.SEATS_PER_TABLE));
         }
+        return seats;
     }
 
     /** Columnas de una sala de camas: algo más ancha que alta, entre un mínimo y un máximo. */

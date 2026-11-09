@@ -237,6 +237,7 @@ public final class SimulationWindow extends JFrame {
     }
 
     private void refresh() {
+        mapPanel.showStaff(controller.staffMarkers());
         mapPanel.showPatients(controller.markers(), controller.overflow());
         LiveCounters counters = controller.counters();
         set("Llegados", counters.arrived() + " / " + counters.totalPatients());
