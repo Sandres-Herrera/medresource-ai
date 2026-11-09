@@ -18,12 +18,19 @@ import java.util.Set;
  * la morgue) son listas ordenadas.</p>
  *
  * <p>Los médicos y enfermeros tienen su {@linkplain StaffSeat puesto} en una mesa de la sala del personal,
- * dos por mesa; se buscan por su código ({@code D01}, {@code E01}) igual que los demás recursos.</p>
+ * dos por mesa; se buscan por su código ({@code D01}, {@code E01}) igual que los demás recursos. Cada médico
+ * tiene además un escritorio en los consultorios, donde atiende las consultas.</p>
+ *
+ * <p>Las salas se comunican por {@linkplain Door puertas} que dan a los pasillos. Cada casilla mide
+ * {@value #METERS_PER_CELL} m de lado.</p>
  *
  * <p>Los pacientes llegan por la {@linkplain #getEntrance() entrada}, que está en el área de triage. Es
  * inmutable: las listas que devuelve no se pueden modificar.</p>
  */
 public final class HospitalLayout {
+
+    /** Metros que mide el lado de una casilla del plano (supuesto). */
+    public static final double METERS_PER_CELL = 1.0;
 
     private final int cols;
     private final int rows;
@@ -35,6 +42,8 @@ public final class HospitalLayout {
     private final List<Position> bloodSpots;
     private final List<Position> morgueSpots;
     private final Map<String, StaffSeat> staffSeats;
+    private final Map<String, Position> consultDesks;
+    private final List<Door> doors;
 
     /**
      * Crea el plano validando que sea coherente.
@@ -80,8 +89,36 @@ public final class HospitalLayout {
     public HospitalLayout(int cols, int rows, List<Area> areas, Map<String, Position> spots,
                           Position entrance, List<Position> triageSpots, List<Position> waitingSpots,
                           List<Position> bloodSpots, List<Position> morgueSpots, Map<String, StaffSeat> staffSeats) {
+        this(cols, rows, areas, spots, entrance, triageSpots, waitingSpots, bloodSpots, morgueSpots, staffSeats,
+                Map.of(), List.of());
+    }
+
+    /**
+     * Crea el plano completo: con los puestos del personal, los escritorios de los consultorios y las puertas.
+     *
+     * @param cols         columnas del plano, al menos 1
+     * @param rows         filas del plano, al menos 1
+     * @param areas        áreas del plano; deben quedar dentro del plano y no pisarse
+     * @param spots        lugar de cada recurso según su código; cada lugar debe estar en un área
+     * @param entrance     lugar por donde llegan los pacientes, dentro de un área de triage
+     * @param triageSpots  puestos de triage, al menos uno, dentro de áreas de triage
+     * @param waitingSpots lugares de la sala de espera, al menos uno, dentro de salas de espera
+     * @param bloodSpots   lugares del banco de sangre, dentro de áreas de banco de sangre
+     * @param morgueSpots  lugares de la morgue, dentro de áreas de morgue
+     * @param staffSeats   puesto de cada médico y enfermero según su código, en mesas de una sala del personal
+     * @param consultDesks escritorio de cada médico según su código, en un área de consultorios
+     * @param doors        puertas de las salas hacia los pasillos
+     * @throws IllegalArgumentException si falta algún dato o el plano no es coherente (ver los otros
+     *                                  constructores), si un escritorio queda fuera de los consultorios o
+     *                                  coincide con otro lugar, o si una puerta no va de una sala a un pasillo
+     */
+    public HospitalLayout(int cols, int rows, List<Area> areas, Map<String, Position> spots,
+                          Position entrance, List<Position> triageSpots, List<Position> waitingSpots,
+                          List<Position> bloodSpots, List<Position> morgueSpots, Map<String, StaffSeat> staffSeats,
+                          Map<String, Position> consultDesks, List<Door> doors) {
         if (areas == null || spots == null || entrance == null || triageSpots == null
-                || waitingSpots == null || bloodSpots == null || morgueSpots == null || staffSeats == null) {
+                || waitingSpots == null || bloodSpots == null || morgueSpots == null || staffSeats == null
+                || consultDesks == null || doors == null) {
             throw new IllegalArgumentException("Faltan datos del plano del hospital.");
         }
         if (cols < 1 || rows < 1) {
@@ -97,6 +134,8 @@ public final class HospitalLayout {
         this.bloodSpots = List.copyOf(bloodSpots);
         this.morgueSpots = List.copyOf(morgueSpots);
         this.staffSeats = Map.copyOf(staffSeats);
+        this.consultDesks = Map.copyOf(consultDesks);
+        this.doors = List.copyOf(doors);
         validate();
     }
 
@@ -133,6 +172,27 @@ public final class HospitalLayout {
             claim(used, spot.getValue());
         }
         validateStaffSeats(used);
+        for (Map.Entry<String, Position> desk : consultDesks.entrySet()) {
+            requireIn(desk.getValue(), ZoneType.CONSULTATION, "El escritorio de " + desk.getKey());
+            claim(used, desk.getValue());
+        }
+        doors.forEach(this::validateDoor);
+    }
+
+    /** Una puerta va del borde de una sala (que no sea pasillo) a un pasillo. */
+    private void validateDoor(Door door) {
+        Optional<Area> room = areaCovering(door.inside());
+        Optional<Area> corridor = areaCovering(door.outside());
+        if (room.isEmpty() || room.get().zone() == ZoneType.CORRIDOR) {
+            throw new IllegalArgumentException("La puerta " + door + " no sale de una sala.");
+        }
+        if (corridor.isEmpty() || corridor.get().zone() != ZoneType.CORRIDOR) {
+            throw new IllegalArgumentException("La puerta " + door + " no da a un pasillo.");
+        }
+    }
+
+    private Optional<Area> areaCovering(Position position) {
+        return areas.stream().filter(area -> area.covers(position)).findFirst();
     }
 
     /** Cada puesto va en una mesa de la sala del personal, sin repetirse; las mesas no pisan otros lugares. */
@@ -230,6 +290,47 @@ public final class HospitalLayout {
      */
     public Optional<StaffSeat> staffSeatOf(String code) {
         return code == null ? Optional.empty() : Optional.ofNullable(staffSeats.get(code));
+    }
+
+    /**
+     * Busca el escritorio de un médico en los consultorios.
+     *
+     * @param code código del médico
+     * @return su escritorio, o vacío si el plano no le asigna uno
+     */
+    public Optional<Position> consultDeskOf(String code) {
+        return code == null ? Optional.empty() : Optional.ofNullable(consultDesks.get(code));
+    }
+
+    /**
+     * Lugar donde se atiende a un paciente según el recurso que nombra el motor: el escritorio del médico si
+     * es una consulta con un médico que tiene escritorio, o el lugar del recurso en los demás casos.
+     *
+     * @param code código del recurso (cama, quirófano o médico)
+     * @return la casilla donde está el paciente durante el tratamiento, o vacío si el plano no la tiene
+     */
+    public Optional<Position> treatmentPlaceOf(String code) {
+        Optional<Position> desk = consultDeskOf(code);
+        return desk.isPresent() ? desk : positionOf(code);
+    }
+
+    /**
+     * Puertas de las salas hacia los pasillos.
+     *
+     * @return puertas en el orden del plano; la lista no se puede modificar
+     */
+    public List<Door> getDoors() {
+        return doors;
+    }
+
+    /**
+     * Puertas de un área.
+     *
+     * @param area área del plano
+     * @return puertas cuya casilla de adentro está en esa área
+     */
+    public List<Door> doorsOf(Area area) {
+        return doors.stream().filter(door -> area != null && area.covers(door.inside())).toList();
     }
 
     /** Códigos de los médicos y enfermeros que tienen puesto en la sala del personal. */

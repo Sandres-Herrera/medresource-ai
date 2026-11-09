@@ -102,4 +102,39 @@ class AreaTest {
     void doesNotCompareWithNothing() {
         assertThrows(IllegalArgumentException.class, () -> area.overlaps(null));
     }
+
+    // ---------- pasillos ----------
+
+    private final Area corridor = new Area(ZoneType.CORRIDOR, "Pasillo", 0, 4, 5, 1);
+
+    @Test
+    void aCorridorHasNoTitleRowAndCanBeOneRowHigh() {
+        assertFalse(corridor.hasTitleRow());
+        assertTrue(area.hasTitleRow());
+        assertEquals(1, corridor.slotRows());
+        assertEquals(5, corridor.slotCount());
+    }
+
+    @Test
+    void theSlotsOfACorridorStartInItsFirstRow() {
+        assertEquals(new Position(0, 4), corridor.slot(0));
+        assertEquals(new Position(4, 4), corridor.slot(4));
+        assertTrue(corridor.containsSlot(new Position(2, 4)));
+        assertFalse(corridor.containsSlot(new Position(2, 5)));
+    }
+
+    @Test
+    void onlyACorridorCanBeOneRowHigh() {
+        assertThrows(IllegalArgumentException.class, () -> new Area(ZoneType.CONSULTATION, "Consultorios", 0, 0, 2, 1));
+        assertThrows(IllegalArgumentException.class, () -> new Area(ZoneType.CORRIDOR, "Pasillo", 0, 0, 2, 0));
+    }
+
+    @Test
+    void coversItsCellsIncludingTheTitleRow() {
+        assertTrue(area.covers(new Position(2, 1)));
+        assertTrue(area.covers(new Position(4, 3)));
+        assertFalse(area.covers(new Position(5, 1)));
+        assertFalse(area.covers(new Position(2, 4)));
+        assertFalse(area.covers(null));
+    }
 }

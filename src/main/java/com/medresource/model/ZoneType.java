@@ -15,7 +15,9 @@ public enum ZoneType {
     BLOOD_BANK("Banco de sangre"),
     MORGUE("Morgue"),
     DISCHARGE("Alta / salida"),
-    STAFF_ROOM("Sala del personal");
+    STAFF_ROOM("Sala del personal"),
+    CONSULTATION("Consultorios"),
+    CORRIDOR("Pasillo");
 
     private final String displayName;
 

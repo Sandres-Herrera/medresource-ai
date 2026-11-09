@@ -4,6 +4,7 @@ import com.medresource.model.Area;
 import com.medresource.model.Bed;
 import com.medresource.model.BloodType;
 import com.medresource.model.Doctor;
+import com.medresource.model.Door;
 import com.medresource.model.Hospital;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
@@ -143,13 +144,30 @@ class LayoutFactoryTest {
     }
 
     @Test
-    void twoStaffMembersShareEachTableSoTheStaffRoomIsShort() {
+    void twoStaffMembersShareEachTableSoTheStaffRoomFitsInHalfThePlan() {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
         Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-        assertEquals(2, staff.rows());
+        assertEquals(10, staff.cols());
+        assertEquals(3, staff.rows());
         assertEquals(layout.staffSeatOf("D03").orElseThrow().table(),
                 layout.staffSeatOf("D04").orElseThrow().table());
+    }
+
+    @Test
+    void eachDoctorHasADeskInTheConsultingRooms() {
+        for (HospitalConfig config : sizes()) {
+            Hospital hospital = hospital(config);
+            HospitalLayout layout = factory.create(hospital);
+            Area consult = onlyAreaOf(layout, ZoneType.CONSULTATION);
+
+            for (int index = 0; index < hospital.getDoctors().size(); index++) {
+                String doctor = hospital.getDoctors().get(index).getCode();
+                assertEquals(consult.slot(index), layout.consultDeskOf(doctor).orElseThrow());
+            }
+            assertTrue(layout.consultDeskOf(hospital.getNurses().get(0).getCode()).isEmpty());
+            assertEquals("Consultorios (" + config.doctors() + ")", consult.title());
+        }
     }
 
     // ---------- áreas ----------
@@ -286,9 +304,9 @@ class LayoutFactoryTest {
             List<Area> rooms = layout.areasOf(ZoneType.OPERATING_ROOM);
             int roomsRight = rooms.stream().mapToInt(Area::right).max().orElseThrow();
 
-            assertEquals(top.bottom(), icu.row());
+            assertEquals(top.bottom() + 1, icu.row());
             assertEquals(0, icu.col());
-            assertEquals(icu.right(), blood.col());
+            assertEquals(icu.right() + 1, blood.col());
             assertEquals(blood.right(), rooms.get(0).col());
             assertEquals(roomsRight, morgue.col());
             assertEquals(morgue.right(), discharge.col());
@@ -306,8 +324,74 @@ class LayoutFactoryTest {
             assertEquals(bottom, onlyAreaOf(layout, ZoneType.MORGUE).bottom());
             assertEquals(bottom, onlyAreaOf(layout, ZoneType.DISCHARGE).bottom());
             assertEquals(bottom, layout.areasOf(ZoneType.OPERATING_ROOM).stream().mapToInt(Area::bottom).max().orElseThrow());
-            assertEquals(bottom, onlyAreaOf(layout, ZoneType.STAFF_ROOM).row());
+            assertEquals(bottom + 1, onlyAreaOf(layout, ZoneType.STAFF_ROOM).row());
         }
+    }
+
+    // ---------- pasillos y puertas ----------
+
+    @Test
+    void aCorridorOneCellHighCrossesThePlanBetweenEachTwoBands() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+            List<Area> corridors = layout.areasOf(ZoneType.CORRIDOR).stream()
+                    .filter(corridor -> corridor.cols() > 1).toList();
+
+            assertEquals(2, corridors.size());
+            for (Area corridor : corridors) {
+                assertEquals(0, corridor.col());
+                assertEquals(layout.getCols(), corridor.cols());
+                assertEquals(1, corridor.rows());
+            }
+            assertEquals(onlyAreaOf(layout, ZoneType.TRIAGE).bottom(), corridors.get(0).row());
+            assertEquals(onlyAreaOf(layout, ZoneType.ICU).bottom(), corridors.get(1).row());
+        }
+    }
+
+    @Test
+    void aVerticalCorridorBetweenTheIcuAndTheBloodBankJoinsBothCorridors() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+            Area icu = onlyAreaOf(layout, ZoneType.ICU);
+            List<Area> vertical = layout.areasOf(ZoneType.CORRIDOR).stream()
+                    .filter(corridor -> corridor.cols() == 1).toList();
+
+            assertEquals(1, vertical.size());
+            Area corridor = vertical.get(0);
+            assertEquals(icu.right(), corridor.col());
+            assertEquals(onlyAreaOf(layout, ZoneType.BLOOD_BANK).col(), corridor.right());
+            assertEquals(icu.row(), corridor.row());
+            assertEquals(icu.bottom(), corridor.bottom());
+        }
+    }
+
+    @Test
+    void everyRoomHasOneDoorInTheMiddleOfItsEdgeTowardsACorridor() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+
+            for (Area room : layout.getAreas()) {
+                if (room.zone() == ZoneType.CORRIDOR) {
+                    continue;
+                }
+                List<Door> doors = layout.doorsOf(room);
+                assertEquals(1, doors.size(), room.title());
+                assertEquals(room.col() + room.cols() / 2, doors.get(0).inside().col(), room.title());
+            }
+        }
+    }
+
+    @Test
+    void theRoomsOfTheTopBandOpenDownwardsAndTheOthersUpwardsWhenTheyCan() {
+        HospitalLayout layout = layoutOf(HospitalConfig.standard());
+        Area triage = onlyAreaOf(layout, ZoneType.TRIAGE);
+        Area icu = onlyAreaOf(layout, ZoneType.ICU);
+        List<Area> rooms = layout.areasOf(ZoneType.OPERATING_ROOM);
+        Area lowerRoom = rooms.get(rooms.size() - 1);
+
+        assertEquals(triage.bottom(), layout.doorsOf(triage).get(0).outside().row());
+        assertEquals(icu.row() - 1, layout.doorsOf(icu).get(0).outside().row());
+        assertEquals(lowerRoom.bottom(), layout.doorsOf(lowerRoom).get(0).outside().row());
     }
 
     @Test
@@ -435,18 +519,23 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
 
         assertEquals(20, layout.getCols());
-        assertEquals(13, layout.getRows());
+        assertEquals(16, layout.getRows());
     }
 
     @Test
-    void theStaffRoomIsAtTheBottomAcrossTheWholePlan() {
+    void theConsultingRoomsAreOnTheLeftAndTheStaffRoomFarthestOnTheRightOfTheBottomBand() {
         for (HospitalConfig config : sizes()) {
             HospitalLayout layout = layoutOf(config);
             Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
+            Area consult = onlyAreaOf(layout, ZoneType.CONSULTATION);
 
-            assertEquals(0, staff.col());
-            assertEquals(layout.getCols(), staff.cols());
+            assertEquals(0, consult.col());
+            assertEquals((layout.getCols() + 1) / 2, staff.cols());
+            assertEquals(consult.right(), staff.col());
+            assertEquals(layout.getCols(), staff.right());
+            assertEquals(staff.row(), consult.row());
             assertEquals(layout.getRows(), staff.bottom());
+            assertEquals(layout.getRows(), consult.bottom());
         }
     }
 

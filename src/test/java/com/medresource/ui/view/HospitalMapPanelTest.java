@@ -132,8 +132,8 @@ class HospitalMapPanelTest {
 
         panel.showLayout(small);
 
-        assertEquals(new Dimension(smallWorld.width + 2 * MARGIN, smallWorld.height + 2 * MARGIN),
-                panel.getPreferredSize());
+        assertEquals(new Dimension(Math.min(smallWorld.width, 1200) + 2 * MARGIN,
+                Math.min(smallWorld.height, 640) + 2 * MARGIN), panel.getPreferredSize());
 
         panel.showLayout(layoutOf(new HospitalConfig(200, 50, 20, 50, 100, 100, 50)));
 

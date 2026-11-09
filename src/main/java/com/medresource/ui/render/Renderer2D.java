@@ -2,6 +2,7 @@ package com.medresource.ui.render;
 
 import com.medresource.model.Area;
 import com.medresource.model.BloodType;
+import com.medresource.model.Door;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.model.StaffSeat;
@@ -30,8 +31,12 @@ import java.util.TreeSet;
  * <p>Las camas y los quirófanos se dibujan como tarjetas con su código; la sala del personal, como mesas
  * con dos sillas (una por persona); los tipos de sangre del banco de sangre, como tarjetas rojas con su
  * etiqueta; los lugares de la morgue, los puestos de triage y las sillas de la sala de espera, como tarjetas
- * más pequeñas sin texto. La entrada lleva una flecha verde y el rótulo "ENTRADA". El color de cada tarjeta
- * depende del área donde está, no de su código.</p>
+ * más pequeñas sin texto; cada escritorio de los consultorios, como una tarjeta con el código de su médico.
+ * La entrada lleva una flecha verde y el rótulo "ENTRADA". El color de cada tarjeta depende del área donde
+ * está, no de su código.</p>
+ *
+ * <p>Los pasillos se dibujan como franjas grises sin título que llegan hasta el borde de sus casillas, y cada
+ * puerta como una barra café sobre el borde entre su sala y el pasillo.</p>
  */
 public class Renderer2D implements SceneRenderer {
 
@@ -49,6 +54,8 @@ public class Renderer2D implements SceneRenderer {
     /** Cuánto se separa cada puesto del personal del centro de su mesa: un cuarto de casilla. */
     private static final double SEAT_OFFSET = CELL_W / 4.0;
     private static final int CHAIR_SIZE = 18;
+    /** Grosor de la barra que marca una puerta, en píxeles. */
+    private static final int DOOR_THICKNESS = 6;
 
     @Override
     public Dimension worldSize(HospitalLayout layout) {
@@ -85,8 +92,12 @@ public class Renderer2D implements SceneRenderer {
         for (Area area : layout.getAreas()) {
             paintArea(graphics, area);
         }
+        for (Door door : layout.getDoors()) {
+            paintDoor(graphics, door);
+        }
         paintResources(graphics, layout);
         paintStaffTables(graphics, layout);
+        paintConsultDesks(graphics, layout);
         for (Position spot : layout.getMorgueSpots()) {
             card(graphics, spot, SMALL_INSET, Palette.MORGUE_SLAB);
         }
@@ -101,6 +112,11 @@ public class Renderer2D implements SceneRenderer {
     }
 
     private void paintArea(Graphics2D graphics, Area area) {
+        if (!area.hasTitleRow()) {
+            graphics.setColor(Palette.zone(area.zone()));
+            graphics.fillRect(area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W, area.rows() * CELL_H);
+            return;
+        }
         int x = area.col() * CELL_W + AREA_INSET;
         int y = area.row() * CELL_H + AREA_INSET;
         int width = area.cols() * CELL_W - 2 * AREA_INSET;
@@ -159,6 +175,38 @@ public class Renderer2D implements SceneRenderer {
                     graphics.draw(chair);
                 }
             }
+        }
+    }
+
+    /** Dibuja una puerta como una barra café sobre el borde que comparten su sala y el pasillo. */
+    private void paintDoor(Graphics2D graphics, Door door) {
+        Position inside = door.inside();
+        Position outside = door.outside();
+        graphics.setColor(Palette.DOOR);
+        if (inside.col() == outside.col()) {
+            int edge = Math.max(inside.row(), outside.row()) * CELL_H;
+            graphics.fillRect(inside.col() * CELL_W + CELL_W / 4, edge - DOOR_THICKNESS / 2, CELL_W / 2,
+                    DOOR_THICKNESS);
+        } else {
+            int edge = Math.max(inside.col(), outside.col()) * CELL_W;
+            graphics.fillRect(edge - DOOR_THICKNESS / 2, inside.row() * CELL_H + CELL_H / 4, DOOR_THICKNESS,
+                    CELL_H / 2);
+        }
+    }
+
+    /** Dibuja el escritorio de cada médico en los consultorios, con su código. */
+    private void paintConsultDesks(Graphics2D graphics, HospitalLayout layout) {
+        Map<String, Position> desks = new TreeMap<>();
+        for (String code : layout.getStaffCodes()) {
+            layout.consultDeskOf(code).ifPresent(desk -> desks.put(code, desk));
+        }
+        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, CODE_SIZE));
+        for (Map.Entry<String, Position> desk : desks.entrySet()) {
+            Position spot = desk.getValue();
+            card(graphics, spot, CARD_INSET, Palette.CONSULT_DESK);
+            graphics.setColor(Palette.LABEL);
+            graphics.drawString(desk.getKey(), spot.col() * CELL_W + CARD_INSET + 5,
+                    spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
         }
     }
 

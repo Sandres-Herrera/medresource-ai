@@ -30,6 +30,10 @@ public final class Palette {
     public static final Color STAFF_SEAT = new Color(0x4F, 0x7C, 0xAC);
     /** Mesa de la sala del personal, con dos sillas. */
     public static final Color STAFF_TABLE = new Color(0xE6, 0xDC, 0xC8);
+    /** Escritorio de un médico en los consultorios. */
+    public static final Color CONSULT_DESK = new Color(0xF3, 0xEE, 0xFA);
+    /** Puerta de una sala hacia un pasillo. */
+    public static final Color DOOR = new Color(0x8D, 0x5B, 0x34);
     /** Silla de la sala de espera. */
     public static final Color WAITING_SEAT = new Color(0xA1, 0x88, 0x7F);
     /** Puesto de triage. */
@@ -48,8 +52,8 @@ public final class Palette {
     public static final Color ENTRANCE = new Color(0x2E, 0x9E, 0x4F);
     /** Bata de los médicos. */
     public static final Color DOCTOR_COAT = new Color(0xFA, 0xFA, 0xFA);
-    /** Uniforme de los enfermeros. */
-    public static final Color NURSE_UNIFORM = new Color(0x1E, 0x88, 0xE5);
+    /** Uniforme de los enfermeros: verde agua, lejos de los colores de triage para no confundirlos con pacientes. */
+    public static final Color NURSE_UNIFORM = new Color(0x4D, 0xB6, 0xAC);
 
     private Palette() {
     }
@@ -75,6 +79,8 @@ public final class Palette {
             case MORGUE -> new Color(0xB8, 0xB0, 0xC9);
             case DISCHARGE -> new Color(0x8D, 0xC9, 0x8F);
             case STAFF_ROOM -> new Color(0xCF, 0xE0, 0xA8);
+            case CONSULTATION -> new Color(0xD7, 0xCC, 0xEC);
+            case CORRIDOR -> new Color(0xE4, 0xE4, 0xE0);
         };
     }
 

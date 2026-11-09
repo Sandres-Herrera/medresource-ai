@@ -4,6 +4,7 @@ import com.medresource.model.Area;
 import com.medresource.model.Bed;
 import com.medresource.model.BloodType;
 import com.medresource.model.Doctor;
+import com.medresource.model.Door;
 import com.medresource.model.Hospital;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Nurse;
@@ -20,14 +21,21 @@ import java.util.Map;
  * Arma el plano de un hospital: dónde está cada sala, cama, quirófano, médico y enfermero.
  *
  * <p>El plano sigue el recorrido del paciente y se arma en tres franjas, cada una con todas sus áreas de la
- * misma altura:</p>
+ * misma altura, separadas por un pasillo de una casilla de alto a todo lo ancho; un pasillo vertical entre la
+ * UCI y el banco de sangre une los dos pasillos:</p>
  * <ol>
  *   <li>Arriba, de izquierda a derecha: el triage (con la entrada), la sala de espera y la hospitalización
  *       con todas sus camas.</li>
- *   <li>En medio: la UCI, el banco de sangre (entre la UCI y los quirófanos, que son los que más lo usan), un
- *       área por cada quirófano, la morgue y la zona de alta o salida.</li>
- *   <li>Abajo, a todo lo ancho: la sala del personal, con mesas de dos puestos para que ocupe poco alto.</li>
+ *   <li>En medio: la UCI, el pasillo vertical, el banco de sangre (cerca de los quirófanos, que son los que
+ *       más lo usan), un área por cada quirófano, la morgue y la zona de alta o salida.</li>
+ *   <li>Abajo: a la izquierda, los consultorios, con un escritorio por médico, cerca del pasillo vertical; a
+ *       la derecha, lo más lejos de la entrada, la sala del personal, con mesas de dos puestos, en la mitad
+ *       del ancho.</li>
  * </ol>
+ *
+ * <p>Cada sala tiene una puerta en el centro de su borde hacia un pasillo: las de arriba, hacia el pasillo de
+ * abajo; las demás, hacia el pasillo de arriba si lo tocan (si no, hacia el de abajo). Cada casilla mide
+ * {@value HospitalLayout#METERS_PER_CELL} m.</p>
  *
  * <p>Las salas con muchas camas se ensanchan en columnas para que el plano no se alargue demasiado, y el
  * espacio que sobra en cada franja lo toma el último área para que ambas franjas terminen en el mismo borde.
@@ -39,17 +47,23 @@ import java.util.Map;
 public class LayoutFactory {
 
     private static final int TRIAGE_COLS = 2;
+    /** Alto de los pasillos entre las franjas: una casilla. */
+    private static final int CORRIDOR_ROWS = 1;
+    /** Ancho del pasillo vertical que une los dos pasillos, entre la UCI y el banco de sangre: una casilla. */
+    private static final int CORRIDOR_COLS = 1;
     /** Columnas de la sala de espera. */
     private static final int WAITING_COLS = 6;
     /** Filas de lugares de la sala de espera: {@code 6 × 6 = 36} sillas. */
     private static final int WAITING_SLOT_ROWS = 6;
     private static final int OPERATING_COLS = 2;
     private static final int OPERATING_ROWS = 2;
+    /** Filas del bloque de quirófanos como máximo: así cada quirófano toca el pasillo de arriba o el de abajo. */
+    private static final int MAX_OPERATING_BLOCK_ROWS = 2;
     private static final int BLOOD_COLS = 4;
     /** Título y dos filas de lugares: {@code 4 × 2 = 8} tipos de sangre. */
     private static final int BLOOD_ROWS = 3;
     private static final int MORGUE_MAX_COLS = 10;
-    private static final int DISCHARGE_COLS = 4;
+    private static final int DISCHARGE_COLS = 3;
     private static final int DISCHARGE_ROWS = 3;
     private static final int MIN_BED_COLS = 4;
     private static final int MAX_BED_COLS = 18;
@@ -84,22 +98,31 @@ public class LayoutFactory {
         // Anchos de las franjas: la más ancha manda y la otra reparte lo que le sobra.
         int bedCols = columnsFor(beds.size(), MIN_BED_COLS, MAX_BED_COLS);
         int icuCols = columnsFor(icuBeds.size(), MIN_ICU_COLS, MAX_ICU_COLS);
+        // Bloque de quirófanos casi cuadrado, pero de dos filas como máximo para que todos toquen un pasillo.
         int operatingPerRow = (int) Math.ceil(Math.sqrt(operatingRooms));
+        if ((operatingRooms + operatingPerRow - 1) / operatingPerRow > MAX_OPERATING_BLOCK_ROWS) {
+            operatingPerRow = (operatingRooms + MAX_OPERATING_BLOCK_ROWS - 1) / MAX_OPERATING_BLOCK_ROWS;
+        }
         int operatingBlockRows = (operatingRooms + operatingPerRow - 1) / operatingPerRow;
         int operatingCols = operatingPerRow * OPERATING_COLS;
         int morgueCols = Math.min(morgueCapacity, MORGUE_MAX_COLS);
         int topWidth = TRIAGE_COLS + WAITING_COLS + bedCols;
-        int middleWidth = icuCols + BLOOD_COLS + operatingCols + morgueCols + DISCHARGE_COLS;
+        int middleWidth = icuCols + CORRIDOR_COLS + BLOOD_COLS + operatingCols + morgueCols + DISCHARGE_COLS;
         int planCols = Math.max(MIN_PLAN_COLS, Math.max(topWidth, middleWidth));
         int wardCols = planCols - TRIAGE_COLS - WAITING_COLS;
-        int dischargeCols = planCols - icuCols - BLOOD_COLS - operatingCols - morgueCols;
+        int dischargeCols = planCols - icuCols - CORRIDOR_COLS - BLOOD_COLS - operatingCols - morgueCols;
 
         // Alturas de las franjas: la sala más alta manda y las demás se estiran hasta ella.
         int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, triageMinRows), 1 + rowsFor(beds.size(), wardCols));
         int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
-        int staffTop = topHeight + middleHeight;
-        int staffRows = 1 + rowsFor(staffCount, planCols * StaffSeat.SEATS_PER_TABLE);
+        int middleTop = topHeight + CORRIDOR_ROWS;
+        int staffTop = middleTop + middleHeight + CORRIDOR_ROWS;
+        int staffCols = (planCols + 1) / 2;
+        int consultCols = planCols - staffCols;
+        int doctorCount = hospital.getDoctors().size();
+        int staffRows = 1 + Math.max(rowsFor(staffCount, staffCols * StaffSeat.SEATS_PER_TABLE),
+                rowsFor(doctorCount, consultCols));
 
         List<Area> areas = new ArrayList<>();
         Map<String, Position> spots = new HashMap<>();
@@ -114,27 +137,40 @@ public class LayoutFactory {
         areas.add(ward);
         placeBeds(spots, ward, beds);
 
+        areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", 0, topHeight, planCols, CORRIDOR_ROWS));
+
         // Franja del medio, de izquierda a derecha.
         int col = 0;
-        Area icu = new Area(ZoneType.ICU, "UCI (" + icuBeds.size() + " camas)", col, topHeight, icuCols, middleHeight);
+        Area icu = new Area(ZoneType.ICU, "UCI (" + icuBeds.size() + " camas)", col, middleTop, icuCols, middleHeight);
         areas.add(icu);
         placeBeds(spots, icu, icuBeds);
         col += icuCols;
-        Area blood = new Area(ZoneType.BLOOD_BANK, "Banco de sangre", col, topHeight, BLOOD_COLS, middleHeight);
+        areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", col, middleTop, CORRIDOR_COLS, middleHeight));
+        col += CORRIDOR_COLS;
+        Area blood = new Area(ZoneType.BLOOD_BANK, "Banco de sangre", col, middleTop, BLOOD_COLS, middleHeight);
         areas.add(blood);
         col += BLOOD_COLS;
-        placeOperatingRooms(areas, spots, hospital, col, topHeight, middleHeight, operatingPerRow, operatingBlockRows);
+        placeOperatingRooms(areas, spots, hospital, col, middleTop, middleHeight, operatingPerRow, operatingBlockRows);
         col += operatingCols;
-        Area morgue = new Area(ZoneType.MORGUE, "Morgue", col, topHeight, morgueCols, middleHeight);
+        Area morgue = new Area(ZoneType.MORGUE, "Morgue", col, middleTop, morgueCols, middleHeight);
         areas.add(morgue);
         col += morgueCols;
-        areas.add(new Area(ZoneType.DISCHARGE, "Alta / salida", col, topHeight, dischargeCols, middleHeight));
+        areas.add(new Area(ZoneType.DISCHARGE, "Alta / salida", col, middleTop, dischargeCols, middleHeight));
+        areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", 0, middleTop + middleHeight, planCols, CORRIDOR_ROWS));
 
-        // Franja de abajo.
-        Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", 0, staffTop,
-                planCols, staffRows);
+        // Franja de abajo: los consultorios a la izquierda, cerca del pasillo vertical, y la sala del personal a
+        // la derecha, lo más lejos de la entrada; cada uno en la mitad del ancho.
+        Area consult = new Area(ZoneType.CONSULTATION, "Consultorios (" + doctorCount + ")", 0, staffTop,
+                consultCols, staffRows);
+        areas.add(consult);
+        Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", consultCols, staffTop,
+                staffCols, staffRows);
         areas.add(staff);
         Map<String, StaffSeat> staffSeats = seatStaff(staff, hospital.getDoctors(), hospital.getNurses());
+        Map<String, Position> consultDesks = new HashMap<>();
+        for (int index = 0; index < doctorCount; index++) {
+            consultDesks.put(hospital.getDoctors().get(index).getCode(), consult.slot(index));
+        }
 
         List<Position> triageSpots = new ArrayList<>();
         for (int index = 0; index < triageStations; index++) {
@@ -153,7 +189,34 @@ public class LayoutFactory {
             morgueSpots.add(morgue.slot(index));
         }
         return new HospitalLayout(planCols, staffTop + staffRows, areas, spots, triage.slot(0), triageSpots,
-                waitingSpots, bloodSpots, morgueSpots, staffSeats);
+                waitingSpots, bloodSpots, morgueSpots, staffSeats, consultDesks, doorsOf(areas));
+    }
+
+    /**
+     * Pone una puerta a cada sala, en el centro de su borde: hacia el pasillo de arriba si lo toca y, si no,
+     * hacia el de abajo.
+     */
+    private static List<Door> doorsOf(List<Area> areas) {
+        List<Area> corridors = areas.stream().filter(area -> area.zone() == ZoneType.CORRIDOR).toList();
+        List<Door> doors = new ArrayList<>();
+        for (Area room : areas) {
+            if (room.zone() == ZoneType.CORRIDOR) {
+                continue;
+            }
+            int center = room.col() + room.cols() / 2;
+            Position above = new Position(center, Math.max(0, room.row() - 1));
+            Position below = new Position(center, room.bottom());
+            if (room.row() > 0 && isCorridor(corridors, above)) {
+                doors.add(new Door(new Position(center, room.row()), above));
+            } else if (isCorridor(corridors, below)) {
+                doors.add(new Door(new Position(center, room.bottom() - 1), below));
+            }
+        }
+        return doors;
+    }
+
+    private static boolean isCorridor(List<Area> corridors, Position cell) {
+        return corridors.stream().anyMatch(corridor -> corridor.covers(cell));
     }
 
     /**

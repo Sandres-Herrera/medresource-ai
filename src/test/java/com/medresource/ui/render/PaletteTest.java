@@ -52,9 +52,9 @@ class PaletteTest {
     void theMarksAreDifferentFromEachOtherSoTheyCanBeTellApart() {
         Set<Color> marks = Set.of(Palette.CARD, Palette.OPERATING_TABLE, Palette.MORGUE_SLAB, Palette.STAFF_SEAT,
                 Palette.STAFF_TABLE, Palette.WAITING_SEAT, Palette.TRIAGE_STATION, Palette.BLOOD_UNIT,
-                Palette.ENTRANCE);
+                Palette.ENTRANCE, Palette.CONSULT_DESK, Palette.DOOR);
 
-        assertEquals(9, marks.size());
+        assertEquals(11, marks.size());
     }
 
     @Test
@@ -89,5 +89,19 @@ class PaletteTest {
     @Test
     void doctorsAndNursesAreDressedDifferently() {
         assertNotEquals(Palette.DOCTOR_COAT, Palette.NURSE_UNIFORM);
+    }
+
+    private static double distance(Color first, Color second) {
+        int red = first.getRed() - second.getRed();
+        int green = first.getGreen() - second.getGreen();
+        int blue = first.getBlue() - second.getBlue();
+        return Math.sqrt(red * red + green * green + blue * blue);
+    }
+
+    @Test
+    void aNurseCannotBeMistakenForAPatientOfAnyTriageLevel() {
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.NURSE_UNIFORM, Palette.triage(level)) > 80, level.name());
+        }
     }
 }
