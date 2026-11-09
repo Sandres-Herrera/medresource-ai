@@ -144,13 +144,30 @@ class LayoutFactoryTest {
     }
 
     @Test
-    void twoStaffMembersShareEachTableSoTheStaffRoomIsShort() {
+    void twoStaffMembersShareEachTableSoTheStaffRoomFitsInHalfThePlan() {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
         Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-        assertEquals(2, staff.rows());
+        assertEquals(10, staff.cols());
+        assertEquals(3, staff.rows());
         assertEquals(layout.staffSeatOf("D03").orElseThrow().table(),
                 layout.staffSeatOf("D04").orElseThrow().table());
+    }
+
+    @Test
+    void eachDoctorHasADeskInTheConsultingRooms() {
+        for (HospitalConfig config : sizes()) {
+            Hospital hospital = hospital(config);
+            HospitalLayout layout = factory.create(hospital);
+            Area consult = onlyAreaOf(layout, ZoneType.CONSULTATION);
+
+            for (int index = 0; index < hospital.getDoctors().size(); index++) {
+                String doctor = hospital.getDoctors().get(index).getCode();
+                assertEquals(consult.slot(index), layout.consultDeskOf(doctor).orElseThrow());
+            }
+            assertTrue(layout.consultDeskOf(hospital.getNurses().get(0).getCode()).isEmpty());
+            assertEquals("Consultorios (" + config.doctors() + ")", consult.title());
+        }
     }
 
     // ---------- áreas ----------
@@ -502,18 +519,23 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
 
         assertEquals(20, layout.getCols());
-        assertEquals(15, layout.getRows());
+        assertEquals(16, layout.getRows());
     }
 
     @Test
-    void theStaffRoomIsAtTheBottomAcrossTheWholePlan() {
+    void theConsultingRoomsAreOnTheLeftAndTheStaffRoomFarthestOnTheRightOfTheBottomBand() {
         for (HospitalConfig config : sizes()) {
             HospitalLayout layout = layoutOf(config);
             Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
+            Area consult = onlyAreaOf(layout, ZoneType.CONSULTATION);
 
-            assertEquals(0, staff.col());
-            assertEquals(layout.getCols(), staff.cols());
+            assertEquals(0, consult.col());
+            assertEquals((layout.getCols() + 1) / 2, staff.cols());
+            assertEquals(consult.right(), staff.col());
+            assertEquals(layout.getCols(), staff.right());
+            assertEquals(staff.row(), consult.row());
             assertEquals(layout.getRows(), staff.bottom());
+            assertEquals(layout.getRows(), consult.bottom());
         }
     }
 

@@ -28,7 +28,9 @@ import java.util.Map;
  *       con todas sus camas.</li>
  *   <li>En medio: la UCI, el pasillo vertical, el banco de sangre (cerca de los quirófanos, que son los que
  *       más lo usan), un área por cada quirófano, la morgue y la zona de alta o salida.</li>
- *   <li>Abajo, a todo lo ancho: la sala del personal, con mesas de dos puestos para que ocupe poco alto.</li>
+ *   <li>Abajo: a la izquierda, los consultorios, con un escritorio por médico, cerca del pasillo vertical; a
+ *       la derecha, lo más lejos de la entrada, la sala del personal, con mesas de dos puestos, en la mitad
+ *       del ancho.</li>
  * </ol>
  *
  * <p>Cada sala tiene una puerta en el centro de su borde hacia un pasillo: las de arriba, hacia el pasillo de
@@ -116,7 +118,11 @@ public class LayoutFactory {
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
         int middleTop = topHeight + CORRIDOR_ROWS;
         int staffTop = middleTop + middleHeight + CORRIDOR_ROWS;
-        int staffRows = 1 + rowsFor(staffCount, planCols * StaffSeat.SEATS_PER_TABLE);
+        int staffCols = (planCols + 1) / 2;
+        int consultCols = planCols - staffCols;
+        int doctorCount = hospital.getDoctors().size();
+        int staffRows = 1 + Math.max(rowsFor(staffCount, staffCols * StaffSeat.SEATS_PER_TABLE),
+                rowsFor(doctorCount, consultCols));
 
         List<Area> areas = new ArrayList<>();
         Map<String, Position> spots = new HashMap<>();
@@ -152,11 +158,19 @@ public class LayoutFactory {
         areas.add(new Area(ZoneType.DISCHARGE, "Alta / salida", col, middleTop, dischargeCols, middleHeight));
         areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", 0, middleTop + middleHeight, planCols, CORRIDOR_ROWS));
 
-        // Franja de abajo.
-        Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", 0, staffTop,
-                planCols, staffRows);
+        // Franja de abajo: los consultorios a la izquierda, cerca del pasillo vertical, y la sala del personal a
+        // la derecha, lo más lejos de la entrada; cada uno en la mitad del ancho.
+        Area consult = new Area(ZoneType.CONSULTATION, "Consultorios (" + doctorCount + ")", 0, staffTop,
+                consultCols, staffRows);
+        areas.add(consult);
+        Area staff = new Area(ZoneType.STAFF_ROOM, "Sala del personal (" + staffCount + ")", consultCols, staffTop,
+                staffCols, staffRows);
         areas.add(staff);
         Map<String, StaffSeat> staffSeats = seatStaff(staff, hospital.getDoctors(), hospital.getNurses());
+        Map<String, Position> consultDesks = new HashMap<>();
+        for (int index = 0; index < doctorCount; index++) {
+            consultDesks.put(hospital.getDoctors().get(index).getCode(), consult.slot(index));
+        }
 
         List<Position> triageSpots = new ArrayList<>();
         for (int index = 0; index < triageStations; index++) {
@@ -175,7 +189,7 @@ public class LayoutFactory {
             morgueSpots.add(morgue.slot(index));
         }
         return new HospitalLayout(planCols, staffTop + staffRows, areas, spots, triage.slot(0), triageSpots,
-                waitingSpots, bloodSpots, morgueSpots, staffSeats, Map.of(), doorsOf(areas));
+                waitingSpots, bloodSpots, morgueSpots, staffSeats, consultDesks, doorsOf(areas));
     }
 
     /**
