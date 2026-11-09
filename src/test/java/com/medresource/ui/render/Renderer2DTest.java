@@ -1,6 +1,7 @@
 package com.medresource.ui.render;
 
 import com.medresource.model.Area;
+import com.medresource.model.Door;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
@@ -200,8 +201,11 @@ class Renderer2DTest {
     }
 
     @Test
-    void writesTheTitleOfEveryArea() {
+    void writesTheTitleOfEveryAreaThatHasATitleRow() {
         for (Area area : layout.getAreas()) {
+            if (!area.hasTitleRow()) {
+                continue;
+            }
             assertTrue(countLabelPixels(area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W, 30) > 0,
                     "Título de " + area.title());
         }
@@ -237,5 +241,36 @@ class Renderer2DTest {
             }
         }
         return count;
+    }
+
+    // ---------- pasillos, puertas y consultorios ----------
+
+    @Test
+    void paintsTheCorridorsFromEdgeToEdgeWithoutATitle() {
+        for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
+            int color = Palette.zone(ZoneType.CORRIDOR).getRGB();
+
+            assertEquals(color, image.getRGB(corridor.col() * CELL_W + 1, corridor.row() * CELL_H + CELL_H / 2));
+            assertEquals(color, pixelAtCenterOf(corridor.slot(0)));
+            assertEquals(color, image.getRGB(corridor.col() * CELL_W + 10, corridor.row() * CELL_H + 10));
+        }
+    }
+
+    @Test
+    void marksEachDoorOnTheEdgeBetweenItsRoomAndTheCorridor() {
+        for (Door door : layout.getDoors()) {
+            int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
+
+            assertEquals(Palette.DOOR.getRGB(), image.getRGB(door.inside().col() * CELL_W + CELL_W / 2, edge),
+                    door.toString());
+        }
+    }
+
+    @Test
+    void drawsADeskWithTheCodeOfEachDoctorInTheConsultingRooms() {
+        Position desk = layout.consultDeskOf("D01").orElseThrow();
+
+        assertEquals(Palette.CONSULT_DESK.getRGB(), cardCornerOf(desk));
+        assertTrue(countLabelPixels(desk.col() * CELL_W, desk.row() * CELL_H, CELL_W, CELL_H) > 0);
     }
 }
