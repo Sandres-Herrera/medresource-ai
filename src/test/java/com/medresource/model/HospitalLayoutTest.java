@@ -153,6 +153,24 @@ class HospitalLayoutTest {
     }
 
     @Test
+    void aTriageStationIsAtTheTriageSpotWithItsNumber() {
+        HospitalLayout layout = layout();
+
+        assertEquals(triage.slot(1), layout.positionOf("T1").orElseThrow());
+        assertEquals(triage.slot(3), layout.positionOf("T2").orElseThrow());
+        assertTrue(layout.positionOf("T3").isEmpty());
+        assertTrue(layout.positionOf(null).isEmpty());
+    }
+
+    @Test
+    void theTriageQueueUsesThePlacesOfTheTriageThatAreNotTheEntranceOrAStation() {
+        HospitalLayout layout = layout();
+
+        assertEquals(List.of(triage.slot(2)), layout.getTriageQueueSpots());
+        assertThrows(UnsupportedOperationException.class, () -> layout.getTriageQueueSpots().clear());
+    }
+
+    @Test
     void describesItselfWithItsSizeAndTheNumberOfAreas() {
         String text = layout().toString();
 

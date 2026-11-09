@@ -12,9 +12,10 @@ import java.util.Set;
  *
  * <p>Es la geometría que comparten las vistas: ninguna regla de la simulación depende de ella y el motor
  * no la conoce. Los recursos se buscan por el mismo código que usa el motor en sus eventos
- * ({@code H1-C2}, {@code UCI-C1}, {@code Q1}, {@code D01}, {@code E01}). Los lugares que el motor no nombra
- * (los puestos de triage, las sillas de la sala de espera, los tipos de sangre del banco de sangre y los
- * lugares de la morgue) son listas ordenadas.</p>
+ * ({@code H1-C2}, {@code UCI-C1}, {@code Q1}, {@code D01}, {@code E01}); las estaciones de triage
+ * ({@code T1}, {@code T2}…) son los puestos de triage en orden. Los lugares que el motor no nombra (las
+ * sillas de la sala de espera, la fila del triage, los tipos de sangre del banco de sangre y los lugares de
+ * la morgue) son listas ordenadas.</p>
  *
  * <p>Los pacientes llegan por la {@linkplain #getEntrance() entrada}, que está en el área de triage. Es
  * inmutable: las listas que devuelve no se pueden modificar.</p>
@@ -150,13 +151,24 @@ public final class HospitalLayout {
     }
 
     /**
-     * Busca el lugar de un recurso por su código.
+     * Busca el lugar de un recurso por su código. Una estación de triage ({@code T1}, {@code T2}…) está en
+     * el puesto de triage de su mismo número.
      *
      * @param code código del recurso, el mismo que usa el motor en sus eventos
      * @return la casilla del recurso, o vacío si el plano no tiene ese código
      */
     public Optional<Position> positionOf(String code) {
-        return code == null ? Optional.empty() : Optional.ofNullable(spots.get(code));
+        if (code == null) {
+            return Optional.empty();
+        }
+        Position spot = spots.get(code);
+        if (spot != null) {
+            return Optional.of(spot);
+        }
+        int station = TriageStation.numberOf(code);
+        return station >= 1 && station <= triageSpots.size()
+                ? Optional.of(triageSpots.get(station - 1))
+                : Optional.empty();
     }
 
     /** Códigos de todos los recursos que tienen un lugar en el plano. */
@@ -183,6 +195,25 @@ public final class HospitalLayout {
 
     public List<Position> getTriageSpots() {
         return triageSpots;
+    }
+
+    /**
+     * Lugares de la fila del triage: los del área de triage que no son la entrada ni un puesto de triage, en
+     * orden. Ahí esperan su turno los pacientes cuando todas las estaciones están ocupadas.
+     *
+     * @return lugares en el orden en que se llenan; la lista no se puede modificar
+     */
+    public List<Position> getTriageQueueSpots() {
+        List<Position> queue = new ArrayList<>();
+        for (Area area : areasOf(ZoneType.TRIAGE)) {
+            for (int index = 0; index < area.slotCount(); index++) {
+                Position slot = area.slot(index);
+                if (!slot.equals(entrance) && !triageSpots.contains(slot)) {
+                    queue.add(slot);
+                }
+            }
+        }
+        return List.copyOf(queue);
     }
 
     public List<Position> getWaitingSpots() {
