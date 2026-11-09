@@ -59,6 +59,14 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
      * Crea el hospital estándar del proyecto: 30 camas, 6 de UCI, 4 quirófanos,
      * 16 médicos, 24 enfermeros, 10 unidades de cada tipo de sangre y 5 cupos en la morgue.
      *
+     * <p>Los 16 médicos se reparten según la demanda de cada especialidad: 5 de medicina interna,
+     * 3 de cirugía, 3 de traumatología, 2 de medicina general, 2 de urgencias y 1 de pediatría.</p>
+     *
+     * <p>Calibración de referencia (prioridad clínica): en un día normal casi nadie espera y la
+     * mortalidad ronda el 3 %, que son sobre todo muertes que ninguna estrategia podía evitar; con
+     * alta demanda ronda el 4 al 5 %, con emergencias inesperadas el 5 al 6 % y en una catástrofe
+     * el 11 al 12 %, cuando faltan cirujanos y quirófanos y la estrategia sí marca la diferencia.</p>
+     *
      * @return configuración estándar
      */
     public static HospitalConfig standard() {
