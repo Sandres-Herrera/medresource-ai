@@ -1,5 +1,6 @@
 package com.medresource.ui.render;
 
+import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,5 +71,23 @@ class PaletteTest {
     void doesNotColorNothing() {
         assertThrows(IllegalArgumentException.class, () -> Palette.zone(null));
         assertThrows(IllegalArgumentException.class, () -> Palette.triage(null));
+    }
+
+    @Test
+    void eachSpecialtyHasItsOwnColorDifferentFromTheTriageColors() {
+        Set<Color> colors = new HashSet<>();
+        for (Specialty specialty : Specialty.values()) {
+            colors.add(Palette.specialty(specialty));
+        }
+        assertEquals(Specialty.values().length, colors.size());
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(!colors.contains(Palette.triage(level)), level.name());
+        }
+        assertThrows(IllegalArgumentException.class, () -> Palette.specialty(null));
+    }
+
+    @Test
+    void doctorsAndNursesAreDressedDifferently() {
+        assertNotEquals(Palette.DOCTOR_COAT, Palette.NURSE_UNIFORM);
     }
 }
