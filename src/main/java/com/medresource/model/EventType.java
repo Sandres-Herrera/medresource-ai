@@ -7,6 +7,7 @@ public enum EventType {
 
     ARRIVAL("Llegada de paciente"),
     EMERGENCY_ALERT("Nueva emergencia"),
+    TRIAGE_STARTED("Inicio de triage"),
     TRIAGE_ASSIGNED("Triage asignado"),
     DIAGNOSIS("Diagnóstico"),
     REEVALUATION("Reevaluación"),
