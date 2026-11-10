@@ -9,6 +9,7 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Patient;
 import com.medresource.model.PatientProfile;
+import com.medresource.model.Position;
 import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
@@ -19,12 +20,12 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
-import com.medresource.ui.render.Motion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
 import com.medresource.ui.render.SceneState.Phase;
 import com.medresource.ui.render.StaffMarker;
+import com.medresource.ui.render.Walker;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Dimension;
@@ -49,6 +50,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScenePlayerTest {
 
     private static final HospitalConfig TINY = new HospitalConfig(1, 1, 1, 1, 1, 0, 1);
+    /**
+     * Segundos simulados que bastan para que cualquiera llegue a su destino en el hospital estándar: el
+     * recorrido más largo, de la sala del personal a la hospitalización, mide unos 50 m y dura unos 20 s.
+     */
+    private static final double LONGEST_WALK = 60.0;
 
     private final Renderer2D renderer = new Renderer2D();
 
@@ -161,7 +167,7 @@ class ScenePlayerTest {
     }
 
     @Test
-    void aNewPatientAppearsAtTheEntranceAndReachesItsPlaceOneTripAfterItsLastChange() {
+    void aNewPatientAppearsAtTheEntranceAndReachesItsPlaceAfterItsLastChange() {
         HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
         ScenePlayer player = new ScenePlayer(engineOf(HospitalConfig.standard(), Scenario.NORMAL, 30), layout, renderer);
         double lastChange = untilFirstArrival(player);
@@ -174,14 +180,14 @@ class ScenePlayerTest {
         assertTrue(player.hasArrived(code));
 
         OptionalDouble next = player.nextEventTime();
-        while (next.isPresent() && next.getAsDouble() <= lastChange + Motion.TRAVEL_SECONDS) {
+        while (next.isPresent() && next.getAsDouble() <= lastChange + LONGEST_WALK) {
             player.advanceTo(next.getAsDouble());
             if (player.drainReleasedEvents().stream().anyMatch(event -> code.equals(event.patientCode()))) {
                 lastChange = next.getAsDouble();
             }
             next = player.nextEventTime();
         }
-        player.advanceTo(lastChange + Motion.TRAVEL_SECONDS);
+        player.advanceTo(lastChange + LONGEST_WALK);
 
         PatientMarker now = player.markers().stream().filter(marker -> marker.code().equals(code))
                 .findFirst().orElseThrow();
@@ -191,21 +197,48 @@ class ScenePlayerTest {
     }
 
     @Test
-    void aPatientIsHalfwayWhenHalfTheTripTimeHasPassed() {
+    void aPatientWalksFromTheEntranceAlongItsRouteAtWalkingSpeed() {
         HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
         ScenePlayer player = new ScenePlayer(engineOf(HospitalConfig.standard(), Scenario.NORMAL, 30), layout, renderer);
         double arrival = untilFirstArrival(player);
         PatientMarker first = player.markers().get(0);
-        Point2D entrance = renderer.centerOf(layout.getEntrance());
-        Point2D place = renderer.centerOf(player.getState().positionOf(first.code()).orElseThrow());
+        Position entrance = layout.getEntrance();
+        Position place = player.getState().positionOf(first.code()).orElseThrow();
+        Walker expected = new Walker(entrance, renderer.centerOf(entrance));
+        expected.walk(new WalkPlanner(layout, renderer).legs(entrance, renderer.centerOf(entrance), place,
+                renderer.centerOf(place)), arrival);
+        double halfway = arrival + expected.tripSeconds() / 2;
         OptionalDouble next = player.nextEventTime();
-        double halfway = arrival + Motion.TRAVEL_SECONDS / 2;
         assertTrue(next.isEmpty() || next.getAsDouble() > halfway, "nadie más se mueve antes de la mitad");
 
         player.advanceTo(halfway);
+        expected.update(halfway);
 
-        assertEquals((entrance.getX() + place.getX()) / 2, player.markers().get(0).x(), 1e-9);
-        assertEquals((entrance.getY() + place.getY()) / 2, player.markers().get(0).y(), 1e-9);
+        assertTrue(expected.isMoving());
+        assertEquals(expected.getCurrent().getX(), player.markers().get(0).x(), 1e-9);
+        assertEquals(expected.getCurrent().getY(), player.markers().get(0).y(), 1e-9);
+    }
+
+    @Test
+    void nobodyWalksThroughAWall() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        ScenePlayer player = new ScenePlayer(engineOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 40), layout,
+                renderer);
+        Map<String, Position> lastCell = new HashMap<>();
+        for (double at = 0; at <= 45 * 60; at += 0.2) {
+            player.advanceTo(at);
+            Map<String, Point2D> people = new HashMap<>();
+            player.markers().forEach(marker -> people.put(marker.code(), new Point2D.Double(marker.x(), marker.y())));
+            player.staffMarkers().forEach(member -> people.put(member.code(), new Point2D.Double(member.x(),
+                    member.y())));
+            for (Map.Entry<String, Point2D> person : people.entrySet()) {
+                Position cell = new Position((int) Math.floor(person.getValue().getX() / Renderer2D.CELL_W),
+                        (int) Math.floor(person.getValue().getY() / Renderer2D.CELL_H));
+                Position before = lastCell.put(person.getKey(), cell);
+                assertTrue(before == null || before.equals(cell) || layout.canStep(before, cell),
+                        person.getKey() + " pasó de " + before + " a " + cell + " en el segundo " + at);
+            }
+        }
     }
 
     @Test
@@ -311,7 +344,7 @@ class ScenePlayerTest {
                 }
             }
             for (Map.Entry<String, Double> left : leftAt.entrySet()) {
-                if (player.getTime() >= left.getValue() + Motion.TRAVEL_SECONDS) {
+                if (player.getTime() >= left.getValue() + LONGEST_WALK) {
                     assertTrue(player.getState().phaseOf(left.getKey()).isEmpty(), left.getKey());
                 }
             }
@@ -398,7 +431,7 @@ class ScenePlayerTest {
         String nurse = engine.getHospital().getNurses().stream()
                 .filter(member -> !member.isAvailable()).findFirst().orElseThrow().getCode();
 
-        player.advanceTo(player.getTime() + Motion.TRAVEL_SECONDS + 1);
+        player.advanceTo(player.getTime() + LONGEST_WALK + 1);
 
         Point2D bed = renderer.centerOf(player.getState().positionOf("P001").orElseThrow());
         assertEquals(new Point2D.Double(bed.getX() - 32, bed.getY()), staffAt(player, doctor));
@@ -406,7 +439,7 @@ class ScenePlayerTest {
         assertFalse(player.staffMarkers().stream().filter(member -> member.code().equals(doctor))
                 .findFirst().orElseThrow().seated());
 
-        player.advanceTo(player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0 + Motion.TRAVEL_SECONDS);
+        player.advanceTo(player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0 + LONGEST_WALK);
 
         assertEquals(renderer.seatOf(layout.staffSeatOf(doctor).orElseThrow()), staffAt(player, doctor));
         assertEquals(renderer.seatOf(layout.staffSeatOf(nurse).orElseThrow()), staffAt(player, nurse));
@@ -425,7 +458,7 @@ class ScenePlayerTest {
         String doctor = engine.getHospital().getDoctors().stream()
                 .filter(member -> !member.isAvailable()).findFirst().orElseThrow().getCode();
 
-        player.advanceTo(player.getTime() + Motion.TRAVEL_SECONDS + 1);
+        player.advanceTo(player.getTime() + LONGEST_WALK + 1);
 
         Point2D desk = renderer.centerOf(layout.consultDeskOf(doctor).orElseThrow());
         assertEquals(layout.consultDeskOf(doctor).orElseThrow(), player.getState().positionOf("P001").orElseThrow());
