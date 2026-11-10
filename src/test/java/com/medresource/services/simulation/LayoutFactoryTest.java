@@ -11,6 +11,7 @@ import com.medresource.model.HospitalLayout;
 import com.medresource.model.Nurse;
 import com.medresource.model.OperatingRoom;
 import com.medresource.model.Position;
+import com.medresource.model.Route;
 import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
@@ -392,6 +393,61 @@ class LayoutFactoryTest {
         assertEquals(triage.bottom(), layout.doorsOf(triage).get(0).outside().row());
         assertEquals(icu.row() - 1, layout.doorsOf(icu).get(0).outside().row());
         assertEquals(lowerRoom.bottom(), layout.doorsOf(lowerRoom).get(0).outside().row());
+    }
+
+    // ---------- todo el plano está conectado ----------
+
+    @Test
+    void fromTheEntranceEveryRoomAndCorridorCanBeReached() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+            PathFinder finder = new PathFinder(layout);
+
+            for (Area area : layout.getAreas()) {
+                Position inside = area.zone() == ZoneType.CORRIDOR
+                        ? area.slot(0)
+                        : layout.doorsOf(area).get(0).inside();
+
+                assertTrue(finder.find(layout.getEntrance(), inside).isPresent(), config + " " + area.title());
+            }
+        }
+    }
+
+    @Test
+    void everyPlaceWherePeopleGoCanBeReachedFromTheEntrance() {
+        for (HospitalConfig config : sizes()) {
+            HospitalLayout layout = layoutOf(config);
+            PathFinder finder = new PathFinder(layout);
+            List<Position> places = new ArrayList<>();
+            places.addAll(layout.getTriageSpots());
+            places.addAll(layout.getWaitingSpots());
+            places.addAll(layout.getMorgueSpots());
+            for (String code : layout.getResourceCodes()) {
+                places.add(layout.positionOf(code).orElseThrow());
+            }
+            for (String code : layout.getStaffCodes()) {
+                places.add(layout.staffSeatOf(code).orElseThrow().table());
+                layout.consultDeskOf(code).ifPresent(places::add);
+            }
+
+            for (Position place : places) {
+                assertTrue(finder.find(layout.getEntrance(), place).isPresent(), config + " " + place);
+            }
+        }
+    }
+
+    @Test
+    void theOperatingRoomsOfTheLowerRowAreReachedThroughTheLowerCorridor() {
+        HospitalLayout layout = layoutOf(HospitalConfig.standard());
+        List<Area> rooms = layout.areasOf(ZoneType.OPERATING_ROOM);
+        Area lowerRoom = rooms.get(rooms.size() - 1);
+        Door door = layout.doorsOf(lowerRoom).get(0);
+
+        Route route = new PathFinder(layout).find(layout.getEntrance(), lowerRoom.slot(0)).orElseThrow();
+
+        assertEquals(lowerRoom.bottom(), door.outside().row());
+        assertTrue(route.passesThrough(door.outside()));
+        assertTrue(route.passesThrough(door.inside()));
     }
 
     @Test
