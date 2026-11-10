@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -500,5 +501,71 @@ class HospitalLayoutTest {
                 triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots(), Map.of(), null, List.of()));
         assertThrows(IllegalArgumentException.class, () -> new HospitalLayout(6, 8, withCorridor, spots(),
                 triage.slot(0), triageSpots(), waitingSpots(), bloodSpots(), morgueSpots(), Map.of(), Map.of(), null));
+    }
+
+    // ---------- dónde se puede caminar ----------
+
+    @Test
+    void everyCellOfAnAreaCanBeWalkedEvenItsTitleRow() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(bloodDoor), Map.of());
+
+        assertTrue(layout.isWalkable(new Position(0, 0)));
+        assertTrue(layout.isWalkable(ward.slot(0)));
+        assertTrue(layout.isWalkable(new Position(5, 5)));
+        assertFalse(layout.isWalkable(new Position(6, 0)));
+        assertFalse(layout.isWalkable(new Position(0, 8)));
+        assertFalse(layout.isWalkable(null));
+    }
+
+    @Test
+    void onePersonWalksFreelyInsideAnArea() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(), Map.of());
+
+        assertTrue(layout.canStep(new Position(0, 1), new Position(1, 1)));
+        assertTrue(layout.canStep(new Position(2, 0), new Position(2, 1)));
+        assertTrue(layout.canStep(new Position(0, 5), new Position(1, 5)));
+    }
+
+    @Test
+    void aWallSeparatesTwoRoomsAndARoomFromTheCorridorOutsideItsDoor() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(bloodDoor), Map.of());
+
+        assertFalse(layout.canStep(new Position(1, 1), new Position(2, 1)));
+        assertFalse(layout.canStep(new Position(1, 2), new Position(1, 3)));
+        assertFalse(layout.canStep(new Position(0, 4), new Position(0, 5)));
+        assertFalse(layout.canStep(new Position(2, 6), new Position(2, 5)));
+    }
+
+    @Test
+    void aDoorLetsPeoplePassBothWaysBetweenItsRoomAndTheCorridor() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(bloodDoor), Map.of());
+
+        assertTrue(layout.canStep(bloodDoor.inside(), bloodDoor.outside()));
+        assertTrue(layout.canStep(bloodDoor.outside(), bloodDoor.inside()));
+    }
+
+    @Test
+    void twoCorridorsThatTouchAreJoined() {
+        Area lower = new Area(ZoneType.CORRIDOR, "Pasillo", 0, 6, 1, 2);
+        List<Area> withCorridors = areas();
+        withCorridors.add(corridor);
+        withCorridors.add(lower);
+        HospitalLayout layout = new HospitalLayout(6, 8, withCorridors, spots(), triage.slot(0), triageSpots(),
+                waitingSpots(), bloodSpots(), morgueSpots());
+
+        assertTrue(layout.canStep(new Position(0, 5), new Position(0, 6)));
+        assertTrue(layout.canStep(new Position(0, 7), new Position(0, 6)));
+    }
+
+    @Test
+    void onlyOneStepToANeighbouringCellIsAllowed() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(), Map.of());
+
+        assertFalse(layout.canStep(new Position(0, 1), new Position(1, 2)));
+        assertFalse(layout.canStep(new Position(0, 5), new Position(2, 5)));
+        assertFalse(layout.canStep(new Position(0, 5), new Position(0, 5)));
+        assertFalse(layout.canStep(new Position(5, 5), new Position(6, 5)));
+        assertFalse(layout.canStep(null, new Position(0, 5)));
+        assertFalse(layout.canStep(new Position(0, 5), null));
     }
 }
