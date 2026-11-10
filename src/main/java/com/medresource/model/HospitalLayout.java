@@ -232,6 +232,47 @@ public final class HospitalLayout {
     }
 
     /**
+     * Indica si se puede pisar una casilla: cualquier casilla de un área, también la fila de su título. Fuera de
+     * las áreas no se camina.
+     *
+     * @param position casilla
+     * @return {@code true} si la casilla está dentro de un área del plano
+     */
+    public boolean isWalkable(Position position) {
+        return position != null && areaCovering(position).isPresent();
+    }
+
+    /**
+     * Indica si se puede dar un paso de una casilla a otra vecina sin atravesar una pared.
+     *
+     * <p>Dentro de una misma área se camina libremente, y de un pasillo a otro también. Entre una sala y un
+     * pasillo solo se pasa por una {@linkplain Door puerta}, en cualquiera de los dos sentidos; entre dos salas
+     * no se pasa nunca.</p>
+     *
+     * @param from casilla donde está la persona
+     * @param to   casilla a la que quiere pasar
+     * @return {@code true} si las dos casillas son vecinas y se puede pasar de una a la otra
+     */
+    public boolean canStep(Position from, Position to) {
+        if (from == null || to == null || from.stepsTo(to) != 1) {
+            return false;
+        }
+        Optional<Area> here = areaCovering(from);
+        Optional<Area> there = areaCovering(to);
+        if (here.isEmpty() || there.isEmpty()) {
+            return false;
+        }
+        if (here.get().equals(there.get())) {
+            return true;
+        }
+        if (here.get().zone() == ZoneType.CORRIDOR && there.get().zone() == ZoneType.CORRIDOR) {
+            return true;
+        }
+        return doors.stream().anyMatch(door -> door.inside().equals(from) && door.outside().equals(to)
+                || door.inside().equals(to) && door.outside().equals(from));
+    }
+
+    /**
      * Busca el área a la que pertenece un lugar.
      *
      * @param position casilla
