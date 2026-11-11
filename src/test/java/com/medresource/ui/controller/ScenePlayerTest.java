@@ -300,16 +300,16 @@ class ScenePlayerTest {
     }
 
     @Test
-    void aCrowdedHospitalLeavesPeopleOutOfTheWaitingRoomAndHasDeceasedPatients() {
+    void aCrowdedHospitalLeavesCriticalPatientsWaitingAtTheEntranceAndHasDeceasedPatients() {
         ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 200);
-        int mostWaiting = 0;
+        int mostAtTheEntrance = 0;
         boolean sawDeceased = false;
         while (tick(player)) {
-            mostWaiting = Math.max(mostWaiting, player.overflow());
+            mostAtTheEntrance = Math.max(mostAtTheEntrance, player.getState().count(Phase.DIRECT_PASS));
             sawDeceased |= player.markers().stream().anyMatch(PatientMarker::deceased);
         }
 
-        assertTrue(mostWaiting > 0);
+        assertTrue(mostAtTheEntrance > 0);
         assertTrue(sawDeceased);
     }
 
