@@ -114,4 +114,43 @@ class CameraTest {
     void doesNotApplyItselfToNoSurface() {
         assertThrows(IllegalArgumentException.class, () -> new Camera(1, 0, 0).applyTo(null));
     }
+
+    // ---------- seguir un punto ----------
+
+    @Test
+    void followingAPointPutsItInTheCenterOfTheScreen() {
+        Camera camera = Camera.follow(500, 300, 1000, 600, 400, 200, 2.0);
+
+        Point2D point = camera.toScreen(500, 300);
+
+        assertEquals(2.0, camera.zoom(), 0.0);
+        assertEquals(200, point.getX(), 1e-9);
+        assertEquals(100, point.getY(), 1e-9);
+    }
+
+    @Test
+    void nearTheEdgesTheCameraDoesNotShowWhatIsOutsideTheWorld() {
+        Camera corner = Camera.follow(0, 0, 1000, 600, 400, 200, 2.0);
+        Camera farCorner = Camera.follow(1000, 600, 1000, 600, 400, 200, 2.0);
+
+        assertEquals(0, corner.toScreen(0, 0).getX(), 1e-9);
+        assertEquals(0, corner.toScreen(0, 0).getY(), 1e-9);
+        assertEquals(400, farCorner.toScreen(1000, 600).getX(), 1e-9);
+        assertEquals(200, farCorner.toScreen(1000, 600).getY(), 1e-9);
+    }
+
+    @Test
+    void ifTheWorldFitsInOneDirectionItStaysCenteredThere() {
+        Camera camera = Camera.follow(10, 300, 100, 600, 400, 200, 2.0);
+
+        assertEquals(100, camera.toScreen(0, 0).getX(), 1e-9);
+        assertEquals(300, camera.toScreen(100, 0).getX(), 1e-9);
+    }
+
+    @Test
+    void doesNotFollowWithAnInvalidZoomOrWithoutSizes() {
+        assertThrows(IllegalArgumentException.class, () -> Camera.follow(0, 0, 100, 100, 50, 50, 0.0));
+        assertThrows(IllegalArgumentException.class, () -> Camera.follow(0, 0, 0, 100, 50, 50, 1.0));
+        assertThrows(IllegalArgumentException.class, () -> Camera.follow(0, 0, 100, 100, 50, 0, 1.0));
+    }
 }

@@ -60,6 +60,40 @@ public record Camera(double zoom, double offsetX, double offsetY) {
     }
 
     /**
+     * Calcula la cámara que sigue un punto del mundo con un aumento dado: el punto queda en el centro de la
+     * pantalla, salvo cerca de los bordes del mundo, donde la cámara se detiene para no mostrar lo que hay
+     * fuera del plano. Si con ese aumento el mundo cabe entero en un sentido, en ese sentido queda centrado.
+     *
+     * @param targetX     coordenada x del punto que se sigue, en el mundo
+     * @param targetY     coordenada y del punto que se sigue, en el mundo
+     * @param worldWidth  ancho del mundo en píxeles
+     * @param worldHeight alto del mundo en píxeles
+     * @param viewWidth   ancho de la pantalla en píxeles
+     * @param viewHeight  alto de la pantalla en píxeles
+     * @param zoom        aumento, entre {@link #MIN_ZOOM} y {@link #MAX_ZOOM}
+     * @return cámara que sigue el punto
+     * @throws IllegalArgumentException si el mundo o la pantalla no tienen tamaño o el aumento no es válido
+     */
+    public static Camera follow(double targetX, double targetY, double worldWidth, double worldHeight,
+                                double viewWidth, double viewHeight, double zoom) {
+        if (worldWidth <= 0 || worldHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) {
+            throw new IllegalArgumentException("El mundo y la pantalla deben tener ancho y alto.");
+        }
+        Camera checked = new Camera(zoom, 0, 0);
+        return new Camera(checked.zoom(), followAxis(targetX, worldWidth, viewWidth, zoom),
+                followAxis(targetY, worldHeight, viewHeight, zoom));
+    }
+
+    /** Desplazamiento en un sentido: el punto al centro, sin pasarse de los bordes del mundo. */
+    private static double followAxis(double target, double world, double view, double zoom) {
+        double scaled = world * zoom;
+        if (scaled <= view) {
+            return (view - scaled) / 2;
+        }
+        return Math.max(view - scaled, Math.min(0, view / 2 - target * zoom));
+    }
+
+    /**
      * Convierte un punto del mundo a la pantalla.
      *
      * @param worldX coordenada x del mundo
