@@ -14,6 +14,7 @@ import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.StaffMember;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
@@ -420,7 +421,7 @@ class ScenePlayerTest {
     }
 
     @Test
-    void theDoctorAndTheNurseStandNextToTheirPatientAndThenGoBackToTheirSeats() {
+    void theDoctorAndTheNurseStandNextToTheirPatientAndThenTheDoctorGoesBackToHisSeat() {
         HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
         SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
                 new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
@@ -444,7 +445,8 @@ class ScenePlayerTest {
         player.advanceTo(player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0 + LONGEST_WALK);
 
         assertEquals(renderer.seatOf(layout.staffSeatOf(doctor).orElseThrow()), staffAt(player, doctor));
-        assertEquals(renderer.seatOf(layout.staffSeatOf(nurse).orElseThrow()), staffAt(player, nurse));
+        assertTrue(engine.getHospital().getNurses().stream().allMatch(StaffMember::isAvailable),
+                "el enfermero quedó libre para el motor; desde ahí solo hace rondas");
         assertEquals(Phase.TREATING, player.getState().phaseOf("P001").orElseThrow());
     }
 
@@ -682,5 +684,55 @@ class ScenePlayerTest {
         }
 
         assertTrue(seen > 0);
+    }
+
+    // ---------- rondas de enfermería ----------
+
+    @Test
+    void theFreeNursesVisitAHospitalizedPatientOnTheirRoundsAndGoBackToRest() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P001").orElse(null) != Phase.TREATING) {
+            tick(player);
+        }
+        double afterAdmission = player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0;
+        player.advanceTo(afterAdmission);
+        Point2D bed = renderer.centerOf(player.getState().positionOf("P001").orElseThrow());
+        Point2D bedside = new Point2D.Double(bed.getX() - 32, bed.getY());
+        Set<String> visitors = new HashSet<>();
+        boolean allResting = false;
+        for (double at = afterAdmission; at < afterAdmission + 4 * NursingRounds.VISIT_MINUTES * 60.0; at += 5) {
+            player.advanceTo(at);
+            boolean someoneVisits = false;
+            for (StaffMarker member : player.staffMarkers()) {
+                if (!member.isDoctor() && new Point2D.Double(member.x(), member.y()).equals(bedside)) {
+                    visitors.add(member.code());
+                    someoneVisits = true;
+                }
+            }
+            allResting |= !someoneVisits && player.staffMarkers().stream()
+                    .filter(member -> !member.isDoctor()).allMatch(StaffMarker::seated);
+        }
+
+        assertEquals(2, visitors.size(), "dos enfermeros se turnan la ronda: " + visitors);
+        assertFalse(allResting, "con un paciente en cama siempre hay alguien de ronda o caminando");
+    }
+
+    @Test
+    void withoutHospitalizedPatientsTheNursesKeepResting() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(1),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+
+        while (tick(player)) {
+            for (StaffMarker member : player.staffMarkers()) {
+                if (!member.isDoctor()) {
+                    assertTrue(member.seated(), member.code() + " en el segundo " + player.getTime());
+                }
+            }
+        }
     }
 }

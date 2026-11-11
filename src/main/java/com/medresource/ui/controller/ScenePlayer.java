@@ -3,11 +3,13 @@ package com.medresource.ui.controller;
 import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalLayout;
+import com.medresource.model.Nurse;
 import com.medresource.model.Patient;
 import com.medresource.model.Position;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.StaffMember;
 import com.medresource.model.StaffSeat;
+import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.SceneRenderer;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -48,6 +51,10 @@ import java.util.Set;
  * primeros auxilios mientras espera, junto a su silla, su cama o la entrada), y vuelven a su
  * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
  * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
+ *
+ * <p>Los enfermeros libres no se quedan todo el tiempo sentados: hacen {@linkplain NursingRounds rondas} entre
+ * los pacientes que están en una cama de hospitalización o de UCI, se paran un rato a su lado y vuelven a la sala
+ * del personal. Para el motor siguen libres: si los necesita, van a donde los llama.</p>
  *
  * <p>Cada paciente muestra su salud y, en tratamiento, cuánto lleva de él. La salud que se ve pasa poco a poco de
  * la que tenía al terminar el minuto anterior a la que tiene al terminar el minuto que se ve, así que el color
@@ -343,27 +350,69 @@ public final class ScenePlayer {
 
     /**
      * Da a cada miembro del personal su destino: junto a su paciente si se ve que el tratamiento o los primeros
-     * auxilios ya empezaron, o su puesto en la sala del personal si está libre.
+     * auxilios ya empezaron; un enfermero libre, junto al paciente que visita en su ronda; y si no, su puesto en
+     * la sala del personal. Junto a un paciente, quien lo atiende para el motor toma los primeros lugares, y quien
+     * solo lo visita en su ronda se para después.
      */
     private void retargetStaff(double at) {
         Map<String, String> attended = attendedByMinute.getOrDefault(staffMinute, Map.of());
+        List<SceneState.Placement> inBed = hospitalizedPatients();
         Map<String, Integer> companions = new HashMap<>();
+        Map<StaffMember, Itinerary.Stop> rounds = new LinkedHashMap<>();
+        Map<StaffMember, String> visited = new HashMap<>();
+        int freeNurses = 0;
         for (StaffMember member : staff.values()) {
-            StaffSeat seat = layout.staffSeatOf(member.getCode()).orElseThrow();
-            Position cell = seat.table();
-            Point2D target = renderer.seatOf(seat);
             String patient = attended.get(member.getCode());
-            Optional<Itinerary.Stop> stop = patient == null ? Optional.empty()
-                    : Optional.ofNullable(itineraries.get(patient)).flatMap(Itinerary::heading);
-            if (stop.isPresent() && isAttendedWhereHeIs(stop.get().phase())) {
-                int index = companions.merge(patient, 1, Integer::sum) - 1;
-                cell = stop.get().cell();
-                Point2D place = renderer.centerOf(cell);
-                target = new Point2D.Double(place.getX() + STAFF_OFFSETS_X[Math.min(index,
-                        STAFF_OFFSETS_X.length - 1)], place.getY());
+            if (patient != null) {
+                Optional<Itinerary.Stop> stop = Optional.ofNullable(itineraries.get(patient))
+                        .flatMap(Itinerary::heading);
+                standNextTo(member, patient, stop.orElse(null), companions, at);
+            } else if (member instanceof Nurse) {
+                OptionalInt visit = NursingRounds.visit(freeNurses++, Math.max(0, staffMinute), inBed.size());
+                if (visit.isPresent()) {
+                    SceneState.Placement bed = inBed.get(visit.getAsInt());
+                    rounds.put(member, new Itinerary.Stop(bed.phase(), bed.position()));
+                    visited.put(member, bed.patientCode());
+                } else {
+                    standNextTo(member, null, null, companions, at);
+                }
+            } else {
+                standNextTo(member, null, null, companions, at);
             }
-            walkTo(staffWalkers.get(member.getCode()), cell, target, at);
         }
+        rounds.forEach((nurse, stop) -> standNextTo(nurse, visited.get(nurse), stop, companions, at));
+    }
+
+    /**
+     * Pone a caminar a un miembro del personal junto a un paciente, en el siguiente lugar libre a su izquierda, si
+     * el paciente está donde se le atiende; si no, a su puesto en la sala del personal.
+     */
+    private void standNextTo(StaffMember member, String patient, Itinerary.Stop stop, Map<String, Integer> companions,
+                             double at) {
+        StaffSeat seat = layout.staffSeatOf(member.getCode()).orElseThrow();
+        Position cell = seat.table();
+        Point2D target = renderer.seatOf(seat);
+        if (patient != null && stop != null && isAttendedWhereHeIs(stop.phase())) {
+            int index = companions.merge(patient, 1, Integer::sum) - 1;
+            cell = stop.cell();
+            Point2D place = renderer.centerOf(cell);
+            target = new Point2D.Double(place.getX() + STAFF_OFFSETS_X[Math.min(index,
+                    STAFF_OFFSETS_X.length - 1)], place.getY());
+        }
+        walkTo(staffWalkers.get(member.getCode()), cell, target, at);
+    }
+
+    /** Pacientes en tratamiento en una cama de hospitalización o de UCI, en orden de llegada: los de las rondas. */
+    private List<SceneState.Placement> hospitalizedPatients() {
+        List<SceneState.Placement> inBed = new ArrayList<>();
+        for (SceneState.Placement placement : state.placements()) {
+            if (placement.phase() == SceneState.Phase.TREATING && layout.areaAt(placement.position())
+                    .map(area -> area.zone() == ZoneType.HOSPITALIZATION || area.zone() == ZoneType.ICU)
+                    .orElse(false)) {
+                inBed.add(placement);
+            }
+        }
+        return inBed;
     }
 
     /** Aplica un evento a la escena y pone a caminar, desde ese momento, a quien cambió de lugar. */
