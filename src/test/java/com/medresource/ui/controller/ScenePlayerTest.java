@@ -557,4 +557,69 @@ class ScenePlayerTest {
         }
         assertTrue(checked > 50, "solo se revisaron " + checked + " lugares");
     }
+
+    // ---------- salud y avance del tratamiento ----------
+
+    @Test
+    void aPatientInTreatmentShowsHowMuchOfItIsDoneAndTheOthersShowNoProgress() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 60);
+        Map<String, Double> lastProgress = new HashMap<>();
+        int treating = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                if (phase != Phase.TREATING) {
+                    assertFalse(marker.inTreatment(), marker.code() + " " + phase);
+                    continue;
+                }
+                treating++;
+                assertTrue(marker.inTreatment(), marker.code());
+                Double before = lastProgress.put(marker.code(), marker.progress());
+                assertTrue(before == null || marker.progress() >= before, marker.code() + " retrocedió");
+            }
+        }
+
+        assertTrue(treating > 0);
+        assertTrue(lastProgress.values().stream().anyMatch(progress -> progress > 0.9),
+                "algún tratamiento llegó casi al final");
+    }
+
+    @Test
+    void theHealthOfAWaitingPatientDropsLittleByLittle() {
+        ScenePlayer player = playerOf(TINY, Scenario.HIGH_DEMAND, 60);
+        Map<String, Double> lastHealth = new HashMap<>();
+        int seen = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                assertTrue(marker.health() >= 0 && marker.health() <= Patient.MAX_HEALTH, marker.code());
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                Double before = phase == Phase.QUEUED ? lastHealth.put(marker.code(), marker.health())
+                        : lastHealth.remove(marker.code());
+                if (phase == Phase.QUEUED && before != null) {
+                    seen++;
+                    assertTrue(marker.health() <= before, marker.code() + " mejoró sin atención");
+                    assertTrue(before - marker.health() < 2.0, marker.code() + " perdió salud de golpe");
+                }
+            }
+        }
+
+        assertTrue(seen > 100, "solo se vieron " + seen + " momentos de espera");
+    }
+
+    @Test
+    void aDeceasedPatientShowsNoHealthNorProgress() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        int deceased = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased()) {
+                    deceased++;
+                    assertEquals(0.0, marker.health(), 0.0);
+                    assertFalse(marker.inTreatment());
+                }
+            }
+        }
+
+        assertTrue(deceased > 0);
+    }
 }

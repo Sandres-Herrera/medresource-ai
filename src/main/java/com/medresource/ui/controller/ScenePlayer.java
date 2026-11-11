@@ -49,6 +49,11 @@ import java.util.Set;
  * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
  * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
  *
+ * <p>Cada paciente muestra su salud y, en tratamiento, cuánto lleva de él. La salud que se ve pasa poco a poco de
+ * la que tenía al terminar el minuto anterior a la que tiene al terminar el minuto que se ve, así que el color
+ * cambia sin saltos aunque el motor vaya un minuto adelante. El avance del tratamiento sale del minuto en que
+ * empezó y del minuto en que termina, que el reproductor anota en cuanto el motor lo empieza.</p>
+ *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
 public final class ScenePlayer {
@@ -70,6 +75,8 @@ public final class ScenePlayer {
     private final Map<String, StaffMember> staff = new LinkedHashMap<>();
     private final Map<String, Walker> staffWalkers = new HashMap<>();
     private final Map<Integer, Map<String, String>> attendedByMinute = new HashMap<>();
+    private final Map<Integer, Map<String, Double>> healthByMinute = new HashMap<>();
+    private final Map<String, SimulationEngine.TreatmentSpan> treatments = new HashMap<>();
     private int fedEvents;
     private double time;
     private int staffMinute = -1;
@@ -124,6 +131,7 @@ public final class ScenePlayer {
         }
         followStaffMinute(newTime);
         time = newTime;
+        healthByMinute.keySet().removeIf(minute -> minute < getMinute() - 1);
         itineraries.values().forEach(itinerary -> itinerary.update(time));
         staffWalkers.values().forEach(walker -> walker.update(time));
         removeArrivedDepartures();
@@ -163,8 +171,11 @@ public final class ScenePlayer {
         for (SceneState.Placement placement : state.placements()) {
             Patient patient = patients.get(placement.patientCode());
             Point2D at = itineraries.get(placement.patientCode()).getCurrent();
+            boolean dead = isDead(placement.phase());
             markers.add(new PatientMarker(patient.getCode(), patient.getTriageLevel(), patient.getSex(),
-                    patient.isMinor(), isDead(placement.phase()), at.getX(), at.getY()));
+                    patient.isMinor(), dead, at.getX(), at.getY(), dead ? 0.0 : healthOf(patient),
+                    placement.phase() == SceneState.Phase.TREATING ? progressOf(patient.getCode())
+                            : PatientMarker.NO_PROGRESS));
         }
         return markers;
     }
@@ -221,6 +232,38 @@ public final class ScenePlayer {
         return state;
     }
 
+    /**
+     * Salud que se ve de un paciente: la del final del minuto anterior, que va pasando a la del final del minuto
+     * que se ve a medida que corren sus segundos.
+     */
+    private double healthOf(Patient patient) {
+        int minute = getMinute();
+        Double now = healthByMinute.getOrDefault(minute, Map.of()).get(patient.getCode());
+        if (now == null) {
+            return patient.getHealth();
+        }
+        Double before = healthByMinute.getOrDefault(minute - 1, Map.of()).get(patient.getCode());
+        if (before == null) {
+            return now;
+        }
+        double share = time / SECONDS_PER_MINUTE - minute;
+        return Math.max(0.0, Math.min(Patient.MAX_HEALTH, before + (now - before) * share));
+    }
+
+    /** Parte del tratamiento que ya pasó en el momento que se ve, de 0 a 1. */
+    private double progressOf(String patientCode) {
+        SimulationEngine.TreatmentSpan span = treatments.get(patientCode);
+        if (span == null) {
+            return PatientMarker.NO_PROGRESS;
+        }
+        double start = span.startMinute() * SECONDS_PER_MINUTE;
+        double length = (span.endMinute() - span.startMinute()) * SECONDS_PER_MINUTE;
+        if (length <= 0) {
+            return 1.0;
+        }
+        return Math.max(0.0, Math.min(1.0, (time - start) / length));
+    }
+
     /** Indica si un paciente es crítico y pasa directo, sin hacer fila en el triage: el motor ya lo clasificó. */
     private boolean passesDirectly(String patientCode) {
         Patient patient = patients.get(patientCode);
@@ -255,6 +298,17 @@ public final class ScenePlayer {
         timeline.schedule(minute, events.subList(fedEvents, events.size()));
         fedEvents = events.size();
         attendedByMinute.put(minute, whoAttendsWhom());
+        Map<String, Double> health = new HashMap<>();
+        for (Patient patient : patients.values()) {
+            boolean present = patient.getArrivalMinute() <= minute
+                    && (!patient.isFinished() || patient.getOutcomeMinute() >= minute - 1);
+            if (present) {
+                health.put(patient.getCode(), patient.getHealth());
+                engine.getTreatmentSpan(patient)
+                        .ifPresent(span -> treatments.putIfAbsent(patient.getCode(), span));
+            }
+        }
+        healthByMinute.put(minute, health);
     }
 
     /** Anota a qué paciente atiende cada médico y enfermero ocupado, después de simular un minuto. */
