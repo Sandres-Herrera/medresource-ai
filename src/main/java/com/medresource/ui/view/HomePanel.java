@@ -30,6 +30,9 @@ import java.util.List;
  * Contenido de la pantalla de inicio: el logo que late, el nombre de la aplicación, la acción principal (nueva
  * simulación), las dos opciones rápidas como tarjetas, los datos del hospital estándar y el enlace para salir.
  *
+ * <p>El contenido queda centrado: si la ventana crece (por ejemplo, maximizada), el espacio sobrante se reparte
+ * arriba y abajo y a los lados, y el fondo llena toda la ventana.</p>
+ *
  * <p>El fondo es azul noche con un resplandor verde agua detrás del logo y una línea fina de acento en el borde
  * de arriba. Los datos de las tarjetas (pacientes, horas, velocidad) salen de los casos que recibe, así que nunca
  * dicen algo distinto de lo que se simula. No abre ventanas ni simula nada: cada opción solo avisa a su
@@ -93,6 +96,7 @@ public final class HomePanel extends JPanel {
         exit = new HomeButton(HomeButton.Style.LINK, "Salir", null);
         exit.addActionListener(event -> actions.exit().run());
 
+        add(Box.createVerticalGlue());
         add(centered(new LogoBadge()));
         add(Box.createVerticalStrut(18));
         add(centered(title()));
@@ -114,6 +118,7 @@ public final class HomePanel extends JPanel {
         add(Box.createVerticalStrut(4));
         add(centered(label("Universidad Popular del Cesar · Ingeniería de Sistemas", Font.PLAIN, 11f,
                 HomeTheme.FAINT)));
+        add(Box.createVerticalGlue());
     }
 
     /**
@@ -169,7 +174,8 @@ public final class HomePanel extends JPanel {
         surface.fillRect(0, 0, width, height);
         float radius = Math.max(1f, Math.min(width, 640) * 0.55f);
         Color clear = new Color(HomeTheme.GLOW.getRed(), HomeTheme.GLOW.getGreen(), HomeTheme.GLOW.getBlue(), 0);
-        surface.setPaint(new RadialGradientPaint(new Point2D.Double(width / 2.0, 76), radius,
+        double glowY = Math.max(76, (height - getPreferredSize().height) / 2.0 + 76);
+        surface.setPaint(new RadialGradientPaint(new Point2D.Double(width / 2.0, glowY), radius,
                 new float[]{0f, 1f}, new Color[]{HomeTheme.GLOW, clear}, MultipleGradientPaint.CycleMethod.NO_CYCLE));
         surface.fillRect(0, 0, width, height);
         surface.setPaint(new GradientPaint(0, 0, clear, width / 2f, 0, HomeTheme.ACCENT, true));
