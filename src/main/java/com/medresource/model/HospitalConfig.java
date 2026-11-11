@@ -73,6 +73,27 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
         return new HospitalConfig(30, 6, 4, 16, 24, 10, 5);
     }
 
+    /**
+     * Crea el hospital pequeño: la mitad del estándar (15 camas, 3 de UCI, 2 quirófanos, 8 médicos,
+     * 12 enfermeros, 5 unidades de cada tipo de sangre y 3 cupos en la morgue). Sirve para ver qué pasa cuando
+     * faltan recursos.
+     *
+     * @return configuración pequeña
+     */
+    public static HospitalConfig small() {
+        return new HospitalConfig(15, 3, 2, 8, 12, 5, 3);
+    }
+
+    /**
+     * Crea el hospital grande: el doble del estándar (60 camas, 12 de UCI, 8 quirófanos, 32 médicos,
+     * 48 enfermeros, 20 unidades de cada tipo de sangre y 10 cupos en la morgue).
+     *
+     * @return configuración grande
+     */
+    public static HospitalConfig large() {
+        return new HospitalConfig(60, 12, 8, 32, 48, 20, 10);
+    }
+
     private static void requireRange(int value, int min, int max, String name) {
         if (value < min || value > max) {
             throw new IllegalArgumentException("La cantidad de " + name + " debe estar entre " + min + " y " + max + ".");

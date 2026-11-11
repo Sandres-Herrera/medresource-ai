@@ -40,9 +40,9 @@ public final class CompareStrategies {
     }
 
     private static final List<Size> SIZES = List.of(
-            new Size("pequeño", new HospitalConfig(15, 3, 2, 8, 12, 5, 3)),
+            new Size("pequeño", HospitalConfig.small()),
             new Size("estándar", HospitalConfig.standard()),
-            new Size("grande", new HospitalConfig(60, 12, 8, 32, 48, 20, 10)));
+            new Size("grande", HospitalConfig.large()));
 
     private static final String ROW_FORMAT = "%-58s %-15s %-9s %-12s %-12s %-12s %s";
 
