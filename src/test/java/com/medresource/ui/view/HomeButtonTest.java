@@ -92,4 +92,15 @@ class HomeButtonTest {
         assertThrows(IllegalArgumentException.class, () -> new HomeButton(null, "Salir", null));
         assertThrows(IllegalArgumentException.class, () -> new HomeButton(HomeButton.Style.LINK, null, null));
     }
+
+    @Test
+    void theCompactButtonIsAsWideAsItsTextAndFilledWithTheAccent() {
+        HomeButton compact = new HomeButton(HomeButton.Style.COMPACT, "Iniciar simulación", HomeIcon.PLAY);
+        HomeButton plain = new HomeButton(HomeButton.Style.COMPACT, "Iniciar simulación", null);
+
+        assertEquals(HomeButton.COMPACT_HEIGHT, compact.getPreferredSize().height);
+        assertTrue(compact.getPreferredSize().width < HomeButton.PRIMARY_WIDTH);
+        assertTrue(compact.getPreferredSize().width > plain.getPreferredSize().width, "el icono ocupa espacio");
+        assertEquals(HomeTheme.ACCENT.getRGB(), paint(compact).getRGB(8, HomeButton.COMPACT_HEIGHT / 2));
+    }
 }
