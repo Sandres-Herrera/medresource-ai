@@ -121,6 +121,11 @@ public final class Walker {
         return legs.stream().mapToDouble(Leg::meters).sum() / WALKING_SPEED;
     }
 
+    /** Momento en que termina (o terminó) su recorrido actual, en segundos simulados; 0 si nunca caminó. */
+    public double arrivalTime() {
+        return startTime + tripSeconds();
+    }
+
     /** Anota la casilla del último punto alcanzado: el de cada tramo ya terminado. */
     private void reach(int completedLegs) {
         for (; reached < completedLegs; reached++) {

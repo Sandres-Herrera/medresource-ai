@@ -76,6 +76,15 @@ class WalkerTest {
     }
 
     @Test
+    void knowsWhenItArrivesAtTheEndOfItsTrip() {
+        assertEquals(0.0, walker.arrivalTime(), DELTA);
+
+        walker.walk(trip, 100);
+
+        assertEquals(100 + secondsFor(3.0), walker.arrivalTime(), DELTA);
+    }
+
+    @Test
     void staysAtTheStartUntilTheTripBegins() {
         walker.walk(trip, 100);
 
