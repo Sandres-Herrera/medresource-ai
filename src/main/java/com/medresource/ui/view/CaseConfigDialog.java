@@ -1,186 +1,95 @@
 package com.medresource.ui.view;
 
-import com.medresource.model.CaseConfig;
-import com.medresource.model.HospitalConfig;
-import com.medresource.model.Scenario;
-import com.medresource.ui.controller.SimulationSetup;
-import com.medresource.ui.controller.StrategyOption;
+import com.medresource.ui.controller.SetupDraft;
+import com.medresource.ui.controller.SimulationRequest;
 
-import javax.swing.BorderFactory;
-import javax.swing.DefaultListCellRenderer;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
 import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JList;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JSpinner;
-import javax.swing.SpinnerNumberModel;
-import java.awt.BorderLayout;
-import java.awt.Component;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
+import java.awt.GraphicsEnvironment;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.Window;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.Optional;
+import java.util.Random;
 
 /**
- * Diálogo donde el usuario configura el hospital, el caso y la estrategia antes de simular.
+ * Diálogo donde el usuario arma una simulación nueva: el hospital, el caso, la estrategia y la velocidad inicial.
  *
- * <p>Los rangos de cada campo son los de {@link HospitalConfig} y {@link CaseConfig}; las reglas siguen
- * viviendo en esos registros, y si algún valor no es válido se muestra su mensaje.</p>
+ * <p>Muestra el {@link SetupPanel} con el tema oscuro de la pantalla de inicio, sin el marco de Windows: el
+ * título y la equis de cerrar son parte del formulario, y el diálogo se mueve arrastrando su parte de arriba.
+ * Cabe en una pantalla de 1366 × 768 ({@link ScreenFit}). Las reglas siguen en {@link SetupDraft} y en los
+ * registros del modelo, así que lo que devuelve siempre es válido.</p>
  */
 public final class CaseConfigDialog extends JDialog {
 
     private static final long serialVersionUID = 1L;
 
-    private final JSpinner beds = spinner(1, HospitalConfig.MAX_BEDS);
-    private final JSpinner icuBeds = spinner(1, HospitalConfig.MAX_ICU_BEDS);
-    private final JSpinner operatingRooms = spinner(1, HospitalConfig.MAX_OPERATING_ROOMS);
-    private final JSpinner doctors = spinner(1, HospitalConfig.MAX_DOCTORS);
-    private final JSpinner nurses = spinner(1, HospitalConfig.MAX_NURSES);
-    private final JSpinner blood = spinner(0, HospitalConfig.MAX_BLOOD_UNITS_PER_TYPE);
-    private final JSpinner morgue = spinner(1, HospitalConfig.MAX_MORGUE_CAPACITY);
-    private final JComboBox<Scenario> scenario = new JComboBox<>(Scenario.values());
-    private final JSpinner seed = spinner(0, Integer.MAX_VALUE);
-    private final JSpinner patients = spinner(CaseConfig.MIN_PATIENTS, CaseConfig.MAX_PATIENTS);
-    private final JSpinner duration = spinner(CaseConfig.MIN_DURATION_MINUTES, CaseConfig.MAX_DURATION_MINUTES);
-    private final JComboBox<StrategyOption> strategy = new JComboBox<>(StrategyOption.values());
-    private transient SimulationSetup result;
+    /** Alto de la franja de arriba que sirve para arrastrar el diálogo. */
+    private static final int DRAG_HEIGHT = 70;
+
+    private transient SimulationRequest result;
+    private Point dragStart;
 
     private CaseConfigDialog(Window owner) {
-        super(owner, "Nueva simulación", ModalityType.APPLICATION_MODAL);
-        scenario.setRenderer(new DefaultListCellRenderer() {
+        super(owner, SetupPanel.TITLE, ModalityType.APPLICATION_MODAL);
+        setUndecorated(true);
+        SetupPanel panel = new SetupPanel(new SetupDraft(), new Random());
+        panel.onStart(request -> {
+            result = request;
+            dispose();
+        });
+        panel.onCancel(this::dispose);
+        setContentPane(panel);
+        enableDragging(panel);
+        pack();
+        Rectangle usable = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        Rectangle bounds = ScreenFit.centered(getSize(), usable);
+        if (owner != null && owner.isShowing()) {
+            setSize(bounds.getSize());
+            setLocationRelativeTo(owner);
+        } else {
+            setBounds(bounds);
+        }
+        addWindowListener(new WindowAdapter() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                          boolean selected, boolean focus) {
-                Object text = value instanceof Scenario chosen ? chosen.getDisplayName() : value;
-                return super.getListCellRendererComponent(list, text, index, selected, focus);
+            public void windowOpened(WindowEvent event) {
+                panel.startButton().requestFocusInWindow();
             }
         });
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        GridBagConstraints at = new GridBagConstraints();
-        at.insets = new Insets(3, 6, 3, 6);
-        at.fill = GridBagConstraints.HORIZONTAL;
-        at.gridy = 0;
-        form.add(section("Hospital"), full(at));
-        row(form, at, "Camas de hospitalización", beds);
-        row(form, at, "Camas de UCI", icuBeds);
-        row(form, at, "Quirófanos", operatingRooms);
-        row(form, at, "Médicos", doctors);
-        row(form, at, "Enfermeros", nurses);
-        row(form, at, "Sangre por tipo (unidades)", blood);
-        row(form, at, "Cupos de la morgue", morgue);
-        JButton standard = new JButton("Hospital estándar");
-        standard.addActionListener(event -> showHospital(HospitalConfig.standard()));
-        at.gridy++;
-        form.add(standard, full(at));
-        at.gridy++;
-        form.add(section("Caso"), full(at));
-        row(form, at, "Escenario", scenario);
-        row(form, at, "Semilla", seed);
-        row(form, at, "Pacientes", patients);
-        row(form, at, "Duración de llegadas (min)", duration);
-        at.gridy++;
-        form.add(section("Estrategia"), full(at));
-        row(form, at, "Estrategia de asignación", strategy);
-
-        JButton cancel = new JButton("Cancelar");
-        cancel.addActionListener(event -> dispose());
-        JButton accept = new JButton("Simular");
-        accept.addActionListener(event -> accept());
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttons.add(cancel);
-        buttons.add(accept);
-        getRootPane().setDefaultButton(accept);
-
-        setLayout(new BorderLayout());
-        add(form, BorderLayout.CENTER);
-        add(buttons, BorderLayout.SOUTH);
-        showHospital(HospitalConfig.standard());
-        showCase(CaseConfig.of(1L, Scenario.NORMAL));
-        pack();
-        setResizable(false);
-        setLocationRelativeTo(owner);
     }
 
     /**
      * Muestra el diálogo y espera a que el usuario termine.
      *
      * @param owner ventana dueña del diálogo (puede ser nula)
-     * @return la configuración elegida, o vacío si el usuario canceló
+     * @return la configuración y la velocidad elegidas, o vacío si el usuario canceló
      */
-    public static Optional<SimulationSetup> ask(Window owner) {
+    public static Optional<SimulationRequest> ask(Window owner) {
         CaseConfigDialog dialog = new CaseConfigDialog(owner);
         dialog.setVisible(true);
         return Optional.ofNullable(dialog.result);
     }
 
-    private void accept() {
-        try {
-            HospitalConfig hospital = new HospitalConfig(value(beds), value(icuBeds), value(operatingRooms),
-                    value(doctors), value(nurses), value(blood), value(morgue));
-            CaseConfig caseConfig = new CaseConfig(value(seed), (Scenario) scenario.getSelectedItem(),
-                    value(patients), value(duration));
-            result = new SimulationSetup(hospital, caseConfig, (StrategyOption) strategy.getSelectedItem());
-            dispose();
-        } catch (IllegalArgumentException error) {
-            JOptionPane.showMessageDialog(this, error.getMessage(), "Datos no válidos",
-                    JOptionPane.WARNING_MESSAGE);
-        }
-    }
+    /** Permite mover el diálogo arrastrando la franja de arriba del formulario. */
+    private void enableDragging(SetupPanel panel) {
+        MouseAdapter drag = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent event) {
+                dragStart = event.getY() <= DRAG_HEIGHT ? event.getPoint() : null;
+            }
 
-    private void showHospital(HospitalConfig config) {
-        beds.setValue(config.hospitalizationBeds());
-        icuBeds.setValue(config.icuBeds());
-        operatingRooms.setValue(config.operatingRooms());
-        doctors.setValue(config.doctors());
-        nurses.setValue(config.nurses());
-        blood.setValue(config.bloodUnitsPerType());
-        morgue.setValue(config.morgueCapacity());
-    }
-
-    private void showCase(CaseConfig config) {
-        scenario.setSelectedItem(config.scenario());
-        seed.setValue((int) config.seed());
-        patients.setValue(config.patientCount());
-        duration.setValue(config.durationMinutes());
-    }
-
-    private static JSpinner spinner(int min, int max) {
-        return new JSpinner(new SpinnerNumberModel(min, min, max, 1));
-    }
-
-    private static int value(JSpinner spinner) {
-        return ((Number) spinner.getValue()).intValue();
-    }
-
-    private static JLabel section(String title) {
-        JLabel label = new JLabel(title);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
-        label.setBorder(BorderFactory.createEmptyBorder(8, 0, 2, 0));
-        return label;
-    }
-
-    private static void row(JPanel form, GridBagConstraints at, String text, JComponent field) {
-        at.gridy++;
-        at.gridx = 0;
-        at.gridwidth = 1;
-        at.weightx = 0;
-        form.add(new JLabel(text), at);
-        at.gridx = 1;
-        at.weightx = 1;
-        form.add(field, at);
-    }
-
-    private static GridBagConstraints full(GridBagConstraints at) {
-        at.gridx = 0;
-        at.gridwidth = 2;
-        return at;
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (dragStart != null) {
+                    Point screen = event.getLocationOnScreen();
+                    setLocation(screen.x - dragStart.x, screen.y - dragStart.y);
+                }
+            }
+        };
+        panel.addMouseListener(drag);
+        panel.addMouseMotionListener(drag);
     }
 }
