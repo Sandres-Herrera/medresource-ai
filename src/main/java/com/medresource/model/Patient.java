@@ -221,6 +221,16 @@ public class Patient extends Person {
         return symptoms;
     }
 
+    /**
+     * Indica si el paciente puede caminar por sí mismo: ninguno de sus síntomas se lo impide.
+     *
+     * @return {@code false} si tiene algún síntoma que le impide caminar y hay que llevarlo en camilla
+     * @see Symptom#preventsWalking()
+     */
+    public boolean canWalk() {
+        return symptoms.stream().noneMatch(Symptom::preventsWalking);
+    }
+
     public int getArrivalMinute() {
         return arrivalMinute;
     }

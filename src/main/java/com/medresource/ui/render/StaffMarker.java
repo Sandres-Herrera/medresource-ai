@@ -12,8 +12,11 @@ import com.medresource.model.Specialty;
  * @param seated    {@code true} si está sentado en su puesto de la sala del personal, donde se escribe su código
  * @param x         posición horizontal en el mundo, en píxeles
  * @param y         posición vertical en el mundo, en píxeles
+ * @param bob       cuánto sube o baja la figura por el {@linkplain IdleMotion movimiento de reposo}, en píxeles;
+ *                  no cambia el punto donde está
  */
-public record StaffMarker(String code, Specialty specialty, Sex sex, boolean seated, double x, double y) {
+public record StaffMarker(String code, Specialty specialty, Sex sex, boolean seated, double x, double y,
+                          double bob) {
 
     /**
      * Valida el marcador.
@@ -27,6 +30,21 @@ public record StaffMarker(String code, Specialty specialty, Sex sex, boolean sea
         if (sex == null) {
             throw new IllegalArgumentException("El sexo del personal es obligatorio.");
         }
+    }
+
+    /**
+     * Crea un marcador sin movimiento de reposo.
+     *
+     * @param code      código del médico o del enfermero
+     * @param specialty especialidad del médico; nula para un enfermero
+     * @param sex       sexo
+     * @param seated    {@code true} si está sentado en su puesto
+     * @param x         posición horizontal en el mundo, en píxeles
+     * @param y         posición vertical en el mundo, en píxeles
+     * @throws IllegalArgumentException si falta el código o el sexo
+     */
+    public StaffMarker(String code, Specialty specialty, Sex sex, boolean seated, double x, double y) {
+        this(code, specialty, sex, seated, x, y, 0.0);
     }
 
     /** Indica si es un médico (tiene especialidad) y no un enfermero. */

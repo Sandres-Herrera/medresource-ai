@@ -3,12 +3,15 @@ package com.medresource.ui.controller;
 import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalLayout;
+import com.medresource.model.Nurse;
 import com.medresource.model.Patient;
 import com.medresource.model.Position;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.StaffMember;
 import com.medresource.model.StaffSeat;
+import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
+import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.SceneState;
@@ -26,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -49,6 +53,25 @@ import java.util.Set;
  * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
  * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
  *
+ * <p>Los enfermeros libres no se quedan todo el tiempo sentados: hacen {@linkplain NursingRounds rondas} entre
+ * los pacientes que están en una cama de hospitalización o de UCI, se paran un rato a su lado y vuelven a la sala
+ * del personal. Para el motor siguen libres: si los necesita, van a donde los llama.</p>
+ *
+ * <p>Cada paciente muestra su salud y, en tratamiento, cuánto lleva de él. La salud que se ve pasa poco a poco de
+ * la que tenía al terminar el minuto anterior a la que tiene al terminar el minuto que se ve, así que el color
+ * cambia sin saltos aunque el motor vaya un minuto adelante. El avance del tratamiento sale del minuto en que
+ * empezó y del minuto en que termina, que el reproductor anota en cuanto el motor lo empieza.</p>
+ *
+ * <p>Quien no puede caminar va en camilla ({@link Patient#canWalk()}): con una fractura, inconsciente o sin poder
+ * caminar, va acostado en ella desde la entrada hasta que sale de alta, y espera en ella en vez de sentarse.
+ * Los fallecidos también: quedan acostados donde murieron y la camilla los lleva a la morgue. Mientras la camilla
+ * se mueve, un camillero la empuja; los camilleros no son personal del motor, así que no le quitan a nadie
+ * enfermeros ni médicos.</p>
+ *
+ * <p>Y quien está quieto respira: los pacientes que esperan o están en su cama y el personal en su puesto o junto a
+ * un paciente suben y bajan apenas con el {@linkplain IdleMotion movimiento de reposo}, así que el hospital nunca
+ * se ve congelado aunque nadie cambie de lugar. Los fallecidos no se mueven.</p>
+ *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
 public final class ScenePlayer {
@@ -70,6 +93,8 @@ public final class ScenePlayer {
     private final Map<String, StaffMember> staff = new LinkedHashMap<>();
     private final Map<String, Walker> staffWalkers = new HashMap<>();
     private final Map<Integer, Map<String, String>> attendedByMinute = new HashMap<>();
+    private final Map<Integer, Map<String, Double>> healthByMinute = new HashMap<>();
+    private final Map<String, SimulationEngine.TreatmentSpan> treatments = new HashMap<>();
     private int fedEvents;
     private double time;
     private int staffMinute = -1;
@@ -124,6 +149,7 @@ public final class ScenePlayer {
         }
         followStaffMinute(newTime);
         time = newTime;
+        healthByMinute.keySet().removeIf(minute -> minute < getMinute() - 1);
         itineraries.values().forEach(itinerary -> itinerary.update(time));
         staffWalkers.values().forEach(walker -> walker.update(time));
         removeArrivedDepartures();
@@ -162,9 +188,16 @@ public final class ScenePlayer {
         List<PatientMarker> markers = new ArrayList<>();
         for (SceneState.Placement placement : state.placements()) {
             Patient patient = patients.get(placement.patientCode());
-            Point2D at = itineraries.get(placement.patientCode()).getCurrent();
+            Itinerary itinerary = itineraries.get(placement.patientCode());
+            Point2D at = itinerary.getCurrent();
+            boolean dead = isDead(placement.phase());
+            boolean onStretcher = dead || !patient.canWalk() && placement.phase() != SceneState.Phase.LEAVING;
+            boolean moving = !itinerary.hasArrived();
             markers.add(new PatientMarker(patient.getCode(), patient.getTriageLevel(), patient.getSex(),
-                    patient.isMinor(), isDead(placement.phase()), at.getX(), at.getY()));
+                    patient.isMinor(), dead, at.getX(), at.getY(), dead ? 0.0 : healthOf(patient),
+                    placement.phase() == SceneState.Phase.TREATING ? progressOf(patient.getCode())
+                            : PatientMarker.NO_PROGRESS, onStretcher, moving,
+                    IdleMotion.bob(patient.getCode(), time, moving || dead)));
         }
         return markers;
     }
@@ -177,11 +210,12 @@ public final class ScenePlayer {
     public List<StaffMarker> staffMarkers() {
         List<StaffMarker> markers = new ArrayList<>();
         for (StaffMember member : staff.values()) {
-            Point2D at = staffWalkers.get(member.getCode()).getCurrent();
+            Walker walker = staffWalkers.get(member.getCode());
+            Point2D at = walker.getCurrent();
             boolean seated = at.equals(renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow()));
             markers.add(new StaffMarker(member.getCode(),
                     member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
-                    at.getX(), at.getY()));
+                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving())));
         }
         return markers;
     }
@@ -221,6 +255,38 @@ public final class ScenePlayer {
         return state;
     }
 
+    /**
+     * Salud que se ve de un paciente: la del final del minuto anterior, que va pasando a la del final del minuto
+     * que se ve a medida que corren sus segundos.
+     */
+    private double healthOf(Patient patient) {
+        int minute = getMinute();
+        Double now = healthByMinute.getOrDefault(minute, Map.of()).get(patient.getCode());
+        if (now == null) {
+            return patient.getHealth();
+        }
+        Double before = healthByMinute.getOrDefault(minute - 1, Map.of()).get(patient.getCode());
+        if (before == null) {
+            return now;
+        }
+        double share = time / SECONDS_PER_MINUTE - minute;
+        return Math.max(0.0, Math.min(Patient.MAX_HEALTH, before + (now - before) * share));
+    }
+
+    /** Parte del tratamiento que ya pasó en el momento que se ve, de 0 a 1. */
+    private double progressOf(String patientCode) {
+        SimulationEngine.TreatmentSpan span = treatments.get(patientCode);
+        if (span == null) {
+            return PatientMarker.NO_PROGRESS;
+        }
+        double start = span.startMinute() * SECONDS_PER_MINUTE;
+        double length = (span.endMinute() - span.startMinute()) * SECONDS_PER_MINUTE;
+        if (length <= 0) {
+            return 1.0;
+        }
+        return Math.max(0.0, Math.min(1.0, (time - start) / length));
+    }
+
     /** Indica si un paciente es crítico y pasa directo, sin hacer fila en el triage: el motor ya lo clasificó. */
     private boolean passesDirectly(String patientCode) {
         Patient patient = patients.get(patientCode);
@@ -255,6 +321,17 @@ public final class ScenePlayer {
         timeline.schedule(minute, events.subList(fedEvents, events.size()));
         fedEvents = events.size();
         attendedByMinute.put(minute, whoAttendsWhom());
+        Map<String, Double> health = new HashMap<>();
+        for (Patient patient : patients.values()) {
+            boolean present = patient.getArrivalMinute() <= minute
+                    && (!patient.isFinished() || patient.getOutcomeMinute() >= minute - 1);
+            if (present) {
+                health.put(patient.getCode(), patient.getHealth());
+                engine.getTreatmentSpan(patient)
+                        .ifPresent(span -> treatments.putIfAbsent(patient.getCode(), span));
+            }
+        }
+        healthByMinute.put(minute, health);
     }
 
     /** Anota a qué paciente atiende cada médico y enfermero ocupado, después de simular un minuto. */
@@ -281,27 +358,69 @@ public final class ScenePlayer {
 
     /**
      * Da a cada miembro del personal su destino: junto a su paciente si se ve que el tratamiento o los primeros
-     * auxilios ya empezaron, o su puesto en la sala del personal si está libre.
+     * auxilios ya empezaron; un enfermero libre, junto al paciente que visita en su ronda; y si no, su puesto en
+     * la sala del personal. Junto a un paciente, quien lo atiende para el motor toma los primeros lugares, y quien
+     * solo lo visita en su ronda se para después.
      */
     private void retargetStaff(double at) {
         Map<String, String> attended = attendedByMinute.getOrDefault(staffMinute, Map.of());
+        List<SceneState.Placement> inBed = hospitalizedPatients();
         Map<String, Integer> companions = new HashMap<>();
+        Map<StaffMember, Itinerary.Stop> rounds = new LinkedHashMap<>();
+        Map<StaffMember, String> visited = new HashMap<>();
+        int freeNurses = 0;
         for (StaffMember member : staff.values()) {
-            StaffSeat seat = layout.staffSeatOf(member.getCode()).orElseThrow();
-            Position cell = seat.table();
-            Point2D target = renderer.seatOf(seat);
             String patient = attended.get(member.getCode());
-            Optional<Itinerary.Stop> stop = patient == null ? Optional.empty()
-                    : Optional.ofNullable(itineraries.get(patient)).flatMap(Itinerary::heading);
-            if (stop.isPresent() && isAttendedWhereHeIs(stop.get().phase())) {
-                int index = companions.merge(patient, 1, Integer::sum) - 1;
-                cell = stop.get().cell();
-                Point2D place = renderer.centerOf(cell);
-                target = new Point2D.Double(place.getX() + STAFF_OFFSETS_X[Math.min(index,
-                        STAFF_OFFSETS_X.length - 1)], place.getY());
+            if (patient != null) {
+                Optional<Itinerary.Stop> stop = Optional.ofNullable(itineraries.get(patient))
+                        .flatMap(Itinerary::heading);
+                standNextTo(member, patient, stop.orElse(null), companions, at);
+            } else if (member instanceof Nurse) {
+                OptionalInt visit = NursingRounds.visit(freeNurses++, Math.max(0, staffMinute), inBed.size());
+                if (visit.isPresent()) {
+                    SceneState.Placement bed = inBed.get(visit.getAsInt());
+                    rounds.put(member, new Itinerary.Stop(bed.phase(), bed.position()));
+                    visited.put(member, bed.patientCode());
+                } else {
+                    standNextTo(member, null, null, companions, at);
+                }
+            } else {
+                standNextTo(member, null, null, companions, at);
             }
-            walkTo(staffWalkers.get(member.getCode()), cell, target, at);
         }
+        rounds.forEach((nurse, stop) -> standNextTo(nurse, visited.get(nurse), stop, companions, at));
+    }
+
+    /**
+     * Pone a caminar a un miembro del personal junto a un paciente, en el siguiente lugar libre a su izquierda, si
+     * el paciente está donde se le atiende; si no, a su puesto en la sala del personal.
+     */
+    private void standNextTo(StaffMember member, String patient, Itinerary.Stop stop, Map<String, Integer> companions,
+                             double at) {
+        StaffSeat seat = layout.staffSeatOf(member.getCode()).orElseThrow();
+        Position cell = seat.table();
+        Point2D target = renderer.seatOf(seat);
+        if (patient != null && stop != null && isAttendedWhereHeIs(stop.phase())) {
+            int index = companions.merge(patient, 1, Integer::sum) - 1;
+            cell = stop.cell();
+            Point2D place = renderer.centerOf(cell);
+            target = new Point2D.Double(place.getX() + STAFF_OFFSETS_X[Math.min(index,
+                    STAFF_OFFSETS_X.length - 1)], place.getY());
+        }
+        walkTo(staffWalkers.get(member.getCode()), cell, target, at);
+    }
+
+    /** Pacientes en tratamiento en una cama de hospitalización o de UCI, en orden de llegada: los de las rondas. */
+    private List<SceneState.Placement> hospitalizedPatients() {
+        List<SceneState.Placement> inBed = new ArrayList<>();
+        for (SceneState.Placement placement : state.placements()) {
+            if (placement.phase() == SceneState.Phase.TREATING && layout.areaAt(placement.position())
+                    .map(area -> area.zone() == ZoneType.HOSPITALIZATION || area.zone() == ZoneType.ICU)
+                    .orElse(false)) {
+                inBed.add(placement);
+            }
+        }
+        return inBed;
     }
 
     /** Aplica un evento a la escena y pone a caminar, desde ese momento, a quien cambió de lugar. */

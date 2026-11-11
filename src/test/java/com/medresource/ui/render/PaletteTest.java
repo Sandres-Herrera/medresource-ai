@@ -104,4 +104,41 @@ class PaletteTest {
             assertTrue(distance(Palette.NURSE_UNIFORM, Palette.triage(level)) > 80, level.name());
         }
     }
+
+    @Test
+    void theHealthGoesFromGreenToRedAsItDrops() {
+        assertEquals(Palette.HEALTH_GOOD, Palette.health(100.0));
+        assertEquals(Palette.HEALTH_GOOD, Palette.health(70.0));
+        assertEquals(Palette.HEALTH_FAIR, Palette.health(69.9));
+        assertEquals(Palette.HEALTH_FAIR, Palette.health(40.0));
+        assertEquals(Palette.HEALTH_POOR, Palette.health(39.9));
+        assertEquals(Palette.HEALTH_POOR, Palette.health(20.0));
+        assertEquals(Palette.HEALTH_CRITICAL, Palette.health(19.9));
+        assertEquals(Palette.HEALTH_CRITICAL, Palette.health(0.0));
+    }
+
+    @Test
+    void theHealthColorsAndTheProgressAreDifferentFromEachOther() {
+        Set<Color> colors = Set.of(Palette.HEALTH_GOOD, Palette.HEALTH_FAIR, Palette.HEALTH_POOR,
+                Palette.HEALTH_CRITICAL, Palette.BAR_TRACK, Palette.TREATMENT_PROGRESS);
+
+        assertEquals(6, colors.size());
+    }
+
+    @Test
+    void aHealthOutOfRangeHasNoColor() {
+        assertThrows(IllegalArgumentException.class, () -> Palette.health(-0.1));
+        assertThrows(IllegalArgumentException.class, () -> Palette.health(100.1));
+        assertThrows(IllegalArgumentException.class, () -> Palette.health(Double.NaN));
+    }
+
+    @Test
+    void thePorterCannotBeMistakenForTheStaffNorForAPatient() {
+        assertTrue(distance(Palette.PORTER_UNIFORM, Palette.NURSE_UNIFORM) > 60);
+        assertTrue(distance(Palette.PORTER_UNIFORM, Palette.DOCTOR_COAT) > 60);
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.PORTER_UNIFORM, Palette.triage(level)) > 60, level.name());
+        }
+        assertNotEquals(Palette.STRETCHER, Palette.STRETCHER_FRAME);
+    }
 }

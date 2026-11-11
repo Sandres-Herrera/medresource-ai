@@ -10,7 +10,8 @@ import java.awt.Color;
  * Colores de la interfaz del hospital, en un solo lugar para que todas las vistas se vean igual.
  *
  * <p>Cada zona tiene un color de fondo, cada nivel de triage un color de aviso (rojo para el más
- * urgente, azul para el menos urgente) y cada especialidad médica un color para el distintivo de la bata.</p>
+ * urgente, azul para el menos urgente) y cada especialidad médica un color para el distintivo de la bata. La
+ * salud de un paciente va de verde (bien) a rojo (grave), y el avance de su tratamiento se pinta en azul.</p>
  */
 public final class Palette {
 
@@ -54,6 +55,33 @@ public final class Palette {
     public static final Color DOCTOR_COAT = new Color(0xFA, 0xFA, 0xFA);
     /** Uniforme de los enfermeros: verde agua, lejos de los colores de triage para no confundirlos con pacientes. */
     public static final Color NURSE_UNIFORM = new Color(0x4D, 0xB6, 0xAC);
+
+    /** Salud de {@value #GOOD_HEALTH} o más: verde. */
+    public static final Color HEALTH_GOOD = new Color(0x43, 0xA0, 0x47);
+    /** Salud desde {@value #FAIR_HEALTH} hasta antes de {@value #GOOD_HEALTH}: amarillo. */
+    public static final Color HEALTH_FAIR = new Color(0xFD, 0xD8, 0x35);
+    /** Salud desde {@value #POOR_HEALTH} hasta antes de {@value #FAIR_HEALTH}: naranja. */
+    public static final Color HEALTH_POOR = new Color(0xFB, 0x8C, 0x00);
+    /** Salud por debajo de {@value #POOR_HEALTH}: rojo. */
+    public static final Color HEALTH_CRITICAL = new Color(0xE5, 0x39, 0x35);
+    /** Fondo de las barras de salud y de avance, lo que todavía no se llena. */
+    public static final Color BAR_TRACK = new Color(0x37, 0x47, 0x4F);
+    /** Parte ya hecha del tratamiento. */
+    public static final Color TREATMENT_PROGRESS = new Color(0x29, 0x79, 0xFF);
+
+    /** Colchón de una camilla. */
+    public static final Color STRETCHER = new Color(0xEC, 0xEF, 0xF1);
+    /** Armazón y ruedas de una camilla. */
+    public static final Color STRETCHER_FRAME = new Color(0x54, 0x6E, 0x7A);
+    /** Uniforme del camillero que empuja la camilla: gris azulado, distinto del personal y de los pacientes. */
+    public static final Color PORTER_UNIFORM = new Color(0x90, 0xA4, 0xAE);
+
+    /** Desde esta salud el paciente está bien (verde). */
+    public static final double GOOD_HEALTH = 70.0;
+    /** Desde esta salud el paciente está regular (amarillo). */
+    public static final double FAIR_HEALTH = 40.0;
+    /** Desde esta salud el paciente está mal (naranja); por debajo, grave (rojo). */
+    public static final double POOR_HEALTH = 20.0;
 
     private Palette() {
     }
@@ -102,6 +130,27 @@ public final class Palette {
             case IV -> new Color(0x38, 0x8E, 0x3C);
             case V -> new Color(0x19, 0x76, 0xD2);
         };
+    }
+
+    /**
+     * Color de la salud de un paciente: verde si está bien, amarillo si está regular, naranja si está mal y rojo
+     * si está grave.
+     *
+     * @param health salud, de 0 a 100
+     * @return color de esa salud
+     * @throws IllegalArgumentException si la salud no está entre 0 y 100
+     */
+    public static Color health(double health) {
+        if (!(health >= 0.0 && health <= 100.0)) {
+            throw new IllegalArgumentException("La salud debe estar entre 0 y 100.");
+        }
+        if (health >= GOOD_HEALTH) {
+            return HEALTH_GOOD;
+        }
+        if (health >= FAIR_HEALTH) {
+            return HEALTH_FAIR;
+        }
+        return health >= POOR_HEALTH ? HEALTH_POOR : HEALTH_CRITICAL;
     }
 
     /**

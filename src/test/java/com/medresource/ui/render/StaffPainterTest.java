@@ -92,4 +92,11 @@ class StaffPainterTest {
         assertThrows(IllegalArgumentException.class, () -> painter.paint(null, List.of()));
         assertThrows(IllegalArgumentException.class, () -> painter.paint(graphics, null));
     }
+
+    @Test
+    void theFigureOfTheStaffBobsWithTheIdleMotion() {
+        paint(new StaffMarker("E01", null, Sex.MALE, false, 50, 50, 3.0));
+
+        assertEquals(Palette.NURSE_UNIFORM.getRGB(), image.getRGB(50, 63));
+    }
 }

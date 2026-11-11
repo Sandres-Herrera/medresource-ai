@@ -1,5 +1,6 @@
 package com.medresource.ui.render;
 
+import com.medresource.model.Patient;
 import com.medresource.model.Sex;
 
 import java.awt.BasicStroke;
@@ -23,6 +24,17 @@ import java.util.List;
  * pequeño si es menor y en gris si falleció. La figura se coloca a la derecha del centro de la casilla para
  * no tapar el código de la cama.</p>
  *
+ * <p>Debajo de los pies lleva una barra con su salud, del color que le da {@link Palette#health(double)}: llena
+ * si está sano y vacía si se apaga. Mientras está en tratamiento lleva, además, una barra azul sobre la cabeza
+ * que se llena a medida que el tratamiento avanza. Un fallecido no lleva barras.</p>
+ *
+ * <p>Quien va en camilla (un fallecido o alguien que no puede caminar) se dibuja acostado sobre ella, con la
+ * cabeza a la izquierda; mientras la camilla se mueve, un camillero de uniforme gris azulado la empuja desde la
+ * derecha.</p>
+ *
+ * <p>La figura (y su camilla) sube o baja lo que diga el {@linkplain IdleMotion movimiento de reposo} del
+ * marcador; las barras se quedan en su sitio para que se lean bien.</p>
+ *
  * <p>Solo usa puntos del mundo, como los que da {@link SceneRenderer#centerOf}, así sirve igual para la vista
  * 2D y para la 2.5D.</p>
  */
@@ -35,6 +47,16 @@ public final class PatientPainter {
     private static final double HEAD_RADIUS = 5.0;
     private static final int BADGE_SIZE = 11;
     private static final Color UNKNOWN_TRIAGE = new Color(0x9E, 0x9E, 0x9E);
+    /** Ancho de la barra de salud, en píxeles. */
+    private static final int HEALTH_BAR_WIDTH = 18;
+    /** Ancho de la barra de avance del tratamiento, en píxeles. */
+    private static final int PROGRESS_BAR_WIDTH = 22;
+    /** Alto de las dos barras, en píxeles. */
+    private static final int BAR_HEIGHT = 3;
+    /** Dónde empieza la barra de salud, debajo de los pies del paciente. */
+    private static final int HEALTH_BAR_TOP = 14;
+    /** Dónde empieza la barra de avance, sobre la cabeza del paciente. */
+    private static final int PROGRESS_BAR_TOP = -21;
 
     /**
      * Dibuja los pacientes, en el orden de la lista (los últimos quedan encima).
@@ -87,14 +109,63 @@ public final class PatientPainter {
     private void paintPatient(Graphics2D graphics, PatientMarker marker) {
         double scale = marker.minor() ? MINOR_SCALE : 1.0;
         double cx = marker.x() + OFFSET_X;
-        double cy = marker.y();
+        double cy = marker.y() + marker.bob();
         Color body = marker.deceased() ? Palette.DECEASED
                 : marker.triage() == null ? UNKNOWN_TRIAGE : Palette.triage(marker.triage());
         Color head = marker.deceased() ? Palette.DECEASED : Palette.PATIENT_HEAD;
-        fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy, scale), body);
         double radius = HEAD_RADIUS * scale;
-        fillAndOutline(graphics, new Ellipse2D.Double(cx - radius, cy - 9 * scale - radius, 2 * radius, 2 * radius),
-                head);
+        if (marker.onStretcher()) {
+            paintStretcher(graphics, cx, cy);
+            fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 6, cy - 4, 18 * scale, 7, 4, 4), body);
+            fillAndOutline(graphics, new Ellipse2D.Double(cx - 11 - radius, cy - 1 - radius, 2 * radius,
+                    2 * radius), head);
+            if (marker.isCarried()) {
+                paintPorter(graphics, cx + 21, cy);
+            }
+        } else {
+            fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy, scale), body);
+            fillAndOutline(graphics, new Ellipse2D.Double(cx - radius, cy - 9 * scale - radius, 2 * radius,
+                    2 * radius), head);
+        }
+        if (marker.deceased()) {
+            return;
+        }
+        paintBar(graphics, cx, marker.y() + HEALTH_BAR_TOP, HEALTH_BAR_WIDTH, marker.health() / Patient.MAX_HEALTH,
+                Palette.health(marker.health()));
+        if (marker.inTreatment()) {
+            paintBar(graphics, cx, marker.y() + PROGRESS_BAR_TOP, PROGRESS_BAR_WIDTH, marker.progress(),
+                    Palette.TREATMENT_PROGRESS);
+        }
+    }
+
+    /**
+     * Dibuja una barra horizontal centrada en {@code cx}: el fondo oscuro completo y, encima, la parte llena desde
+     * la izquierda.
+     */
+    private void paintBar(Graphics2D graphics, double cx, double top, int width, double share, Color fill) {
+        int left = (int) Math.round(cx - width / 2.0);
+        int y = (int) Math.round(top);
+        graphics.setColor(Palette.BAR_TRACK);
+        graphics.fillRect(left, y, width, BAR_HEIGHT);
+        int filled = (int) Math.round(width * Math.max(0.0, Math.min(1.0, share)));
+        if (filled > 0) {
+            graphics.setColor(fill);
+            graphics.fillRect(left, y, filled, BAR_HEIGHT);
+        }
+    }
+
+    /** Camilla vista desde un lado: el colchón y, debajo, dos ruedas. */
+    private void paintStretcher(Graphics2D graphics, double cx, double cy) {
+        fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 15, cy + 2, 30, 6, 3, 3), Palette.STRETCHER);
+        graphics.setColor(Palette.STRETCHER_FRAME);
+        graphics.fill(new Ellipse2D.Double(cx - 13, cy + 8, 4, 4));
+        graphics.fill(new Ellipse2D.Double(cx + 9, cy + 8, 4, 4));
+    }
+
+    /** Camillero que empuja la camilla desde la derecha: cabeza y uniforme gris azulado. */
+    private void paintPorter(Graphics2D graphics, double cx, double cy) {
+        fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 4, cy - 4, 8, 14, 4, 4), Palette.PORTER_UNIFORM);
+        fillAndOutline(graphics, new Ellipse2D.Double(cx - 4, cy - 14, 8, 8), Palette.PATIENT_HEAD);
     }
 
     /** Vestido (triángulo) para las mujeres y tronco (rectángulo redondeado) para los hombres. */

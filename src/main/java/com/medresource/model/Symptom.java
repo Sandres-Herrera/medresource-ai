@@ -4,7 +4,9 @@ package com.medresource.model;
  * Síntoma visible que presenta un paciente al llegar.
  *
  * <p>Cada síntoma tiene asociado el nivel de triage que justifica por sí solo;
- * el triage de un paciente es el del síntoma más grave que presenta.</p>
+ * el triage de un paciente es el del síntoma más grave que presenta. Algunos síntomas, además, le impiden
+ * caminar: quien está inconsciente, no puede caminar o tiene una extremidad deformada o un hueso expuesto
+ * se mueve en camilla.</p>
  */
 public enum Symptom {
 
@@ -49,5 +51,15 @@ public enum Symptom {
      */
     public TriageLevel getTriageLevel() {
         return triageLevel;
+    }
+
+    /**
+     * Indica si este síntoma le impide al paciente caminar por sí mismo, así que hay que llevarlo en camilla.
+     *
+     * @return {@code true} para inconsciente, incapacidad para caminar, hueso expuesto y deformidad en una
+     *         extremidad
+     */
+    public boolean preventsWalking() {
+        return this == UNCONSCIOUS || this == UNABLE_TO_WALK || this == EXPOSED_BONE || this == LIMB_DEFORMITY;
     }
 }

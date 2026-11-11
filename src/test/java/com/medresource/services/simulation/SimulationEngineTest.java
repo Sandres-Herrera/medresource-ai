@@ -815,6 +815,49 @@ class SimulationEngineTest {
     }
 
     @Test
+    void tellsWhenTheTreatmentOfAPatientStartedAndWhenItEnds() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), new FifoStrategy());
+        Patient patient = engine.getPatients().get(0);
+
+        assertTrue(engine.getTreatmentSpan(patient).isEmpty());
+        stepUntilATreatmentStarts(engine);
+        SimulationEngine.TreatmentSpan span = engine.getTreatmentSpan(patient).orElseThrow();
+        while (!engine.isFinished()) {
+            engine.step();
+        }
+
+        SimulationResult result = engine.getResult();
+        assertEquals(outcomeOf(result, 0).treatmentStartMinute(), span.startMinute());
+        assertEquals(outcomeOf(result, 0).outcomeMinute(), span.endMinute());
+        assertEquals(span.endMinute(), span.staffEndMinute());
+        assertTrue(engine.getTreatmentSpan(patient).isEmpty());
+    }
+
+    @Test
+    void theSpanOfASurgerySaysWhenTheOperationEndsAndWhenTheRecoveryEnds() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, APPENDICITIS, 30, 80.0)),
+                hospital(Specialty.SURGERY), new FifoStrategy());
+        Patient patient = engine.getPatients().get(0);
+
+        stepUntilATreatmentStarts(engine);
+        SimulationEngine.TreatmentSpan span = engine.getTreatmentSpan(patient).orElseThrow();
+        SimulationResult result = engine.run();
+
+        assertEquals(eventOf(result, "P001", EventType.RECOVERY_STARTED).minute(), span.staffEndMinute());
+        assertEquals(outcomeOf(result, 0).outcomeMinute(), span.endMinute());
+        assertTrue(span.startMinute() < span.staffEndMinute() && span.staffEndMinute() < span.endMinute());
+    }
+
+    @Test
+    void theSpanOfATreatmentNeedsAPatient() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), new FifoStrategy());
+
+        assertThrows(IllegalArgumentException.class, () -> engine.getTreatmentSpan(null));
+    }
+
+    @Test
     void aCriticalArrivalRaisesAnEmergencyAlert() {
         SimulationResult result = run(caseOf(60, profile(1, 0, HEART_ATTACK, 60, 15.0)),
                 hospital(Specialty.INTERNAL_MEDICINE));

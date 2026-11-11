@@ -24,6 +24,9 @@ import java.util.List;
  * enfermero, uniforme verde agua y gorro blanco. Igual que los pacientes, el cuerpo es un vestido para las mujeres
  * y un tronco para los hombres.</p>
  *
+ * <p>La figura sube o baja lo que diga el {@linkplain IdleMotion movimiento de reposo} del marcador; el código
+ * se queda en su sitio para que se lea bien.</p>
+ *
  * <p>Solo usa puntos del mundo, así sirve igual para la vista 2D y para la 2.5D.</p>
  */
 public final class StaffPainter {
@@ -53,7 +56,7 @@ public final class StaffPainter {
 
     private void paintMember(Graphics2D graphics, StaffMarker marker) {
         double cx = marker.x();
-        double cy = marker.y();
+        double cy = marker.y() + marker.bob();
         Color body = marker.isDoctor() ? Palette.DOCTOR_COAT : Palette.NURSE_UNIFORM;
         fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy), body);
         if (marker.isDoctor()) {
@@ -66,7 +69,7 @@ public final class StaffPainter {
             fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 4, cy - 16, 8, 3, 2, 2), Palette.CARD);
         }
         if (marker.seated()) {
-            paintCode(graphics, marker.code(), cx, cy);
+            paintCode(graphics, marker.code(), cx, marker.y());
         }
     }
 

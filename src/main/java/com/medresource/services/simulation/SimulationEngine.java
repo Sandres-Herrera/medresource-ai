@@ -102,6 +102,17 @@ public class SimulationEngine {
             .comparing((Patient patient) -> !patient.getTriageLevel().skipsTriageStation())
             .thenComparingDouble(Patient::getHealth);
 
+    /**
+     * Cuándo empezó y cuándo termina el tratamiento de un paciente, para mostrar cuánto le falta.
+     *
+     * @param startMinute    minuto en que empezó el tratamiento
+     * @param staffEndMinute minuto en que el médico queda libre: al terminar el ingreso o la operación, o al final
+     *                       del tratamiento si lo acompaña todo el tiempo
+     * @param endMinute      minuto en que termina el tratamiento completo
+     */
+    public record TreatmentSpan(int startMinute, int staffEndMinute, int endMinute) {
+    }
+
     private record ActiveTreatment(Patient patient, Assignment assignment, int staffEndMinute, int endMinute,
                                    double effectiveness) {
     }
@@ -262,6 +273,24 @@ public class SimulationEngine {
      */
     public List<Patient> getPatients() {
         return List.copyOf(patients);
+    }
+
+    /**
+     * Devuelve cuándo empezó y cuándo termina el tratamiento de un paciente que está en tratamiento.
+     *
+     * @param patient paciente
+     * @return el tiempo de su tratamiento; vacío si no está en tratamiento (espera, ya terminó o murió)
+     * @throws IllegalArgumentException si el paciente es nulo
+     */
+    public Optional<TreatmentSpan> getTreatmentSpan(Patient patient) {
+        if (patient == null) {
+            throw new IllegalArgumentException("El paciente es obligatorio.");
+        }
+        return active.stream()
+                .filter(treatment -> treatment.patient() == patient)
+                .findFirst()
+                .map(treatment -> new TreatmentSpan(treatmentStarts.get(patient), treatment.staffEndMinute(),
+                        treatment.endMinute()));
     }
 
     private void releaseBodiesFromMorgue() {

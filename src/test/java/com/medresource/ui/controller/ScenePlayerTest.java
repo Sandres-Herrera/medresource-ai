@@ -14,6 +14,7 @@ import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.StaffMember;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
@@ -22,6 +23,7 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
@@ -420,7 +422,7 @@ class ScenePlayerTest {
     }
 
     @Test
-    void theDoctorAndTheNurseStandNextToTheirPatientAndThenGoBackToTheirSeats() {
+    void theDoctorAndTheNurseStandNextToTheirPatientAndThenTheDoctorGoesBackToHisSeat() {
         HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
         SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
                 new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
@@ -444,7 +446,8 @@ class ScenePlayerTest {
         player.advanceTo(player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0 + LONGEST_WALK);
 
         assertEquals(renderer.seatOf(layout.staffSeatOf(doctor).orElseThrow()), staffAt(player, doctor));
-        assertEquals(renderer.seatOf(layout.staffSeatOf(nurse).orElseThrow()), staffAt(player, nurse));
+        assertTrue(engine.getHospital().getNurses().stream().allMatch(StaffMember::isAvailable),
+                "el enfermero quedó libre para el motor; desde ahí solo hace rondas");
         assertEquals(Phase.TREATING, player.getState().phaseOf("P001").orElseThrow());
     }
 
@@ -556,5 +559,207 @@ class ScenePlayerTest {
             }
         }
         assertTrue(checked > 50, "solo se revisaron " + checked + " lugares");
+    }
+
+    // ---------- salud y avance del tratamiento ----------
+
+    @Test
+    void aPatientInTreatmentShowsHowMuchOfItIsDoneAndTheOthersShowNoProgress() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 60);
+        Map<String, Double> lastProgress = new HashMap<>();
+        int treating = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                if (phase != Phase.TREATING) {
+                    assertFalse(marker.inTreatment(), marker.code() + " " + phase);
+                    continue;
+                }
+                treating++;
+                assertTrue(marker.inTreatment(), marker.code());
+                Double before = lastProgress.put(marker.code(), marker.progress());
+                assertTrue(before == null || marker.progress() >= before, marker.code() + " retrocedió");
+            }
+        }
+
+        assertTrue(treating > 0);
+        assertTrue(lastProgress.values().stream().anyMatch(progress -> progress > 0.9),
+                "algún tratamiento llegó casi al final");
+    }
+
+    @Test
+    void theHealthOfAWaitingPatientDropsLittleByLittle() {
+        ScenePlayer player = playerOf(TINY, Scenario.HIGH_DEMAND, 60);
+        Map<String, Double> lastHealth = new HashMap<>();
+        int seen = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                assertTrue(marker.health() >= 0 && marker.health() <= Patient.MAX_HEALTH, marker.code());
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                Double before = phase == Phase.QUEUED ? lastHealth.put(marker.code(), marker.health())
+                        : lastHealth.remove(marker.code());
+                if (phase == Phase.QUEUED && before != null) {
+                    seen++;
+                    assertTrue(marker.health() <= before, marker.code() + " mejoró sin atención");
+                    assertTrue(before - marker.health() < 2.0, marker.code() + " perdió salud de golpe");
+                }
+            }
+        }
+
+        assertTrue(seen > 100, "solo se vieron " + seen + " momentos de espera");
+    }
+
+    @Test
+    void aDeceasedPatientShowsNoHealthNorProgress() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        int deceased = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased()) {
+                    deceased++;
+                    assertEquals(0.0, marker.health(), 0.0);
+                    assertFalse(marker.inTreatment());
+                }
+            }
+        }
+
+        assertTrue(deceased > 0);
+    }
+
+    // ---------- camilla ----------
+
+    @Test
+    void theDeceasedLieOnAStretcherThatCarriesThemToTheMorgue() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        boolean carried = false;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased()) {
+                    assertTrue(marker.onStretcher(), marker.code());
+                    carried |= marker.isCarried()
+                            && player.getState().phaseOf(marker.code()).orElseThrow() == Phase.IN_MORGUE;
+                }
+            }
+        }
+
+        assertTrue(carried, "ningún fallecido se vio camino a la morgue");
+    }
+
+    @Test
+    void aPatientWithAFractureGoesOnAStretcherUntilHeLeaves() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(5),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        boolean carried = false;
+        boolean leftOnFoot = false;
+        for (double at = 0; !player.isFinished(); at += 2) {
+            player.advanceTo(at);
+            for (PatientMarker marker : player.markers()) {
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                if (phase == Phase.LEAVING) {
+                    leftOnFoot |= !marker.onStretcher();
+                } else {
+                    assertTrue(marker.onStretcher(), phase.name());
+                    carried |= marker.isCarried();
+                }
+            }
+        }
+
+        assertTrue(carried);
+        assertTrue(leftOnFoot);
+    }
+
+    @Test
+    void aPatientWhoCanWalkNeverUsesAStretcher() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(1),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        int seen = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                seen++;
+                assertFalse(marker.onStretcher());
+            }
+        }
+
+        assertTrue(seen > 0);
+    }
+
+    // ---------- rondas de enfermería ----------
+
+    @Test
+    void theFreeNursesVisitAHospitalizedPatientOnTheirRoundsAndGoBackToRest() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P001").orElse(null) != Phase.TREATING) {
+            tick(player);
+        }
+        double afterAdmission = player.getTime() + (TreatmentType.INITIAL_CARE_MINUTES + 1) * 60.0;
+        player.advanceTo(afterAdmission);
+        Point2D bed = renderer.centerOf(player.getState().positionOf("P001").orElseThrow());
+        Point2D bedside = new Point2D.Double(bed.getX() - 32, bed.getY());
+        Set<String> visitors = new HashSet<>();
+        boolean allResting = false;
+        for (double at = afterAdmission; at < afterAdmission + 4 * NursingRounds.VISIT_MINUTES * 60.0; at += 5) {
+            player.advanceTo(at);
+            boolean someoneVisits = false;
+            for (StaffMarker member : player.staffMarkers()) {
+                if (!member.isDoctor() && new Point2D.Double(member.x(), member.y()).equals(bedside)) {
+                    visitors.add(member.code());
+                    someoneVisits = true;
+                }
+            }
+            allResting |= !someoneVisits && player.staffMarkers().stream()
+                    .filter(member -> !member.isDoctor()).allMatch(StaffMarker::seated);
+        }
+
+        assertEquals(2, visitors.size(), "dos enfermeros se turnan la ronda: " + visitors);
+        assertFalse(allResting, "con un paciente en cama siempre hay alguien de ronda o caminando");
+    }
+
+    @Test
+    void withoutHospitalizedPatientsTheNursesKeepResting() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(1),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+
+        while (tick(player)) {
+            for (StaffMarker member : player.staffMarkers()) {
+                if (!member.isDoctor()) {
+                    assertTrue(member.seated(), member.code() + " en el segundo " + player.getTime());
+                }
+            }
+        }
+    }
+
+    // ---------- movimiento de reposo ----------
+
+    @Test
+    void theRestingPeopleBreatheAndTheDeceasedAndTheWalkingDoNot() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        boolean patientBreathes = false;
+        boolean staffBreathes = false;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased() || marker.moving()) {
+                    assertEquals(0.0, marker.bob(), 0.0, marker.code());
+                } else {
+                    assertEquals(IdleMotion.bob(marker.code(), player.getTime(), false), marker.bob(), 1e-9);
+                    patientBreathes |= marker.bob() != 0.0;
+                }
+            }
+            for (StaffMarker member : player.staffMarkers()) {
+                assertTrue(Math.abs(member.bob()) <= IdleMotion.AMPLITUDE + 1e-9, member.code());
+                staffBreathes |= member.seated() && member.bob() != 0.0;
+            }
+        }
+
+        assertTrue(patientBreathes);
+        assertTrue(staffBreathes);
     }
 }

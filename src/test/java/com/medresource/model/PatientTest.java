@@ -137,4 +137,20 @@ class PatientTest {
         assertThrows(IllegalArgumentException.class, () -> patient.finish(PatientStatus.DECEASED, 20));
         assertThrows(IllegalArgumentException.class, () -> patient.finish(PatientStatus.WAITING, 20));
     }
+
+    @Test
+    void aPatientWithoutSymptomsThatPreventWalkingCanWalk() {
+        assertTrue(newPatient().canWalk());
+    }
+
+    @Test
+    void aFractureOrAHeadTraumaKeepsThePatientFromWalking() {
+        Disease simpleFracture = DiseaseCatalog.findById(5).orElseThrow();
+        Disease headTrauma = DiseaseCatalog.findById(10).orElseThrow();
+
+        assertFalse(new Patient(2, 30, Sex.FEMALE, BloodType.A_POSITIVE, simpleFracture,
+                simpleFracture.getSymptoms(), 0, 90.0, false).canWalk());
+        assertFalse(new Patient(3, 30, Sex.MALE, BloodType.A_POSITIVE, headTrauma,
+                headTrauma.getSymptoms(), 0, 40.0, false).canWalk());
+    }
 }
