@@ -38,6 +38,17 @@ public class CaseGenerator {
 
     private static final double URGENT_BOOST_IN_CATASTROPHE = 3.0;
 
+    /** Alta demanda: parte del tiempo, en porcentaje, en que llegan todos los pacientes. */
+    public static final int HIGH_DEMAND_TIME_PERCENT = 50;
+    /** Catástrofe: porcentaje de los pacientes que llega en la avalancha del comienzo. */
+    public static final int CATASTROPHE_BURST_PERCENT = 70;
+    /** Catástrofe: parte del tiempo, en porcentaje, que dura la avalancha del comienzo. */
+    public static final int CATASTROPHE_BURST_TIME_PERCENT = 10;
+    /** Emergencias inesperadas: porcentaje de los pacientes que son casos urgentes sin aviso. */
+    public static final int EMERGENCY_PERCENT = 20;
+    /** Emergencias inesperadas: parte del tiempo, en porcentaje, desde la que pueden llegar las emergencias. */
+    public static final int EMERGENCY_START_PERCENT = 25;
+
     /** Distribución aproximada de tipos de sangre en la población (supuesto). */
     private static final Map<BloodType, Double> BLOOD_WEIGHTS = new EnumMap<>(BloodType.class);
 
@@ -108,22 +119,28 @@ public class CaseGenerator {
         return new SimulationCase(config, profiles);
     }
 
+    /** Parte entera de un porcentaje de una cantidad: {@code percent(480, 10)} es 48. */
+    private static int percent(int amount, int percent) {
+        return amount * percent / 100;
+    }
+
     private List<Arrival> generateArrivals(CaseConfig config, Random random) {
         int count = config.patientCount();
         int duration = config.durationMinutes();
         List<Arrival> arrivals = new ArrayList<>();
         switch (config.scenario()) {
             case NORMAL -> addUniform(arrivals, random, count, 0, duration, false);
-            case HIGH_DEMAND -> addUniform(arrivals, random, count, 0, duration / 2, false);
+            case HIGH_DEMAND -> addUniform(arrivals, random, count, 0, percent(duration, HIGH_DEMAND_TIME_PERCENT),
+                    false);
             case CATASTROPHE -> {
-                int burst = count * 7 / 10;
-                addUniform(arrivals, random, burst, 0, duration / 10, false);
+                int burst = percent(count, CATASTROPHE_BURST_PERCENT);
+                addUniform(arrivals, random, burst, 0, percent(duration, CATASTROPHE_BURST_TIME_PERCENT), false);
                 addUniform(arrivals, random, count - burst, 0, duration, false);
             }
             case UNEXPECTED_EMERGENCIES -> {
-                int emergencies = count / 5;
+                int emergencies = percent(count, EMERGENCY_PERCENT);
                 addUniform(arrivals, random, count - emergencies, 0, duration, false);
-                addUniform(arrivals, random, emergencies, duration / 4, duration, true);
+                addUniform(arrivals, random, emergencies, percent(duration, EMERGENCY_START_PERCENT), duration, true);
             }
         }
         arrivals.sort(Comparator.comparingInt(Arrival::minute));
