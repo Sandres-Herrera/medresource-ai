@@ -356,6 +356,30 @@ public final class HospitalLayout {
     }
 
     /**
+     * Busca qué recurso está en una casilla: la cama, la cama de UCI o el quirófano que tiene ese lugar, o el
+     * médico cuyo escritorio de consultorio está ahí. Es lo contrario de {@link #treatmentPlaceOf(String)}.
+     *
+     * @param position casilla del plano
+     * @return código del recurso, o vacío si en esa casilla no hay ninguno (una silla, un pasillo…)
+     */
+    public Optional<String> resourceAt(Position position) {
+        if (position == null) {
+            return Optional.empty();
+        }
+        for (Map.Entry<String, Position> spot : spots.entrySet()) {
+            if (spot.getValue().equals(position)) {
+                return Optional.of(spot.getKey());
+            }
+        }
+        for (Map.Entry<String, Position> desk : consultDesks.entrySet()) {
+            if (desk.getValue().equals(position)) {
+                return Optional.of(desk.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Puertas de las salas hacia los pasillos.
      *
      * @return puertas en el orden del plano; la lista no se puede modificar

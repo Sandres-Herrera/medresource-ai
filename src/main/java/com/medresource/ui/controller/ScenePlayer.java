@@ -1,5 +1,6 @@
 package com.medresource.ui.controller;
 
+import com.medresource.model.Area;
 import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalLayout;
@@ -9,6 +10,7 @@ import com.medresource.model.Position;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.StaffMember;
 import com.medresource.model.StaffSeat;
+import com.medresource.model.Symptom;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.ui.render.IdleMotion;
@@ -71,6 +73,9 @@ import java.util.Set;
  * <p>Y quien está quieto respira: los pacientes que esperan o están en su cama y el personal en su puesto o junto a
  * un paciente suben y bajan apenas con el {@linkplain IdleMotion movimiento de reposo}, así que el hospital nunca
  * se ve congelado aunque nadie cambie de lugar. Los fallecidos no se mueven.</p>
+ *
+ * <p>De cada paciente que está en la escena da también su {@linkplain #card(String) ficha}: lo que se ve de él en
+ * ese instante, con el lugar, la etapa, la salud, el avance y el personal que lo atiende.</p>
  *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
@@ -221,6 +226,32 @@ public final class ScenePlayer {
     }
 
     /**
+     * Ficha de un paciente tal como se ve ahora: etapa, lugar (o hacia dónde va), salud, avance del tratamiento y
+     * los médicos y enfermeros que lo atienden en este minuto.
+     *
+     * @param patientCode código del paciente
+     * @return su ficha, o vacío si no está en la escena (todavía no llegó o ya salió)
+     */
+    public Optional<PatientCard> card(String patientCode) {
+        Optional<SceneState.Phase> phase = state.phaseOf(patientCode);
+        Optional<Position> position = state.positionOf(patientCode);
+        Itinerary itinerary = itineraries.get(patientCode);
+        if (phase.isEmpty() || position.isEmpty() || itinerary == null) {
+            return Optional.empty();
+        }
+        Patient patient = patients.get(patientCode);
+        boolean dead = isDead(phase.get());
+        List<String> symptoms = patient.getSymptoms().stream().map(Symptom::getDisplayName).toList();
+        return Optional.of(new PatientCard(patient.getCode(), patient.getAge(), patient.getSex(),
+                patient.getBloodType(), patient.getDisease().getName(), symptoms, patient.getTriageLevel(),
+                phase.get().getDisplayName(), placeName(position.get()), !itinerary.hasArrived(),
+                dead ? 0.0 : healthOf(patient),
+                phase.get() == SceneState.Phase.TREATING ? progressOf(patientCode) : PatientMarker.NO_PROGRESS,
+                patient.getArrivalMinute(), Math.max(0, getMinute() - patient.getArrivalMinute()),
+                caregiversOf(patientCode)));
+    }
+
+    /**
      * Indica si la llegada de un paciente ya se vio en la escena.
      *
      * @param patientCode código del paciente
@@ -285,6 +316,25 @@ public final class ScenePlayer {
             return 1.0;
         }
         return Math.max(0.0, Math.min(1.0, (time - start) / length));
+    }
+
+    /** Nombre de un lugar del plano: la zona y, si hay un recurso en esa casilla, su código. */
+    private String placeName(Position position) {
+        String zone = layout.areaAt(position).map(Area::zone).map(ZoneType::getDisplayName).orElse("Hospital");
+        return layout.resourceAt(position).map(code -> zone + " · " + code).orElse(zone);
+    }
+
+    /** Médicos y enfermeros que atienden a un paciente en el minuto que se ve, con su especialidad o su oficio. */
+    private List<String> caregiversOf(String patientCode) {
+        List<String> caregivers = new ArrayList<>();
+        attendedByMinute.getOrDefault(staffMinute, Map.of()).forEach((code, patient) -> {
+            if (patient.equals(patientCode)) {
+                StaffMember member = staff.get(code);
+                caregivers.add(code + " · " + (member instanceof Doctor doctor
+                        ? doctor.getSpecialty().getDisplayName() : "Enfermería"));
+            }
+        });
+        return caregivers;
     }
 
     /** Indica si un paciente es crítico y pasa directo, sin hacer fila en el triage: el motor ya lo clasificó. */

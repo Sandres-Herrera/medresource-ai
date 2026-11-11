@@ -42,23 +42,34 @@ public final class SceneState {
     /** Etapa de un paciente dentro de la escena. */
     public enum Phase {
         /** Acaba de llegar y hace fila en el triage hasta que una estación lo recibe. */
-        TRIAGE_QUEUE,
+        TRIAGE_QUEUE("Haciendo fila en el triage"),
         /** Lo están valorando en una estación de triage. */
-        IN_TRIAGE,
+        IN_TRIAGE("En valoración de triage"),
         /** Ya clasificado, espera en la sala de espera. */
-        QUEUED,
+        QUEUED("Esperando su atención"),
         /** Paciente crítico en pase directo: espera en la entrada, sin fila ni silla, hasta que lo reciben. */
-        DIRECT_PASS,
+        DIRECT_PASS("Pase directo: esperando en la entrada"),
         /** Paciente crítico que espera en una cama, con primeros auxilios, a quien lo debe tratar. */
-        FIRST_AID,
+        FIRST_AID("Primeros auxilios mientras espera"),
         /** Está en su cama, su quirófano o con su médico. */
-        TREATING,
+        TREATING("En tratamiento"),
         /** Murió y sigue en el lugar donde estaba. */
-        DECEASED,
+        DECEASED("Fallecido"),
         /** Está en un lugar de la morgue. */
-        IN_MORGUE,
+        IN_MORGUE("En la morgue"),
         /** Va hacia la salida; desaparece con {@link SceneState#removeDeparted(String)}. */
-        LEAVING
+        LEAVING("Saliendo del hospital");
+
+        private final String displayName;
+
+        Phase(String displayName) {
+            this.displayName = displayName;
+        }
+
+        /** Lo que está haciendo el paciente en esta etapa, para mostrarlo en su ficha. */
+        public String getDisplayName() {
+            return displayName;
+        }
     }
 
     /** Lugar de un paciente en un momento dado. */

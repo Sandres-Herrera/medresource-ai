@@ -76,6 +76,9 @@ public final class Palette {
     /** Uniforme del camillero que empuja la camilla: gris azulado, distinto del personal y de los pacientes. */
     public static final Color PORTER_UNIFORM = new Color(0x90, 0xA4, 0xAE);
 
+    /** Anillo del paciente seleccionado: celeste brillante, distinto de los colores de triage y del personal. */
+    public static final Color SELECTION = new Color(0x00, 0xE5, 0xFF);
+
     /** Desde esta salud el paciente está bien (verde). */
     public static final double GOOD_HEALTH = 70.0;
     /** Desde esta salud el paciente está regular (amarillo). */

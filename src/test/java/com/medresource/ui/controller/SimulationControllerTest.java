@@ -239,4 +239,16 @@ class SimulationControllerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new SimulationController(SimulationSetup.standard(SMALL_CASE), null));
     }
+
+    @Test
+    void givesTheCardOfAPatientWhoIsInTheScene() {
+        SimulationController controller = controller();
+
+        assertTrue(controller.patientCard("P001").isEmpty());
+
+        controller.skipToNextEvent();
+        String code = controller.markers().get(0).code();
+
+        assertEquals(code, controller.patientCard(code).orElseThrow().code());
+    }
 }

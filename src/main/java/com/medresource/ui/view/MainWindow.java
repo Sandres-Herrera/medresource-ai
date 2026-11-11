@@ -14,6 +14,8 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
 import javax.swing.WindowConstants;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
@@ -26,7 +28,8 @@ import java.util.List;
  *
  * <p>Lleva el logo de la aplicación como icono, empieza con el foco en «Nueva simulación» (Enter la abre) y se
  * cierra también con la tecla Escape. Se puede agrandar o maximizar: el contenido queda centrado. No se puede
- * achicar por debajo del tamaño en que todo se ve completo.</p>
+ * achicar por debajo del tamaño en que todo se ve completo, salvo que la pantalla sea más pequeña: nunca abre más
+ * grande que el espacio libre de la pantalla ({@link ScreenFit}).</p>
  */
 public final class MainWindow extends JFrame {
 
@@ -67,8 +70,9 @@ public final class MainWindow extends JFrame {
         });
         setContentPane(home);
         pack();
-        setMinimumSize(getSize());
-        setLocationRelativeTo(null);
+        Rectangle usable = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setMinimumSize(ScreenFit.fit(getSize(), usable));
+        setBounds(ScreenFit.centered(getSize(), usable));
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent event) {
