@@ -141,4 +141,13 @@ class PaletteTest {
         }
         assertNotEquals(Palette.STRETCHER, Palette.STRETCHER_FRAME);
     }
+
+    @Test
+    void theSelectionRingCannotBeMistakenForATriageLevelNorForTheStaff() {
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.SELECTION, Palette.triage(level)) > 60, level.name());
+        }
+        assertTrue(distance(Palette.SELECTION, Palette.NURSE_UNIFORM) > 60);
+        assertTrue(distance(Palette.SELECTION, Palette.DOCTOR_COAT) > 60);
+    }
 }

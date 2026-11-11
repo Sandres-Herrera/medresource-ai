@@ -53,6 +53,9 @@ public final class PatientPainter {
     private static final int PROGRESS_BAR_WIDTH = 22;
     /** Alto de las dos barras, en píxeles. */
     private static final int BAR_HEIGHT = 3;
+    /** Radio del anillo del paciente seleccionado, en píxeles del mundo. */
+    public static final double SELECTION_RADIUS = 15.0;
+    private static final float SELECTION_STROKE = 2.5f;
     /** Dónde empieza la barra de salud, debajo de los pies del paciente. */
     private static final int HEALTH_BAR_TOP = 14;
     /** Dónde empieza la barra de avance, sobre la cabeza del paciente. */
@@ -104,6 +107,27 @@ public final class PatientPainter {
         graphics.fill(new RoundRectangle2D.Double(x, y, width, height, height, height));
         graphics.setColor(Palette.CARD);
         graphics.drawString(text, (float) (x + 5), (float) (y + BADGE_SIZE + 1));
+    }
+
+    /**
+     * Dibuja el anillo que marca al paciente seleccionado, alrededor de su figura.
+     *
+     * @param graphics superficie de dibujo, ya con la cámara aplicada
+     * @param marker   paciente seleccionado, tal como se dibuja
+     * @throws IllegalArgumentException si algún argumento es nulo
+     */
+    public void paintSelection(Graphics2D graphics, PatientMarker marker) {
+        if (graphics == null || marker == null) {
+            throw new IllegalArgumentException("La superficie de dibujo y el paciente son obligatorios.");
+        }
+        double cx = marker.x() + OFFSET_X;
+        double cy = marker.y() + marker.bob();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setStroke(new BasicStroke(SELECTION_STROKE));
+        graphics.setColor(Palette.SELECTION);
+        graphics.draw(new Ellipse2D.Double(cx - SELECTION_RADIUS, cy - SELECTION_RADIUS, 2 * SELECTION_RADIUS,
+                2 * SELECTION_RADIUS));
+        graphics.setStroke(new BasicStroke(1f));
     }
 
     private void paintPatient(Graphics2D graphics, PatientMarker marker) {

@@ -260,4 +260,28 @@ class PatientPainterTest {
 
         assertEquals(BACKGROUND, image.getRGB(CX, 62));
     }
+
+    // ---------- paciente seleccionado ----------
+
+    @Test
+    void theSelectedPatientHasARingAroundHisFigure() {
+        PatientMarker patient = marker(TriageLevel.III, Sex.FEMALE, false, false);
+        int ring = CX + (int) PatientPainter.SELECTION_RADIUS;
+
+        assertEquals(BACKGROUND, image.getRGB(ring, 50));
+
+        painter.paintSelection(graphics, patient);
+
+        assertEquals(Palette.SELECTION.getRGB(), image.getRGB(ring, 50));
+        assertEquals(Palette.SELECTION.getRGB(), image.getRGB(CX, 50 - (int) PatientPainter.SELECTION_RADIUS));
+        assertEquals(BACKGROUND, image.getRGB(CX, 50));
+    }
+
+    @Test
+    void doesNotPaintTheRingWithMissingData() {
+        PatientMarker patient = marker(TriageLevel.III, Sex.FEMALE, false, false);
+
+        assertThrows(IllegalArgumentException.class, () -> painter.paintSelection(null, patient));
+        assertThrows(IllegalArgumentException.class, () -> painter.paintSelection(graphics, null));
+    }
 }
