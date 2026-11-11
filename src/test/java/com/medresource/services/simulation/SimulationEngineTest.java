@@ -1051,4 +1051,63 @@ class SimulationEngineTest {
         assertTrue(typesOf(result, "P003").contains(EventType.FIRST_AID));
         assertFalse(typesOf(result, "P002").contains(EventType.FIRST_AID));
     }
+
+    // ---------- cama para el triage I mientras espera ----------
+
+    @Test
+    void aTriageIPatientWaitsInAFreeIcuBedWhileTheDoctorIsBusy() {
+        Hospital hospital = hospital(Specialty.INTERNAL_MEDICINE);
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 5, HEART_ATTACK, 60, 30.0)), hospital);
+
+        String icuBed = hospital.getIcuBeds().get(0).getCode();
+        assertEquals(icuBed, eventOf(result, "P002", EventType.FIRST_AID).resourceCode());
+        assertEquals(icuBed, eventOf(result, "P002", EventType.ICU_ADMISSION).resourceCode());
+    }
+
+    @Test
+    void whenTheIcuIsTakenTheNextTriageIPatientWaitsInAWardBed() {
+        Hospital hospital = hospital(Specialty.INTERNAL_MEDICINE);
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 5, HEART_ATTACK, 60, 30.0),
+                profile(3, 5, HEART_ATTACK, 60, 30.0)), hospital);
+
+        String wardBed = eventOf(result, "P003", EventType.FIRST_AID).resourceCode();
+        String icuBed = hospital.getIcuBeds().get(0).getCode();
+        assertEquals(icuBed, eventOf(result, "P002", EventType.FIRST_AID).resourceCode());
+        assertTrue(hospital.getBeds().stream().anyMatch(bed -> bed.getCode().equals(wardBed)), wardBed);
+    }
+
+    @Test
+    void theTriageIBedIsTakenEvenWithoutStaffToGiveFirstAid() {
+        // El único enfermero atiende al primer paciente: el infartado espera en la cama sin primeros auxilios.
+        Hospital hospital = hospital(3, 5, 1, Specialty.INTERNAL_MEDICINE);
+        SimulationEngine engine = new SimulationEngine(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 5, HEART_ATTACK, 60, 30.0)), hospital, new FifoStrategy());
+        stepUntilFirstAid(engine);
+        Patient patient = engine.getPatients().get(1);
+
+        assertEquals(patient, hospital.getIcuBeds().get(0).getAssignedPatient());
+        assertTrue(hospital.getNurses().stream().noneMatch(nurse -> nurse.getAssignedPatient() == patient));
+        assertTrue(hospital.getDoctors().stream().noneMatch(doctor -> doctor.getAssignedPatient() == patient));
+    }
+
+    @Test
+    void aTriageIPatientWhoDiesWaitingLeavesTheBodyInItsBedUntilTheMorgue() {
+        // El médico y el único enfermero atienden al primer paciente; el infarto muy grave no alcanza a esperar.
+        Hospital hospital = hospital(3, 5, 1, Specialty.INTERNAL_MEDICINE);
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 5, HEART_ATTACK, 60, 2.0)), hospital);
+        String icuBed = hospital.getIcuBeds().get(0).getCode();
+
+        assertEquals(PatientStatus.DECEASED, outcomeOf(result, 1).status());
+        assertEquals(CauseOfDeath.LACK_OF_TIMELY_CARE, outcomeOf(result, 1).causeOfDeath());
+        assertEquals(icuBed, eventOf(result, "P002", EventType.DEATH).resourceCode());
+        assertEquals(icuBed, eventOf(result, "P002", EventType.MORGUE_ADMISSION).resourceCode());
+        assertTrue(hospital.getIcuBeds().get(0).isAvailable());
+    }
 }

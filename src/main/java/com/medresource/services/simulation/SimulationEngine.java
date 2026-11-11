@@ -78,6 +78,14 @@ import java.util.Set;
  * siempre puede usarlo para un tratamiento; los primeros auxilios se reparten con
  * lo que sobra, y quien ya atendía a un paciente lo sigue atendiendo si puede.</p>
  *
+ * <p>Un paciente de triage I, además, pasa de inmediato a una cama libre mientras
+ * espera a su médico o su quirófano: de UCI si su enfermedad la necesita (o de
+ * hospitalización si no queda), y de hospitalización si no (o de UCI si no queda),
+ * siempre que haya enfermería para vigilarlo. Ahí recibe los primeros auxilios en
+ * cuanto alguien quede libre. Cuando por fin empieza su tratamiento se queda en esa
+ * misma cama si el tratamiento usa una del mismo tipo; si muere esperando, su cuerpo
+ * la ocupa hasta pasar a la morgue.</p>
+ *
  * <p>Los pacientes que siguen esperando {@value #EXTRA_MINUTES} minutos después
  * de la última hora de llegada se registran como sin atender.</p>
  */
@@ -104,8 +112,11 @@ public class SimulationEngine {
     private record PendingBody(Patient patient, Bed bed) {
     }
 
-    /** Primeros auxilios que recibe un paciente mientras espera: quién se los da. */
-    private record FirstAid(StaffMember carer) {
+    /**
+     * Primeros auxilios que recibe un paciente mientras espera: quién se los da y la cama donde espera, si es de
+     * triage I. Cualquiera de los dos puede faltar, pero no ambos.
+     */
+    private record FirstAid(StaffMember carer, Bed bed) {
     }
 
     private final SimulationCase simulationCase;
@@ -125,6 +136,7 @@ public class SimulationEngine {
     private final Map<Patient, CompatibilityLevel> careLevels = new HashMap<>();
     private final Set<Patient> recovering = new HashSet<>();
     private final Map<Patient, FirstAid> firstAid = new LinkedHashMap<>();
+    private Map<Patient, FirstAid> pausedFirstAid = Map.of();
     private final int endLimit;
 
     private int minute;
@@ -276,12 +288,18 @@ public class SimulationEngine {
             }
         }
         for (Patient patient : List.copyOf(waiting)) {
-            double care = firstAid.containsKey(patient) ? HealthModel.FIRST_AID_EFFECTIVENESS : 0.0;
+            FirstAid aid = firstAid.get(patient);
+            double care = aid != null && aid.carer() != null ? HealthModel.FIRST_AID_EFFECTIVENESS : 0.0;
             patient.deteriorate(healthModel.deteriorationPerMinute(patient, care));
             if (!patient.isAlive()) {
                 waiting.remove(patient);
-                endFirstAid(patient);
-                declareDeath(patient, causeOfDeathWhileWaiting(patient), null, null);
+                firstAid.remove(patient);
+                Bed bed = aid == null ? null : aid.bed();
+                if (aid != null && aid.carer() != null) {
+                    releaseHeld(List.of(aid.carer()), patient);
+                }
+                String place = bed == null ? null : bed.getCode();
+                declareDeath(patient, causeOfDeathWhileWaiting(patient, bed), place, bed);
             }
         }
         for (ActiveTreatment treatment : List.copyOf(active)) {
@@ -462,6 +480,7 @@ public class SimulationEngine {
      */
     private void assignResources() {
         Map<Patient, FirstAid> before = pauseFirstAid();
+        pausedFirstAid = before;
         while (true) {
             List<WaitingPatient> candidates = waiting.stream()
                     .map(patient -> new WaitingPatient(patient, diagnose(patient)))
@@ -470,9 +489,25 @@ public class SimulationEngine {
             if (decision.isEmpty()) {
                 break;
             }
-            startTreatment(decision.get());
+            startTreatment(keepFirstAidBed(decision.get()));
         }
+        pausedFirstAid = Map.of();
         giveFirstAid(before);
+    }
+
+    /**
+     * Si el paciente esperaba en una cama y su tratamiento usa una del mismo tipo, se queda en la suya en vez de
+     * cambiarse a la que eligió la estrategia.
+     */
+    private Assignment keepFirstAidBed(Assignment assignment) {
+        FirstAid aid = pausedFirstAid.get(assignment.patient());
+        Bed own = aid == null ? null : aid.bed();
+        Bed chosen = assignment.bed();
+        if (own == null || chosen == null || own == chosen || !own.isAvailable() || own.isIcu() != chosen.isIcu()) {
+            return assignment;
+        }
+        return new Assignment(assignment.patient(), assignment.doctor(), assignment.nurses(), own,
+                assignment.operatingRoom(), assignment.bloodUnits());
     }
 
     /** Deja libre a todo el personal que daba primeros auxilios y devuelve a quién atendía cada uno. */
@@ -484,28 +519,74 @@ public class SimulationEngine {
 
     /**
      * Da primeros auxilios a los críticos que siguen esperando, del más crítico al menos, mientras quede personal
-     * libre. Quien ya atendía a un paciente lo sigue atendiendo si quedó libre.
+     * libre, y lleva a una cama a los de triage I. Quien ya atendía a un paciente lo sigue atendiendo si quedó
+     * libre, y quien ya tenía cama vuelve a la suya si sigue libre.
      */
     private void giveFirstAid(Map<Patient, FirstAid> before) {
         List<Patient> critical = waiting.stream().filter(this::isCritical).sorted(MOST_CRITICAL_FIRST).toList();
         for (Patient patient : critical) {
             FirstAid previous = before.get(patient);
-            Optional<StaffMember> carer = carerFor(previous);
-            if (carer.isEmpty()) {
-                return;
+            Bed bed = patient.getTriageLevel().skipsTriageStation() ? bedFor(patient, previous).orElse(null) : null;
+            StaffMember carer = carerFor(previous).orElse(null);
+            if (bed == null && carer == null) {
+                announceFirstAid(patient, previous, null);
+                continue;
             }
-            carer.get().assign(patient, minute + 1);
-            firstAid.put(patient, new FirstAid(carer.get()));
-            if (previous == null) {
-                emit(EventType.FIRST_AID, patient, null, patient.getCode() + " recibe primeros auxilios de "
-                        + carer.get().getCode() + " mientras espera.");
+            if (bed != null) {
+                bed.assign(patient, minute + 1);
+            }
+            if (carer != null) {
+                carer.assign(patient, minute + 1);
+            }
+            FirstAid aid = new FirstAid(carer, bed);
+            firstAid.put(patient, aid);
+            announceFirstAid(patient, previous, aid);
+        }
+    }
+
+    /**
+     * Registra los cambios que se ven de los primeros auxilios: cuando el paciente pasa a una cama o la deja, y
+     * cuando alguien empieza a atenderlo donde espera.
+     */
+    private void announceFirstAid(Patient patient, FirstAid previous, FirstAid now) {
+        Bed before = previous == null ? null : previous.bed();
+        Bed after = now == null ? null : now.bed();
+        String code = patient.getCode();
+        if (after != null && after != before) {
+            emit(EventType.FIRST_AID, patient, after.getCode(), code + " pasa a " + after.getCode()
+                    + " para recibir primeros auxilios mientras se desocupa quien lo debe tratar.");
+        } else if (after == null && before != null) {
+            emit(EventType.FIRST_AID, patient, null, code + " deja " + before.getCode()
+                    + " porque se necesita para otro paciente y sigue esperando.");
+        } else if (previous == null && now != null && now.carer() != null && after == null) {
+            emit(EventType.FIRST_AID, patient, null, code + " recibe primeros auxilios de "
+                    + now.carer().getCode() + " mientras espera.");
+        }
+    }
+
+    /**
+     * Cama donde espera un paciente de triage I: la que ya tenía si sigue libre; si no, una de UCI si su
+     * enfermedad la necesita, o una de hospitalización si no, y si no queda de ese tipo, una del otro. Solo si hay
+     * enfermería para vigilarlo.
+     */
+    private Optional<Bed> bedFor(Patient patient, FirstAid previous) {
+        Bed own = previous == null ? null : previous.bed();
+        if (own != null && own.isAvailable() && hospital.hasNursingCapacityFor(own.isIcu())) {
+            return Optional.of(own);
+        }
+        boolean icuFirst = diagnose(patient).requiresIcu();
+        for (boolean icu : new boolean[]{icuFirst, !icuFirst}) {
+            List<Bed> free = icu ? hospital.freeIcuBeds() : hospital.freeBeds();
+            if (!free.isEmpty() && hospital.hasNursingCapacityFor(icu)) {
+                return Optional.of(free.get(0));
             }
         }
+        return Optional.empty();
     }
 
     /** Quien da los primeros auxilios: el mismo de antes si está libre; si no, un enfermero o un médico libre. */
     private Optional<StaffMember> carerFor(FirstAid previous) {
-        if (previous != null && previous.carer().isAvailable()) {
+        if (previous != null && previous.carer() != null && previous.carer().isAvailable()) {
             return Optional.of(previous.carer());
         }
         if (!hospital.freeNurses().isEmpty()) {
@@ -514,11 +595,17 @@ public class SimulationEngine {
         return hospital.freeDoctors().stream().map(StaffMember.class::cast).findFirst();
     }
 
-    /** Termina los primeros auxilios de un paciente, si los recibía, y deja libre a quien se los daba. */
+    /** Termina los primeros auxilios de un paciente, si los recibía: deja libres a quien se los daba y su cama. */
     private void endFirstAid(Patient patient) {
         FirstAid aid = firstAid.remove(patient);
-        if (aid != null) {
+        if (aid == null) {
+            return;
+        }
+        if (aid.carer() != null) {
             releaseHeld(List.of(aid.carer()), patient);
+        }
+        if (aid.bed() != null) {
+            releaseHeld(List.of(aid.bed()), patient);
         }
     }
 
@@ -639,14 +726,18 @@ public class SimulationEngine {
 
     /**
      * Causa de muerte de quien falleció esperando, según lo que le impedía ser atendido:
-     * no quedaba sangre compatible, no había cama de UCI libre, o simplemente no se llegó a tiempo.
+     * no quedaba sangre compatible, no había cama de UCI libre (y no esperaba en una), o simplemente no se llegó
+     * a tiempo.
+     *
+     * @param bed cama donde esperaba con primeros auxilios, o {@code null}
      */
-    private CauseOfDeath causeOfDeathWhileWaiting(Patient patient) {
+    private CauseOfDeath causeOfDeathWhileWaiting(Patient patient, Bed bed) {
         Disease diagnosis = diagnose(patient);
         if (diagnosis.requiresBlood() && !hospital.getBloodBank().hasCompatibleUnits(patient.getBloodType(), 1)) {
             return CauseOfDeath.NO_COMPATIBLE_RESOURCE;
         }
-        if (diagnosis.requiresIcu() && hospital.freeIcuBeds().isEmpty()) {
+        boolean waitedInIcu = bed != null && bed.isIcu();
+        if (diagnosis.requiresIcu() && hospital.freeIcuBeds().isEmpty() && !waitedInIcu) {
             return CauseOfDeath.NO_ICU_BED;
         }
         return CauseOfDeath.LACK_OF_TIMELY_CARE;
