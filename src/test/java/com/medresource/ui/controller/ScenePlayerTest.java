@@ -517,4 +517,44 @@ class ScenePlayerTest {
         Point2D center = renderer.centerOf(bed);
         assertEquals(new Point2D.Double(center.getX() - 32, center.getY()), staffAt(player, nurse));
     }
+
+    // ---------- itinerario completo ----------
+
+    @Test
+    void everyPatientPassesThroughEveryPlaceTheSceneGivesHim() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(
+                new CaseGenerator().generate(new CaseConfig(1L, Scenario.HIGH_DEMAND, 60, 60)),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        Set<Phase> lines = EnumSet.of(Phase.TRIAGE_QUEUE, Phase.QUEUED);
+        Map<String, Map<Position, Double>> given = new HashMap<>();
+        Map<String, Set<Position>> visited = new HashMap<>();
+        double end = 75 * 60;
+        for (double at = 0; at <= end; at += 0.2) {
+            player.advanceTo(at);
+            for (SceneState.Placement placement : player.getState().placements()) {
+                if (!lines.contains(placement.phase())) {
+                    given.computeIfAbsent(placement.patientCode(), code -> new HashMap<>())
+                            .putIfAbsent(placement.position(), at);
+                }
+            }
+            for (PatientMarker marker : player.markers()) {
+                Position cell = new Position((int) Math.floor(marker.x() / Renderer2D.CELL_W),
+                        (int) Math.floor(marker.y() / Renderer2D.CELL_H));
+                visited.computeIfAbsent(marker.code(), code -> new HashSet<>()).add(cell);
+            }
+        }
+        int checked = 0;
+        for (Map.Entry<String, Map<Position, Double>> patient : given.entrySet()) {
+            for (Map.Entry<Position, Double> place : patient.getValue().entrySet()) {
+                if (place.getValue() < end - 5 * 60) {
+                    checked++;
+                    assertTrue(visited.get(patient.getKey()).contains(place.getKey()),
+                            patient.getKey() + " no pasó por " + place.getKey());
+                }
+            }
+        }
+        assertTrue(checked > 50, "solo se revisaron " + checked + " lugares");
+    }
 }
