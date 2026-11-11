@@ -16,6 +16,7 @@ import com.medresource.model.PatientStatus;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.StaffMember;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.TriageStation;
@@ -24,8 +25,10 @@ import com.medresource.services.strategy.Assignment;
 import com.medresource.services.strategy.WaitingPatient;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +49,9 @@ import java.util.Set;
  * correspondan (al paciente se le asigna nivel y diagnóstico y pasa a la sala
  * de espera); llegan los pacientes nuevos y hacen fila en el triage; las
  * estaciones de triage libres reciben a los primeros de la fila; la estrategia
- * reparte los recursos libres; y los fallecidos pasan a la morgue si hay cupo.
+ * reparte los recursos libres; el personal que quedó libre da primeros auxilios a
+ * los pacientes críticos que siguen esperando; y los fallecidos pasan a la morgue
+ * si hay cupo.
  * Un fallecido que no cabe en la morgue sigue ocupando su cama.</p>
  *
  * <p>La valoración de triage dura según el nivel del paciente
@@ -63,6 +68,16 @@ import java.util.Set;
  * ({@link TreatmentType#operationMinutes(int)}); el resto del tratamiento el
  * paciente se recupera en la cama que se le reservó (en UCI si la necesita).</p>
  *
+ * <p>Primeros auxilios: un paciente que espera y es crítico (triage I, o con salud
+ * de {@value #CRITICAL_HEALTH} o menos) recibe primeros auxilios de un enfermero o
+ * un médico libre, aunque no sea quien lo debe tratar, mientras se desocupa el
+ * médico o el quirófano que necesita. Así pierde salud más despacio
+ * ({@link HealthModel#FIRST_AID_EFFECTIVENESS}). Primero los de triage I y después
+ * los de menos salud; se prefiere a un enfermero para dejar libres a los médicos. Al
+ * empezar cada reparto ese personal vuelve a estar libre, así que la estrategia
+ * siempre puede usarlo para un tratamiento; los primeros auxilios se reparten con
+ * lo que sobra, y quien ya atendía a un paciente lo sigue atendiendo si puede.</p>
+ *
  * <p>Los pacientes que siguen esperando {@value #EXTRA_MINUTES} minutos después
  * de la última hora de llegada se registran como sin atender.</p>
  */
@@ -70,6 +85,14 @@ public class SimulationEngine {
 
     /** Minutos que se sigue atendiendo después de terminar el periodo de llegadas. */
     public static final int EXTRA_MINUTES = 1440;
+
+    /** Salud con la que un paciente que espera ya se considera crítico y recibe primeros auxilios (supuesto). */
+    public static final double CRITICAL_HEALTH = 50.0;
+
+    /** Primero los de triage I y después los de menos salud; a igual salud, el que llegó antes. */
+    private static final Comparator<Patient> MOST_CRITICAL_FIRST = Comparator
+            .comparing((Patient patient) -> !patient.getTriageLevel().skipsTriageStation())
+            .thenComparingDouble(Patient::getHealth);
 
     private record ActiveTreatment(Patient patient, Assignment assignment, int staffEndMinute, int endMinute,
                                    double effectiveness) {
@@ -79,6 +102,10 @@ public class SimulationEngine {
     }
 
     private record PendingBody(Patient patient, Bed bed) {
+    }
+
+    /** Primeros auxilios que recibe un paciente mientras espera: quién se los da. */
+    private record FirstAid(StaffMember carer) {
     }
 
     private final SimulationCase simulationCase;
@@ -97,6 +124,7 @@ public class SimulationEngine {
     private final Map<Patient, Integer> treatmentStarts = new HashMap<>();
     private final Map<Patient, CompatibilityLevel> careLevels = new HashMap<>();
     private final Set<Patient> recovering = new HashSet<>();
+    private final Map<Patient, FirstAid> firstAid = new LinkedHashMap<>();
     private final int endLimit;
 
     private int minute;
@@ -248,9 +276,11 @@ public class SimulationEngine {
             }
         }
         for (Patient patient : List.copyOf(waiting)) {
-            patient.deteriorate(healthModel.deteriorationPerMinute(patient, 0.0));
+            double care = firstAid.containsKey(patient) ? HealthModel.FIRST_AID_EFFECTIVENESS : 0.0;
+            patient.deteriorate(healthModel.deteriorationPerMinute(patient, care));
             if (!patient.isAlive()) {
                 waiting.remove(patient);
+                endFirstAid(patient);
                 declareDeath(patient, causeOfDeathWhileWaiting(patient), null, null);
             }
         }
@@ -419,23 +449,82 @@ public class SimulationEngine {
     private void abandonWaitingPatients() {
         for (Patient patient : List.copyOf(waiting)) {
             waiting.remove(patient);
+            endFirstAid(patient);
             patient.finish(PatientStatus.UNATTENDED, minute);
             emit(EventType.UNATTENDED, patient, null,
                     patient.getCode() + " sale del hospital sin haber sido atendido.");
         }
     }
 
+    /**
+     * La estrategia reparte los recursos libres, contando con el personal que estaba dando primeros auxilios;
+     * después, el personal que sobró da primeros auxilios a los críticos que siguen esperando.
+     */
     private void assignResources() {
+        Map<Patient, FirstAid> before = pauseFirstAid();
         while (true) {
             List<WaitingPatient> candidates = waiting.stream()
                     .map(patient -> new WaitingPatient(patient, diagnose(patient)))
                     .toList();
             Optional<Assignment> decision = strategy.nextAssignment(minute, candidates, hospital);
             if (decision.isEmpty()) {
-                return;
+                break;
             }
             startTreatment(decision.get());
         }
+        giveFirstAid(before);
+    }
+
+    /** Deja libre a todo el personal que daba primeros auxilios y devuelve a quién atendía cada uno. */
+    private Map<Patient, FirstAid> pauseFirstAid() {
+        Map<Patient, FirstAid> before = new LinkedHashMap<>(firstAid);
+        List.copyOf(firstAid.keySet()).forEach(this::endFirstAid);
+        return before;
+    }
+
+    /**
+     * Da primeros auxilios a los críticos que siguen esperando, del más crítico al menos, mientras quede personal
+     * libre. Quien ya atendía a un paciente lo sigue atendiendo si quedó libre.
+     */
+    private void giveFirstAid(Map<Patient, FirstAid> before) {
+        List<Patient> critical = waiting.stream().filter(this::isCritical).sorted(MOST_CRITICAL_FIRST).toList();
+        for (Patient patient : critical) {
+            FirstAid previous = before.get(patient);
+            Optional<StaffMember> carer = carerFor(previous);
+            if (carer.isEmpty()) {
+                return;
+            }
+            carer.get().assign(patient, minute + 1);
+            firstAid.put(patient, new FirstAid(carer.get()));
+            if (previous == null) {
+                emit(EventType.FIRST_AID, patient, null, patient.getCode() + " recibe primeros auxilios de "
+                        + carer.get().getCode() + " mientras espera.");
+            }
+        }
+    }
+
+    /** Quien da los primeros auxilios: el mismo de antes si está libre; si no, un enfermero o un médico libre. */
+    private Optional<StaffMember> carerFor(FirstAid previous) {
+        if (previous != null && previous.carer().isAvailable()) {
+            return Optional.of(previous.carer());
+        }
+        if (!hospital.freeNurses().isEmpty()) {
+            return Optional.of(hospital.freeNurses().get(0));
+        }
+        return hospital.freeDoctors().stream().map(StaffMember.class::cast).findFirst();
+    }
+
+    /** Termina los primeros auxilios de un paciente, si los recibía, y deja libre a quien se los daba. */
+    private void endFirstAid(Patient patient) {
+        FirstAid aid = firstAid.remove(patient);
+        if (aid != null) {
+            releaseHeld(List.of(aid.carer()), patient);
+        }
+    }
+
+    /** Un paciente que espera es crítico si es de triage I o si su salud ya bajó a la salud crítica. */
+    private boolean isCritical(Patient patient) {
+        return patient.getTriageLevel().skipsTriageStation() || patient.getHealth() <= CRITICAL_HEALTH;
     }
 
     private void startTreatment(Assignment assignment) {

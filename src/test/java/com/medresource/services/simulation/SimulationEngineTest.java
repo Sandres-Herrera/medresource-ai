@@ -27,6 +27,7 @@ import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
 import com.medresource.model.Specialty;
+import com.medresource.model.StaffMember;
 import com.medresource.model.Symptom;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
@@ -419,10 +420,11 @@ class SimulationEngineTest {
 
     @Test
     void aPatientWhoWaitsTooLongDiesForLackOfTimelyCare() {
+        // Un solo enfermero, ocupado con el primer paciente: nadie queda libre para darle primeros auxilios.
         SimulationCase simulationCase = caseOf(60,
                 profile(1, 0, DENGUE, 30, 80.0),
                 profile(2, 0, DENGUE, 30, 3.0));
-        SimulationResult result = run(simulationCase, hospital(Specialty.INTERNAL_MEDICINE));
+        SimulationResult result = run(simulationCase, hospital(3, 5, 1, Specialty.INTERNAL_MEDICINE));
 
         PatientOutcome waiting = outcomeOf(result, 1);
         assertEquals(PatientStatus.DECEASED, waiting.status());
@@ -466,7 +468,7 @@ class SimulationEngineTest {
         SimulationCase simulationCase = caseOf(60,
                 profile(1, 0, DENGUE, 30, 80.0),
                 profile(2, 0, DENGUE, 30, 3.0));
-        SimulationResult result = run(simulationCase, hospital(3, 0, 4, Specialty.INTERNAL_MEDICINE));
+        SimulationResult result = run(simulationCase, hospital(3, 0, 1, Specialty.INTERNAL_MEDICINE));
 
         assertEquals(CauseOfDeath.LACK_OF_TIMELY_CARE, outcomeOf(result, 1).causeOfDeath());
     }
@@ -962,5 +964,91 @@ class SimulationEngineTest {
                 new HospitalFactory().create(small), new FifoStrategy()).run();
 
         assertTrue(result.deaths() > 0);
+    }
+
+    // ---------- primeros auxilios ----------
+
+    /** Avanza el motor hasta el minuto en que alguien recibe primeros auxilios, incluido. */
+    private static void stepUntilFirstAid(SimulationEngine engine) {
+        while (engine.getEvents().stream().noneMatch(event -> event.type() == EventType.FIRST_AID)) {
+            engine.step();
+        }
+    }
+
+    @Test
+    void aFreeNurseGivesFirstAidToACriticalPatientWhileTheDoctorIsBusy() {
+        SimulationCase simulationCase = caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 3.0));
+        SimulationResult result = run(simulationCase, hospital(Specialty.INTERNAL_MEDICINE));
+
+        SimulationEvent firstAid = eventOf(result, "P002", EventType.FIRST_AID);
+        assertNull(firstAid.resourceCode());
+        assertTrue(firstAid.description().contains("E0"), firstAid.description());
+        assertEquals(PatientStatus.DISCHARGED, outcomeOf(result, 1).status());
+    }
+
+    @Test
+    void firstAidHalvesTheHealthAWaitingPatientLoses() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 3.0)), hospital(Specialty.INTERNAL_MEDICINE), new FifoStrategy());
+        stepUntilFirstAid(engine);
+        Patient patient = engine.getPatients().get(1);
+        double before = patient.getHealth();
+        double withoutCare = new HealthModel().deteriorationPerMinute(patient, 0.0);
+
+        engine.step();
+
+        assertEquals(0.5, HealthModel.FIRST_AID_EFFECTIVENESS, 0.0);
+        assertEquals(withoutCare * 0.5, before - patient.getHealth(), 1e-9);
+    }
+
+    @Test
+    void aPatientWhoIsNotCriticalGetsNoFirstAid() {
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 80.0)), hospital(Specialty.INTERNAL_MEDICINE));
+
+        assertFalse(typesOf(result, "P002").contains(EventType.FIRST_AID));
+    }
+
+    @Test
+    void aDoctorGivesFirstAidWhenNoNurseIsFree() {
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 3.0)), hospital(3, 5, 1, Specialty.INTERNAL_MEDICINE,
+                Specialty.TRAUMATOLOGY));
+
+        assertTrue(eventOf(result, "P002", EventType.FIRST_AID).description().contains("D02"));
+    }
+
+    @Test
+    void theStaffGivingFirstAidIsFreeForTheStrategyEveryMinute() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 3.0)), hospital(Specialty.INTERNAL_MEDICINE), new FifoStrategy());
+        stepUntilFirstAid(engine);
+        Patient patient = engine.getPatients().get(1);
+        StaffMember carer = engine.getHospital().getNurses().stream()
+                .filter(nurse -> nurse.getAssignedPatient() == patient).findFirst().orElseThrow();
+
+        SimulationResult result = engine.run();
+
+        assertTrue(carer.isAvailable());
+        assertTrue(outcomeOf(result, 1).wasTreated());
+        assertEquals(1, typesOf(result, "P002").stream().filter(type -> type == EventType.FIRST_AID).count());
+    }
+
+    @Test
+    void theMostCriticalPatientGetsTheOnlyFreeCarerFirst() {
+        // Dos enfermeros: uno se queda con el primer paciente y el otro solo alcanza para uno de los críticos.
+        SimulationResult result = run(caseOf(60,
+                profile(1, 0, DENGUE, 30, 80.0),
+                profile(2, 0, DENGUE, 30, 4.0),
+                profile(3, 0, DENGUE, 30, 2.0)), hospital(3, 5, 2, Specialty.INTERNAL_MEDICINE));
+
+        assertTrue(typesOf(result, "P003").contains(EventType.FIRST_AID));
+        assertFalse(typesOf(result, "P002").contains(EventType.FIRST_AID));
     }
 }
