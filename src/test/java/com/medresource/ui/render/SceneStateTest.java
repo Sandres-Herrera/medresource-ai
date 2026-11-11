@@ -648,4 +648,16 @@ class SceneStateTest {
         assertEquals(List.of("P003", "P001", "P002"), codes);
         assertThrows(UnsupportedOperationException.class, placements::clear);
     }
+
+    @Test
+    void everyPhaseSaysInWordsWhatThePatientIsDoing() {
+        Set<String> names = new HashSet<>();
+        for (Phase phase : Phase.values()) {
+            assertFalse(phase.getDisplayName().isBlank(), phase.name());
+            names.add(phase.getDisplayName());
+        }
+
+        assertEquals(Phase.values().length, names.size());
+        assertEquals("En tratamiento", Phase.TREATING.getDisplayName());
+    }
 }
