@@ -1,32 +1,31 @@
 package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
+import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.controller.SimulationSetup;
-import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.Renderer2D;
 
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.JButton;
+import javax.swing.AbstractAction;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
+import javax.swing.KeyStroke;
 import javax.swing.WindowConstants;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.util.List;
 
 /**
- * Ventana principal de MedResource AI: desde aquí se configura una simulación nueva o se lanza una rápida
- * con el hospital estándar.
+ * Ventana principal de MedResource AI: la pantalla de inicio ({@link HomePanel}), desde donde se configura una
+ * simulación nueva o se lanza una rápida con el hospital estándar.
+ *
+ * <p>Lleva el logo de la aplicación como icono, empieza con el foco en «Nueva simulación» (Enter la abre) y se
+ * cierra también con la tecla Escape.</p>
  */
 public final class MainWindow extends JFrame {
 
@@ -38,58 +37,43 @@ public final class MainWindow extends JFrame {
     /** Velocidad con la que empiezan las demostraciones. */
     private static final int DEMO_SPEED = 10;
 
+    /** Caso de la simulación rápida: 60 pacientes en un día normal. */
+    private static final CaseConfig QUICK_CASE = new CaseConfig(1L, Scenario.NORMAL, 60, DEMO_DURATION_MINUTES);
+
+    /** Caso de la demostración: una catástrofe con 100 pacientes. */
+    private static final CaseConfig DEMO_CASE = new CaseConfig(7L, Scenario.CATASTROPHE, CaseConfig.DEFAULT_PATIENTS,
+            DEMO_DURATION_MINUTES);
+
     /** Crea la ventana principal. */
     public MainWindow() {
         super("MedResource AI");
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(Palette.BACKGROUND);
-        content.setBorder(BorderFactory.createEmptyBorder(30, 40, 30, 40));
+        setIconImages(List.of(LogoBadge.image(16), LogoBadge.image(32), LogoBadge.image(64)));
+        HomePanel home = new HomePanel(HospitalConfig.standard(), QUICK_CASE, DEMO_CASE, DEMO_SPEED,
+                new HomePanel.Actions(
+                        () -> CaseConfigDialog.ask(this).ifPresent(setup -> open(setup, SimulationClock.DEFAULT_SPEED)),
+                        () -> open(SimulationSetup.standard(QUICK_CASE), DEMO_SPEED),
+                        () -> open(SimulationSetup.standard(DEMO_CASE), DEMO_SPEED),
+                        this::dispose));
+        home.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "salir");
+        home.getActionMap().put("salir", new AbstractAction() {
+            private static final long serialVersionUID = 1L;
 
-        JLabel title = new JLabel("MedResource AI", SwingConstants.CENTER);
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 30f));
-        title.setForeground(Color.WHITE);
-        JLabel subtitle = new JLabel("Simulador de asignación de recursos hospitalarios con IA",
-                SwingConstants.CENTER);
-        subtitle.setForeground(new Color(0xB0, 0xBE, 0xC5));
-
-        JButton configure = button("Nueva simulación…");
-        configure.addActionListener(event -> CaseConfigDialog.ask(this)
-                .ifPresent(setup -> open(setup, SimulationClock.DEFAULT_SPEED)));
-        JButton quick = button("Simulación rápida (60 pacientes en 2 horas, ×10)");
-        quick.addActionListener(event -> open(SimulationSetup.standard(
-                new CaseConfig(1L, Scenario.NORMAL, 60, DEMO_DURATION_MINUTES)), DEMO_SPEED));
-        JButton catastrophe = button("Demostración: catástrofe (100 pacientes en 2 horas, ×10)");
-        catastrophe.addActionListener(event -> open(SimulationSetup.standard(
-                new CaseConfig(7L, Scenario.CATASTROPHE, CaseConfig.DEFAULT_PATIENTS, DEMO_DURATION_MINUTES)),
-                DEMO_SPEED));
-        JButton exit = button("Salir");
-        exit.addActionListener(event -> dispose());
-
-        for (Component part : new Component[]{title, subtitle}) {
-            ((JLabel) part).setAlignmentX(Component.CENTER_ALIGNMENT);
-            content.add(part);
-            content.add(Box.createVerticalStrut(8));
-        }
-        content.add(Box.createVerticalStrut(20));
-        for (JButton button : new JButton[]{configure, quick, catastrophe, exit}) {
-            content.add(button);
-            content.add(Box.createVerticalStrut(10));
-        }
-        setLayout(new BorderLayout());
-        add(content, BorderLayout.CENTER);
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                dispose();
+            }
+        });
+        setContentPane(home);
         pack();
         setResizable(false);
         setLocationRelativeTo(null);
-    }
-
-    private static JButton button(String text) {
-        JButton button = new JButton(text);
-        button.setAlignmentX(Component.CENTER_ALIGNMENT);
-        button.setMaximumSize(new Dimension(380, 38));
-        button.setPreferredSize(new Dimension(380, 38));
-        return button;
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowOpened(WindowEvent event) {
+                home.newSimulationButton().requestFocusInWindow();
+            }
+        });
     }
 
     /**
