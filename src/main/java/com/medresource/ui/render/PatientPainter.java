@@ -28,6 +28,10 @@ import java.util.List;
  * si está sano y vacía si se apaga. Mientras está en tratamiento lleva, además, una barra azul sobre la cabeza
  * que se llena a medida que el tratamiento avanza. Un fallecido no lleva barras.</p>
  *
+ * <p>Quien va en camilla (un fallecido o alguien que no puede caminar) se dibuja acostado sobre ella, con la
+ * cabeza a la izquierda; mientras la camilla se mueve, un camillero de uniforme gris azulado la empuja desde la
+ * derecha.</p>
+ *
  * <p>Solo usa puntos del mundo, como los que da {@link SceneRenderer#centerOf}, así sirve igual para la vista
  * 2D y para la 2.5D.</p>
  */
@@ -106,10 +110,20 @@ public final class PatientPainter {
         Color body = marker.deceased() ? Palette.DECEASED
                 : marker.triage() == null ? UNKNOWN_TRIAGE : Palette.triage(marker.triage());
         Color head = marker.deceased() ? Palette.DECEASED : Palette.PATIENT_HEAD;
-        fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy, scale), body);
         double radius = HEAD_RADIUS * scale;
-        fillAndOutline(graphics, new Ellipse2D.Double(cx - radius, cy - 9 * scale - radius, 2 * radius, 2 * radius),
-                head);
+        if (marker.onStretcher()) {
+            paintStretcher(graphics, cx, cy);
+            fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 6, cy - 4, 18 * scale, 7, 4, 4), body);
+            fillAndOutline(graphics, new Ellipse2D.Double(cx - 11 - radius, cy - 1 - radius, 2 * radius,
+                    2 * radius), head);
+            if (marker.isCarried()) {
+                paintPorter(graphics, cx + 21, cy);
+            }
+        } else {
+            fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy, scale), body);
+            fillAndOutline(graphics, new Ellipse2D.Double(cx - radius, cy - 9 * scale - radius, 2 * radius,
+                    2 * radius), head);
+        }
         if (marker.deceased()) {
             return;
         }
@@ -135,6 +149,20 @@ public final class PatientPainter {
             graphics.setColor(fill);
             graphics.fillRect(left, y, filled, BAR_HEIGHT);
         }
+    }
+
+    /** Camilla vista desde un lado: el colchón y, debajo, dos ruedas. */
+    private void paintStretcher(Graphics2D graphics, double cx, double cy) {
+        fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 15, cy + 2, 30, 6, 3, 3), Palette.STRETCHER);
+        graphics.setColor(Palette.STRETCHER_FRAME);
+        graphics.fill(new Ellipse2D.Double(cx - 13, cy + 8, 4, 4));
+        graphics.fill(new Ellipse2D.Double(cx + 9, cy + 8, 4, 4));
+    }
+
+    /** Camillero que empuja la camilla desde la derecha: cabeza y uniforme gris azulado. */
+    private void paintPorter(Graphics2D graphics, double cx, double cy) {
+        fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 4, cy - 4, 8, 14, 4, 4), Palette.PORTER_UNIFORM);
+        fillAndOutline(graphics, new Ellipse2D.Double(cx - 4, cy - 14, 8, 8), Palette.PATIENT_HEAD);
     }
 
     /** Vestido (triángulo) para las mujeres y tronco (rectángulo redondeado) para los hombres. */

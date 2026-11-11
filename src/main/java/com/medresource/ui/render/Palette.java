@@ -69,6 +69,13 @@ public final class Palette {
     /** Parte ya hecha del tratamiento. */
     public static final Color TREATMENT_PROGRESS = new Color(0x29, 0x79, 0xFF);
 
+    /** Colchón de una camilla. */
+    public static final Color STRETCHER = new Color(0xEC, 0xEF, 0xF1);
+    /** Armazón y ruedas de una camilla. */
+    public static final Color STRETCHER_FRAME = new Color(0x54, 0x6E, 0x7A);
+    /** Uniforme del camillero que empuja la camilla: gris azulado, distinto del personal y de los pacientes. */
+    public static final Color PORTER_UNIFORM = new Color(0x90, 0xA4, 0xAE);
+
     /** Desde esta salud el paciente está bien (verde). */
     public static final double GOOD_HEALTH = 70.0;
     /** Desde esta salud el paciente está regular (amarillo). */

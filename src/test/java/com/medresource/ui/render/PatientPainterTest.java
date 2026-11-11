@@ -200,4 +200,46 @@ class PatientPainterTest {
         assertEquals(Palette.BAR_TRACK.getRGB(), image.getRGB(CX - 8, 65));
         assertNotEquals(BACKGROUND, image.getRGB(CX, 65));
     }
+
+    // ---------- camilla ----------
+
+    private PatientMarker onStretcher(boolean deceased, boolean moving) {
+        return new PatientMarker("P001", TriageLevel.II, Sex.MALE, false, deceased, 50, 50,
+                deceased ? 0 : 60, PatientMarker.NO_PROGRESS, true, moving);
+    }
+
+    @Test
+    void aPatientOnAStretcherLiesOnItWithHisHeadToTheLeft() {
+        paint(onStretcher(false, false));
+
+        assertEquals(Palette.triage(TriageLevel.II).getRGB(), image.getRGB(CX + 5, 49));
+        assertEquals(Palette.PATIENT_HEAD.getRGB(), image.getRGB(CX - 11, 49));
+        assertEquals(Palette.STRETCHER.getRGB(), image.getRGB(CX, 55));
+    }
+
+    @Test
+    void aPorterPushesTheStretcherOnlyWhileItMoves() {
+        paint(onStretcher(false, false));
+        assertEquals(BACKGROUND, image.getRGB(CX + 21, 55));
+
+        paint(onStretcher(false, true));
+        assertEquals(Palette.PORTER_UNIFORM.getRGB(), image.getRGB(CX + 21, 55));
+    }
+
+    @Test
+    void aDeceasedPatientIsCarriedGrayOnTheStretcher() {
+        paint(onStretcher(true, true));
+
+        assertEquals(Palette.DECEASED.getRGB(), image.getRGB(CX + 5, 49));
+        assertEquals(Palette.DECEASED.getRGB(), image.getRGB(CX - 11, 49));
+        assertEquals(BACKGROUND, image.getRGB(CX - 8, 65));
+    }
+
+    @Test
+    void aPatientOnFootHasNoStretcher() {
+        paint(withCare(80, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(BACKGROUND, image.getRGB(CX - 13, 55));
+        assertEquals(BACKGROUND, image.getRGB(CX + 21, 55));
+    }
 }

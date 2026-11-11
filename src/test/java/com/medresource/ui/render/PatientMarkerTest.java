@@ -71,4 +71,24 @@ class PatientMarkerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 50, -0.5));
     }
+
+    @Test
+    void aPatientIsOnFootUnlessHeIsOnAStretcher() {
+        PatientMarker walking = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0, 50, 0.5);
+        PatientMarker lying = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0, 50, 0.5,
+                true, false);
+
+        assertFalse(walking.onStretcher());
+        assertFalse(walking.moving());
+        assertTrue(lying.onStretcher());
+        assertFalse(lying.isCarried());
+    }
+
+    @Test
+    void aPatientIsCarriedOnlyWhileHisStretcherMoves() {
+        assertTrue(new PatientMarker("P001", null, Sex.MALE, false, true, 0, 0, 0, PatientMarker.NO_PROGRESS,
+                true, true).isCarried());
+        assertFalse(new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 80, PatientMarker.NO_PROGRESS,
+                false, true).isCarried());
+    }
 }

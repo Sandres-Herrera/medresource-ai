@@ -131,4 +131,14 @@ class PaletteTest {
         assertThrows(IllegalArgumentException.class, () -> Palette.health(100.1));
         assertThrows(IllegalArgumentException.class, () -> Palette.health(Double.NaN));
     }
+
+    @Test
+    void thePorterCannotBeMistakenForTheStaffNorForAPatient() {
+        assertTrue(distance(Palette.PORTER_UNIFORM, Palette.NURSE_UNIFORM) > 60);
+        assertTrue(distance(Palette.PORTER_UNIFORM, Palette.DOCTOR_COAT) > 60);
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.PORTER_UNIFORM, Palette.triage(level)) > 60, level.name());
+        }
+        assertNotEquals(Palette.STRETCHER, Palette.STRETCHER_FRAME);
+    }
 }
