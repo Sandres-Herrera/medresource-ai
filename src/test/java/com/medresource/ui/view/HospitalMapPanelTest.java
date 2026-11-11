@@ -8,6 +8,7 @@ import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
+import com.medresource.ui.render.Camera;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
@@ -17,13 +18,18 @@ import org.junit.jupiter.api.Test;
 
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas del panel que muestra el plano del hospital.
@@ -212,5 +218,127 @@ class HospitalMapPanelTest {
     @Test
     void doesNotShowAMissingStaff() {
         assertThrows(IllegalArgumentException.class, () -> panel.showStaff(null));
+    }
+
+    // ---------- selección y cámara que sigue ----------
+
+    private Point2D showOnePatientOnTheFirstSeat() {
+        Point2D seat = renderer.centerOf(standard.getWaitingSpots().get(0));
+        panel.showPatients(List.of(new PatientMarker("P001", TriageLevel.III, Sex.FEMALE, false, false,
+                seat.getX(), seat.getY())), 0);
+        return seat;
+    }
+
+    private void fullSizePanel() {
+        Dimension world = renderer.worldSize(standard);
+        panel.setSize(world.width + 2 * MARGIN, world.height + 2 * MARGIN);
+    }
+
+    @Test
+    void findsThePatientUnderAPointOfThePanel() {
+        Point2D seat = showOnePatientOnTheFirstSeat();
+        fullSizePanel();
+        int x = MARGIN + (int) seat.getX() + PatientPainter.OFFSET_X;
+        int y = MARGIN + (int) seat.getY();
+
+        assertEquals("P001", panel.patientAt(x, y).orElseThrow());
+        assertTrue(panel.patientAt(MARGIN, MARGIN).isEmpty());
+    }
+
+    @Test
+    void findsNobodyInAPanelWithoutSize() {
+        showOnePatientOnTheFirstSeat();
+
+        assertTrue(panel.patientAt(0, 0).isEmpty());
+        assertTrue(panel.cameraFor(2 * MARGIN, 100).isEmpty());
+    }
+
+    @Test
+    void theSelectedPatientIsPaintedWithARing() {
+        Point2D seat = showOnePatientOnTheFirstSeat();
+        int x = MARGIN + (int) (seat.getX() + PatientPainter.OFFSET_X + PatientPainter.SELECTION_RADIUS);
+        int y = MARGIN + (int) seat.getY();
+
+        assertNotEquals(Palette.SELECTION.getRGB(), fullSizePicture().getRGB(x, y));
+
+        panel.select("P001");
+
+        assertEquals("P001", panel.getSelected().orElseThrow());
+        assertEquals(Palette.SELECTION.getRGB(), fullSizePicture().getRGB(x, y));
+
+        panel.select(null);
+
+        assertTrue(panel.getSelected().isEmpty());
+        assertNotEquals(Palette.SELECTION.getRGB(), fullSizePicture().getRGB(x, y));
+    }
+
+    @Test
+    void whileItDoesNotFollowTheCameraShowsTheWholePlan() {
+        showOnePatientOnTheFirstSeat();
+        panel.select("P001");
+        Dimension world = renderer.worldSize(standard);
+
+        Camera camera = panel.cameraFor(world.width + 2 * MARGIN, world.height + 2 * MARGIN).orElseThrow();
+
+        assertFalse(panel.isFollowing());
+        assertEquals(1.0, camera.zoom(), 1e-9);
+    }
+
+    @Test
+    void theCameraFollowsTheSelectedPatientCloser() {
+        Point2D seat = showOnePatientOnTheFirstSeat();
+        panel.select("P001");
+        panel.setFollowing(true);
+
+        Camera camera = panel.cameraFor(400, 300).orElseThrow();
+
+        assertTrue(panel.isFollowing());
+        assertEquals(HospitalMapPanel.FOLLOW_ZOOM, camera.zoom(), 1e-9);
+        Point2D onScreen = camera.toScreen(seat.getX() + PatientPainter.OFFSET_X, seat.getY());
+        assertTrue(onScreen.getX() >= 0 && onScreen.getX() <= 400, "el paciente se ve: " + onScreen);
+        assertTrue(onScreen.getY() >= 0 && onScreen.getY() <= 300, "el paciente se ve: " + onScreen);
+    }
+
+    @Test
+    void withoutASelectedPatientInTheSceneTheCameraShowsTheWholePlan() {
+        showOnePatientOnTheFirstSeat();
+        panel.setFollowing(true);
+        panel.select("P999");
+        Dimension world = renderer.worldSize(standard);
+
+        Camera camera = panel.cameraFor(world.width + 2 * MARGIN, world.height + 2 * MARGIN).orElseThrow();
+
+        assertEquals(1.0, camera.zoom(), 1e-9);
+    }
+
+    @Test
+    void aClickSelectsThePatientAndTellsTheListener() {
+        Point2D seat = showOnePatientOnTheFirstSeat();
+        fullSizePanel();
+        List<String> heard = new ArrayList<>();
+        panel.setSelectionListener(heard::add);
+        int x = MARGIN + (int) seat.getX() + PatientPainter.OFFSET_X;
+        int y = MARGIN + (int) seat.getY();
+
+        click(x, y);
+
+        assertEquals("P001", panel.getSelected().orElseThrow());
+
+        click(MARGIN, MARGIN);
+
+        assertTrue(panel.getSelected().isEmpty());
+        assertEquals(2, heard.size());
+        assertEquals("P001", heard.get(0));
+        assertNull(heard.get(1));
+    }
+
+    @Test
+    void rejectsAMissingListener() {
+        assertThrows(IllegalArgumentException.class, () -> panel.setSelectionListener(null));
+    }
+
+    private void click(int x, int y) {
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_CLICKED, 0L, 0, x, y, 1, false,
+                MouseEvent.BUTTON1));
     }
 }
