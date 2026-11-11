@@ -484,6 +484,16 @@ class HospitalLayoutTest {
     }
 
     @Test
+    void tellsWhichResourceIsAtAPlace() {
+        HospitalLayout layout = layoutWithDoorsAndDesks(List.of(), Map.of("D01", consult.slot(0)));
+
+        assertEquals("B2", layout.resourceAt(ward.slot(1)).orElseThrow());
+        assertEquals("D01", layout.resourceAt(consult.slot(0)).orElseThrow());
+        assertTrue(layout.resourceAt(waiting.slot(0)).isEmpty());
+        assertTrue(layout.resourceAt(null).isEmpty());
+    }
+
+    @Test
     void rejectsADeskOutsideTheConsultingRoomsOrOnAnotherPlace() {
         Map<String, Position> outside = Map.of("D01", waiting.slot(0));
         Map<String, Position> twice = Map.of("D01", consult.slot(0), "D02", consult.slot(0));
