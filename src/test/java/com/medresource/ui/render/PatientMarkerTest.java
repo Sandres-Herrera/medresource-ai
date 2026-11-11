@@ -1,10 +1,12 @@
 package com.medresource.ui.render;
 
+import com.medresource.model.Patient;
 import com.medresource.model.Sex;
 import com.medresource.model.TriageLevel;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,5 +37,38 @@ class PatientMarkerTest {
         assertThrows(IllegalArgumentException.class, () -> new PatientMarker(null, TriageLevel.I, Sex.MALE, false, false, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new PatientMarker(" ", TriageLevel.I, Sex.MALE, false, false, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new PatientMarker("P001", TriageLevel.I, null, false, false, 0, 0));
+    }
+
+    @Test
+    void withoutHealthNorProgressThePatientIsHealthyAndNotInTreatment() {
+        PatientMarker marker = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0);
+
+        assertEquals(Patient.MAX_HEALTH, marker.health(), 0.0);
+        assertEquals(PatientMarker.NO_PROGRESS, marker.progress(), 0.0);
+        assertFalse(marker.inTreatment());
+    }
+
+    @Test
+    void keepsTheHealthAndTheProgressOfTheTreatment() {
+        PatientMarker marker = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0, 35.5,
+                0.25);
+
+        assertEquals(35.5, marker.health(), 0.0);
+        assertEquals(0.25, marker.progress(), 0.0);
+        assertTrue(marker.inTreatment());
+    }
+
+    @Test
+    void rejectsAHealthOrAProgressOutOfRange() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, -1, 0.5));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 101, 0.5));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, Double.NaN, 0.5));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 50, 1.5));
+        assertThrows(IllegalArgumentException.class,
+                () -> new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 50, -0.5));
     }
 }
