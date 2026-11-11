@@ -20,6 +20,12 @@ public class HealthModel {
     /** Multiplicador del deterioro en bebés y adultos mayores (supuesto). */
     public static final double VULNERABLE_AGE_FACTOR = 1.25;
 
+    /**
+     * Efectividad de los primeros auxilios que da un médico o un enfermero que no es quien debe tratar al
+     * paciente, mientras este espera (supuesto): reduce a la mitad la salud que pierde por minuto.
+     */
+    public static final double FIRST_AID_EFFECTIVENESS = 0.5;
+
     private static final double ROUNDING_TOLERANCE = 1e-9;
 
     /**

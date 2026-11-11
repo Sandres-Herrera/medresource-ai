@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Dónde está cada paciente en el plano, según los eventos de la simulación.
@@ -26,6 +27,12 @@ import java.util.Set;
  * escritorio de su médico en los consultorios) al empezar su tratamiento, se queda donde está al morir y pasa
  * a un lugar de la morgue cuando el motor lo manda; quien recibe el alta, es remitido o se va sin atención
  * sale por la zona de alta o salida.</p>
+ *
+ * <p>Un paciente crítico (triage I) hace pase directo: no hace fila en el triage ni se sienta en la sala de
+ * espera. Espera en la entrada hasta que el motor lo lleva a una cama libre para darle primeros auxilios
+ * mientras se desocupa quien lo debe tratar, y de ahí pasa a su tratamiento; si pierde esa cama, vuelve a
+ * esperar en la entrada. La escena lo reconoce desde que llega si se le dice quién pasa directo; si no, en
+ * cuanto el motor anuncia que empieza su triage sin estación.</p>
  *
  * <p>No tiene nada de Swing: solo calcula lugares. Cuando hay más pacientes esperando que sillas, los que no
  * caben se acumulan en la última silla y {@link #overflow()} dice cuántos son.</p>
@@ -40,6 +47,10 @@ public final class SceneState {
         IN_TRIAGE,
         /** Ya clasificado, espera en la sala de espera. */
         QUEUED,
+        /** Paciente crítico en pase directo: espera en la entrada, sin fila ni silla, hasta que lo reciben. */
+        DIRECT_PASS,
+        /** Paciente crítico que espera en una cama, con primeros auxilios, a quien lo debe tratar. */
+        FIRST_AID,
         /** Está en su cama, su quirófano o con su médico. */
         TREATING,
         /** Murió y sigue en el lugar donde estaba. */
@@ -57,34 +68,51 @@ public final class SceneState {
     private static final class Entry {
         private Phase phase = Phase.TRIAGE_QUEUE;
         private Position position;
+        private boolean direct;
     }
 
     /** Eventos que cambian el lugar de algún paciente; los demás no mueven a nadie. */
     private static final Set<EventType> PLACE_CHANGES = EnumSet.of(EventType.ARRIVAL,
-            EventType.TRIAGE_STARTED, EventType.TRIAGE_ASSIGNED, EventType.TREATMENT_STARTED,
+            EventType.TRIAGE_STARTED, EventType.TRIAGE_ASSIGNED, EventType.FIRST_AID, EventType.TREATMENT_STARTED,
             EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH,
             EventType.MORGUE_ADMISSION, EventType.MORGUE_RELEASE, EventType.DISCHARGE,
             EventType.STABILIZED_WITHOUT_CURE, EventType.REFERRAL, EventType.UNATTENDED);
 
     private final HospitalLayout layout;
+    private final Predicate<String> passesDirectly;
     private final Map<String, Entry> patients = new LinkedHashMap<>();
     private final Map<String, Integer> morgueSlots = new LinkedHashMap<>();
     private int departures;
 
     /**
-     * Crea una escena vacía.
+     * Crea una escena vacía que reconoce el pase directo cuando el motor lo anuncia.
      *
      * @param layout plano del hospital
      * @throws IllegalArgumentException si el plano es nulo o no tiene zona de alta o salida
      */
     public SceneState(HospitalLayout layout) {
+        this(layout, code -> false);
+    }
+
+    /**
+     * Crea una escena vacía que sabe, desde que llegan, qué pacientes hacen pase directo.
+     *
+     * @param layout         plano del hospital
+     * @param passesDirectly dice, por el código del paciente, si es crítico y pasa directo sin hacer fila
+     * @throws IllegalArgumentException si falta algún dato o si el plano no tiene zona de alta o salida
+     */
+    public SceneState(HospitalLayout layout, Predicate<String> passesDirectly) {
         if (layout == null) {
             throw new IllegalArgumentException("El plano es obligatorio.");
+        }
+        if (passesDirectly == null) {
+            throw new IllegalArgumentException("Hay que decir quién pasa directo.");
         }
         if (layout.areasOf(ZoneType.DISCHARGE).isEmpty()) {
             throw new IllegalArgumentException("El plano no tiene zona de alta o salida.");
         }
         this.layout = layout;
+        this.passesDirectly = passesDirectly;
     }
 
     /**
@@ -103,8 +131,10 @@ public final class SceneState {
 
     /**
      * Aplica un evento. Los eventos que no cambian el lugar de nadie (diagnóstico, alerta de emergencia,
-     * reevaluación y fin de tratamiento) se ignoran. Un inicio de triage sin estación (el paciente pasa
-     * directo, sin detenerse) deja al paciente donde está.
+     * reevaluación y fin de tratamiento) se ignoran. Un inicio de triage sin estación es un pase directo: el
+     * paciente deja la fila y espera en la entrada, y su clasificación no lo manda a la sala de espera. Los
+     * primeros auxilios con cama lo llevan a esa cama; sin cama, lo atienden donde está, salvo que acabe de
+     * dejar su cama: entonces vuelve a esperar en la entrada (pase directo) o en la sala de espera.
      *
      * @param event evento de la simulación
      * @throws IllegalArgumentException si el evento es nulo
@@ -122,7 +152,8 @@ public final class SceneState {
         }
         switch (type) {
             case TRIAGE_STARTED -> startTriage(event);
-            case TRIAGE_ASSIGNED -> known(event.patientCode()).phase = Phase.QUEUED;
+            case TRIAGE_ASSIGNED -> classify(event.patientCode());
+            case FIRST_AID -> giveFirstAid(event);
             case TREATMENT_STARTED, ICU_ADMISSION, RECOVERY_STARTED -> startTreatment(event);
             case DEATH -> die(event);
             case MORGUE_ADMISSION -> enterMorgue(event.patientCode());
@@ -223,19 +254,59 @@ public final class SceneState {
         if (patients.containsKey(code)) {
             throw new IllegalStateException("El paciente " + code + " ya llegó.");
         }
-        patients.put(code, new Entry());
+        Entry entry = new Entry();
+        if (passesDirectly.test(code)) {
+            passDirectly(entry);
+        }
+        patients.put(code, entry);
     }
 
-    /** Lleva al paciente a su estación de triage; sin estación, pasa directo y se queda donde está. */
+    /** Lleva al paciente a su estación de triage; sin estación, hace pase directo y espera en la entrada. */
     private void startTriage(SimulationEvent event) {
         Entry entry = known(event.patientCode());
         if (event.resourceCode() == null) {
+            passDirectly(entry);
             return;
         }
         entry.position = layout.positionOf(event.resourceCode())
                 .orElseThrow(() -> new IllegalStateException(
                         "El plano no tiene la estación de triage " + event.resourceCode() + "."));
         entry.phase = Phase.IN_TRIAGE;
+    }
+
+    /** El paciente clasificado pasa a la sala de espera, salvo que haga pase directo. */
+    private void classify(String code) {
+        Entry entry = known(code);
+        if (entry.phase != Phase.DIRECT_PASS) {
+            entry.phase = Phase.QUEUED;
+        }
+    }
+
+    /**
+     * Primeros auxilios: con cama, el paciente pasa a ella; sin cama, lo atienden donde está, y si venía de su
+     * cama vuelve a esperar donde le toca.
+     */
+    private void giveFirstAid(SimulationEvent event) {
+        Entry entry = known(event.patientCode());
+        if (event.resourceCode() != null) {
+            entry.position = layout.positionOf(event.resourceCode())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "El plano no tiene la cama " + event.resourceCode() + "."));
+            entry.phase = Phase.FIRST_AID;
+        } else if (entry.phase == Phase.FIRST_AID) {
+            if (entry.direct) {
+                passDirectly(entry);
+            } else {
+                entry.phase = Phase.QUEUED;
+            }
+        }
+    }
+
+    /** El paciente crítico no hace fila ni se sienta: espera en la entrada a que lo reciban. */
+    private void passDirectly(Entry entry) {
+        entry.direct = true;
+        entry.phase = Phase.DIRECT_PASS;
+        entry.position = layout.getEntrance();
     }
 
     private void startTreatment(SimulationEvent event) {

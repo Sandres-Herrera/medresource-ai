@@ -11,6 +11,7 @@ public enum EventType {
     TRIAGE_ASSIGNED("Triage asignado"),
     DIAGNOSIS("Diagnóstico"),
     REEVALUATION("Reevaluación"),
+    FIRST_AID("Primeros auxilios"),
     TREATMENT_STARTED("Inicio de tratamiento"),
     TREATMENT_FINISHED("Fin de tratamiento"),
     ICU_ADMISSION("Ingreso a UCI"),

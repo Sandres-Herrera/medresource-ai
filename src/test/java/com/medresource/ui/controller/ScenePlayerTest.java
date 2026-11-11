@@ -15,6 +15,8 @@ import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.TreatmentType;
+import com.medresource.model.TriageLevel;
+import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
@@ -300,16 +302,16 @@ class ScenePlayerTest {
     }
 
     @Test
-    void aCrowdedHospitalLeavesPeopleOutOfTheWaitingRoomAndHasDeceasedPatients() {
+    void aCrowdedHospitalLeavesCriticalPatientsWaitingAtTheEntranceAndHasDeceasedPatients() {
         ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 200);
-        int mostWaiting = 0;
+        int mostAtTheEntrance = 0;
         boolean sawDeceased = false;
         while (tick(player)) {
-            mostWaiting = Math.max(mostWaiting, player.overflow());
+            mostAtTheEntrance = Math.max(mostAtTheEntrance, player.getState().count(Phase.DIRECT_PASS));
             sawDeceased |= player.markers().stream().anyMatch(PatientMarker::deceased);
         }
 
-        assertTrue(mostWaiting > 0);
+        assertTrue(mostAtTheEntrance > 0);
         assertTrue(sawDeceased);
     }
 
@@ -463,5 +465,96 @@ class ScenePlayerTest {
         Point2D desk = renderer.centerOf(layout.consultDeskOf(doctor).orElseThrow());
         assertEquals(layout.consultDeskOf(doctor).orElseThrow(), player.getState().positionOf("P001").orElseThrow());
         assertEquals(new Point2D.Double(desk.getX() - 32, desk.getY()), staffAt(player, doctor));
+    }
+
+    // ---------- pacientes críticos y primeros auxilios ----------
+
+    @Test
+    void aCriticalPatientNeverQueuesInTheTriageNorSitsInTheWaitingRoom() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.CATASTROPHE, 120);
+        Set<Phase> notForCritical = EnumSet.of(Phase.TRIAGE_QUEUE, Phase.IN_TRIAGE, Phase.QUEUED);
+        int critical = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.triage() == TriageLevel.I) {
+                    critical++;
+                    Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                    assertFalse(notForCritical.contains(phase), marker.code() + " " + phase);
+                }
+            }
+        }
+        assertTrue(critical > 0);
+    }
+
+    /** Dos infartos, el segundo cinco minutos después, cuando el único médico ya atiende al primero. */
+    private static SimulationCase twoHeartAttacks() {
+        Disease heartAttack = DiseaseCatalog.findById(9).orElseThrow();
+        return new SimulationCase(new CaseConfig(1L, Scenario.NORMAL, 2, 60), List.of(
+                new PatientProfile(1, 70, Sex.MALE, BloodType.O_POSITIVE, heartAttack, heartAttack.getSymptoms(), 0,
+                        60.0, false),
+                new PatientProfile(2, 70, Sex.FEMALE, BloodType.O_POSITIVE, heartAttack, heartAttack.getSymptoms(), 5,
+                        60.0, false)));
+    }
+
+    @Test
+    void aFreeNurseGoesToTheBedWhereTheCriticalPatientWaitsForHisDoctor() {
+        HospitalConfig config = new HospitalConfig(2, 2, 1, 1, 3, 1, 2);
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(config));
+        SimulationEngine engine = new SimulationEngine(twoHeartAttacks(),
+                new HospitalFactory().create(config), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P002").orElse(null) != Phase.FIRST_AID) {
+            assertTrue(tick(player), "P002 nunca recibió primeros auxilios en una cama");
+        }
+        Patient critical = engine.getPatients().get(1);
+        String nurse = engine.getHospital().getNurses().stream()
+                .filter(member -> member.getAssignedPatient() == critical).findFirst().orElseThrow().getCode();
+
+        player.advanceTo(player.getTime() + LONGEST_WALK);
+
+        Position bed = player.getState().positionOf("P002").orElseThrow();
+        assertEquals(ZoneType.ICU, layout.areaAt(bed).orElseThrow().zone());
+        Point2D center = renderer.centerOf(bed);
+        assertEquals(new Point2D.Double(center.getX() - 32, center.getY()), staffAt(player, nurse));
+    }
+
+    // ---------- itinerario completo ----------
+
+    @Test
+    void everyPatientPassesThroughEveryPlaceTheSceneGivesHim() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(
+                new CaseGenerator().generate(new CaseConfig(1L, Scenario.HIGH_DEMAND, 60, 60)),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        Set<Phase> lines = EnumSet.of(Phase.TRIAGE_QUEUE, Phase.QUEUED);
+        Map<String, Map<Position, Double>> given = new HashMap<>();
+        Map<String, Set<Position>> visited = new HashMap<>();
+        double end = 75 * 60;
+        for (double at = 0; at <= end; at += 0.2) {
+            player.advanceTo(at);
+            for (SceneState.Placement placement : player.getState().placements()) {
+                if (!lines.contains(placement.phase())) {
+                    given.computeIfAbsent(placement.patientCode(), code -> new HashMap<>())
+                            .putIfAbsent(placement.position(), at);
+                }
+            }
+            for (PatientMarker marker : player.markers()) {
+                Position cell = new Position((int) Math.floor(marker.x() / Renderer2D.CELL_W),
+                        (int) Math.floor(marker.y() / Renderer2D.CELL_H));
+                visited.computeIfAbsent(marker.code(), code -> new HashSet<>()).add(cell);
+            }
+        }
+        int checked = 0;
+        for (Map.Entry<String, Map<Position, Double>> patient : given.entrySet()) {
+            for (Map.Entry<Position, Double> place : patient.getValue().entrySet()) {
+                if (place.getValue() < end - 5 * 60) {
+                    checked++;
+                    assertTrue(visited.get(patient.getKey()).contains(place.getKey()),
+                            patient.getKey() + " no pasó por " + place.getKey());
+                }
+            }
+        }
+        assertTrue(checked > 50, "solo se revisaron " + checked + " lugares");
     }
 }

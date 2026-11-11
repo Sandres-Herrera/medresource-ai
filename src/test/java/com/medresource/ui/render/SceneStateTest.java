@@ -118,15 +118,140 @@ class SceneStateTest {
         assertEquals(layout.getTriageQueueSpots().get(0), positionOf("P002"));
     }
 
+    // ---------- pase directo del triage I ----------
+
     @Test
-    void aPatientWhoSkipsTheStationStaysWhereHeIsUntilClassified() {
-        walkIn("P001");
+    void aCriticalPatientWhoSkipsTheStationLeavesTheQueueAndWaitsAtTheEntrance() {
+        walkIn("P001", "P002");
 
         scene.apply(event(EventType.TRIAGE_STARTED, "P001", null));
 
-        assertEquals(Phase.TRIAGE_QUEUE, scene.phaseOf("P001").orElseThrow());
+        assertEquals(Phase.DIRECT_PASS, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getEntrance(), positionOf("P001"));
+        assertEquals(layout.getTriageQueueSpots().get(0), positionOf("P002"));
+    }
+
+    @Test
+    void aCriticalPatientDoesNotGoToTheWaitingRoomWhenClassified() {
+        walkIn("P001");
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", null));
+
         scene.apply(event(EventType.TRIAGE_ASSIGNED, "P001", null));
-        assertEquals(Phase.QUEUED, scene.phaseOf("P001").orElseThrow());
+
+        assertEquals(Phase.DIRECT_PASS, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getEntrance(), positionOf("P001"));
+        assertEquals(0, scene.count(Phase.QUEUED));
+    }
+
+    @Test
+    void aCriticalPatientDoesNotTakeAChairFromTheOthers() {
+        arrive("P001");
+        walkIn("P002");
+        scene.apply(event(EventType.TRIAGE_STARTED, "P002", null));
+        scene.apply(event(EventType.TRIAGE_ASSIGNED, "P002", null));
+        arrive("P003");
+
+        assertEquals(layout.getWaitingSpots().get(0), positionOf("P001"));
+        assertEquals(layout.getWaitingSpots().get(1), positionOf("P003"));
+    }
+
+    @Test
+    void aCriticalPatientGoesFromTheEntranceStraightToItsPlace() {
+        walkIn("P001");
+        scene.apply(event(EventType.TRIAGE_STARTED, "P001", null));
+        scene.apply(event(EventType.TRIAGE_ASSIGNED, "P001", null));
+
+        scene.apply(event(EventType.ICU_ADMISSION, "P001", "UCI-C1"));
+
+        assertEquals(Phase.TREATING, scene.phaseOf("P001").orElseThrow());
+        assertEquals(spot("UCI-C1"), positionOf("P001"));
+    }
+
+    @Test
+    void whenTheSceneKnowsWhoPassesDirectlyTheCriticalPatientNeverQueues() {
+        SceneState knowing = new SceneState(layout, "P002"::equals);
+
+        knowing.apply(event(EventType.ARRIVAL, "P001", null));
+        knowing.apply(event(EventType.ARRIVAL, "P002", null));
+
+        assertEquals(Phase.TRIAGE_QUEUE, knowing.phaseOf("P001").orElseThrow());
+        assertEquals(Phase.DIRECT_PASS, knowing.phaseOf("P002").orElseThrow());
+        assertEquals(layout.getEntrance(), knowing.positionOf("P002").orElseThrow());
+        assertEquals(layout.getTriageQueueSpots().get(0), knowing.positionOf("P001").orElseThrow());
+    }
+
+    // ---------- primeros auxilios ----------
+
+    /** Un paciente crítico que llega y pasa directo, ya clasificado. */
+    private void passDirectly(String patient) {
+        walkIn(patient);
+        scene.apply(event(EventType.TRIAGE_STARTED, patient, null));
+        scene.apply(event(EventType.TRIAGE_ASSIGNED, patient, null));
+    }
+
+    @Test
+    void aCriticalPatientGoesToTheBedWhereHeGetsFirstAid() {
+        passDirectly("P001");
+
+        scene.apply(event(EventType.FIRST_AID, "P001", "UCI-C2"));
+
+        assertEquals(Phase.FIRST_AID, scene.phaseOf("P001").orElseThrow());
+        assertEquals(spot("UCI-C2"), positionOf("P001"));
+    }
+
+    @Test
+    void fromTheFirstAidBedHeGoesToHisTreatment() {
+        passDirectly("P001");
+        scene.apply(event(EventType.FIRST_AID, "P001", "H1-C4"));
+
+        scene.apply(event(EventType.ICU_ADMISSION, "P001", "UCI-C1"));
+
+        assertEquals(Phase.TREATING, scene.phaseOf("P001").orElseThrow());
+        assertEquals(spot("UCI-C1"), positionOf("P001"));
+    }
+
+    @Test
+    void aCriticalPatientWhoLosesHisBedWaitsAgainAtTheEntrance() {
+        passDirectly("P001");
+        scene.apply(event(EventType.FIRST_AID, "P001", "H1-C4"));
+
+        scene.apply(event(EventType.FIRST_AID, "P001", null));
+
+        assertEquals(Phase.DIRECT_PASS, scene.phaseOf("P001").orElseThrow());
+        assertEquals(layout.getEntrance(), positionOf("P001"));
+    }
+
+    @Test
+    void firstAidWithoutABedLeavesThePatientWhereHeWaits() {
+        arrive("P001", "P002");
+
+        scene.apply(event(EventType.FIRST_AID, "P002", null));
+
+        assertEquals(Phase.QUEUED, scene.phaseOf("P002").orElseThrow());
+        assertEquals(layout.getWaitingSpots().get(1), positionOf("P002"));
+    }
+
+    @Test
+    void aCriticalPatientWhoDiesInHisFirstAidBedStaysThere() {
+        passDirectly("P001");
+        scene.apply(event(EventType.FIRST_AID, "P001", "UCI-C3"));
+
+        scene.apply(event(EventType.DEATH, "P001", "UCI-C3"));
+
+        assertEquals(Phase.DECEASED, scene.phaseOf("P001").orElseThrow());
+        assertEquals(spot("UCI-C3"), positionOf("P001"));
+    }
+
+    @Test
+    void aFirstAidBedThatIsNotOnThePlanIsRejected() {
+        passDirectly("P001");
+
+        assertThrows(IllegalStateException.class, () -> scene.apply(event(EventType.FIRST_AID, "P001", "X9")));
+    }
+
+    @Test
+    void cannotBeToldWhoPassesDirectlyWithNothing() {
+        assertThrows(IllegalArgumentException.class, () -> new SceneState(layout, null));
     }
 
     @Test
@@ -230,7 +355,7 @@ class SceneStateTest {
     @Test
     void saysWhichEventsChangeThePlaceOfAPatient() {
         Set<EventType> moving = EnumSet.of(EventType.ARRIVAL, EventType.TRIAGE_STARTED,
-                EventType.TRIAGE_ASSIGNED, EventType.TREATMENT_STARTED,
+                EventType.TRIAGE_ASSIGNED, EventType.FIRST_AID, EventType.TREATMENT_STARTED,
                 EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.DEATH, EventType.MORGUE_ADMISSION,
                 EventType.MORGUE_RELEASE, EventType.DISCHARGE, EventType.STABILIZED_WITHOUT_CURE,
                 EventType.REFERRAL, EventType.UNATTENDED);
