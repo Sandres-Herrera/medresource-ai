@@ -11,13 +11,16 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Pruebas del dibujo de los pacientes, sobre una imagen en memoria.
  *
  * <p>El paciente de prueba está en el punto (50, 50), así que su figura se centra en (68, 50) por el
- * desplazamiento a la derecha. El cuerpo ocupa de la fila 47 a la 61 y la cabeza está en la fila 41.</p>
+ * desplazamiento a la derecha. El cuerpo ocupa de la fila 47 a la 61 y la cabeza está en la fila 41. La barra
+ * de salud va de la columna 59 a la 76 en las filas 64 a 66, y la del tratamiento, de la columna 57 a la 78 en
+ * las filas 29 a 31.</p>
  */
 class PatientPainterTest {
 
@@ -143,5 +146,58 @@ class PatientPainterTest {
         painter.paintOverflow(graphics, new Point2D.Double(100, 60), -3);
 
         assertEquals(BACKGROUND, image.getRGB(116, 48));
+    }
+
+    // ---------- salud y avance del tratamiento ----------
+
+    private PatientMarker withCare(double health, double progress, boolean deceased) {
+        return new PatientMarker("P001", TriageLevel.III, Sex.MALE, false, deceased, 50, 50, health, progress);
+    }
+
+    @Test
+    void aHealthyPatientHasAFullGreenBarUnderHisFeet() {
+        paint(withCare(100, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(Palette.HEALTH_GOOD.getRGB(), image.getRGB(CX - 8, 65));
+        assertEquals(Palette.HEALTH_GOOD.getRGB(), image.getRGB(CX + 8, 65));
+    }
+
+    @Test
+    void aSickPatientHasAShortBarOfTheColorOfHisHealth() {
+        paint(withCare(30, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(Palette.HEALTH_POOR.getRGB(), image.getRGB(CX - 8, 65));
+        assertEquals(Palette.BAR_TRACK.getRGB(), image.getRGB(CX + 8, 65));
+    }
+
+    @Test
+    void aPatientInTreatmentHasABlueBarOverHisHeadThatFillsAsItGoesOn() {
+        paint(withCare(80, 0.5, false));
+
+        assertEquals(Palette.TREATMENT_PROGRESS.getRGB(), image.getRGB(CX - 10, 30));
+        assertEquals(Palette.BAR_TRACK.getRGB(), image.getRGB(CX + 10, 30));
+    }
+
+    @Test
+    void aPatientWhoIsNotInTreatmentHasNoProgressBar() {
+        paint(withCare(80, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(BACKGROUND, image.getRGB(CX - 10, 30));
+    }
+
+    @Test
+    void aDeceasedPatientHasNoBars() {
+        paint(withCare(0, 0.5, true));
+
+        assertEquals(BACKGROUND, image.getRGB(CX - 8, 65));
+        assertEquals(BACKGROUND, image.getRGB(CX - 10, 30));
+    }
+
+    @Test
+    void anEmptyHealthBarStillShowsItsTrack() {
+        paint(withCare(0, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(Palette.BAR_TRACK.getRGB(), image.getRGB(CX - 8, 65));
+        assertNotEquals(BACKGROUND, image.getRGB(CX, 65));
     }
 }
