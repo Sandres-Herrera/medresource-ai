@@ -213,6 +213,16 @@ public final class SimulationController {
         return Optional.of(new MetricsCalculator().calculate(engine.getResult()));
     }
 
+    /**
+     * Ficha de un paciente tal como se ve ahora.
+     *
+     * @param patientCode código del paciente
+     * @return su ficha, o vacío si no está en la escena (todavía no llegó o ya salió)
+     */
+    public Optional<PatientCard> patientCard(String patientCode) {
+        return player.card(patientCode);
+    }
+
     public List<PatientMarker> markers() {
         return player.markers();
     }

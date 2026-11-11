@@ -762,4 +762,55 @@ class ScenePlayerTest {
         assertTrue(patientBreathes);
         assertTrue(staffBreathes);
     }
+
+    // ---------- ficha del paciente ----------
+
+    @Test
+    void thereIsNoCardOfAPatientWhoIsNotInTheScene() {
+        ScenePlayer player = standard();
+
+        assertTrue(player.card("P001").isEmpty());
+        assertTrue(player.card("X999").isEmpty());
+        assertTrue(player.card(null).isEmpty());
+    }
+
+    @Test
+    void theCardSaysWhoThePatientIsWhereHeIsAndWhoAttendsHim() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(oneDenguePatient(),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P001").orElse(null) != Phase.TREATING) {
+            tick(player);
+        }
+        player.advanceTo(player.getTime() + LONGEST_WALK + 1);
+
+        PatientCard card = player.card("P001").orElseThrow();
+
+        assertEquals("P001", card.code());
+        assertEquals("30 años · Masculino", card.ageAndSex());
+        assertEquals(DiseaseCatalog.findById(2).orElseThrow().getName(), card.disease());
+        assertEquals(Phase.TREATING.getDisplayName(), card.activity());
+        String bed = layout.resourceAt(player.getState().positionOf("P001").orElseThrow()).orElseThrow();
+        assertEquals("Hospitalización · " + bed, card.place());
+        assertFalse(card.walking());
+        assertTrue(card.inTreatment());
+        assertEquals(2, card.caregivers().size());
+        assertTrue(card.caregivers().get(0).endsWith("· Medicina interna"), card.caregivers().get(0));
+        assertTrue(card.caregivers().get(1).endsWith("· Enfermería"), card.caregivers().get(1));
+    }
+
+    @Test
+    void whileHeWalksTheCardSaysWhereHeIsGoing() {
+        ScenePlayer player = standard();
+        untilFirstArrival(player);
+        String code = player.markers().get(0).code();
+
+        PatientCard card = player.card(code).orElseThrow();
+
+        assertTrue(card.walking());
+        assertEquals("Triage", card.place());
+        assertEquals(0, card.minutesInHospital());
+        assertTrue(card.caregivers().isEmpty());
+    }
 }
