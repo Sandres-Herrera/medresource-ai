@@ -49,8 +49,10 @@ public final class HospitalMapPanel extends JPanel {
     /** Aumento con el que la cámara sigue al paciente seleccionado. */
     public static final double FOLLOW_ZOOM = 1.6;
 
-    private static final int MAX_PREFERRED_WIDTH = 1200;
-    private static final int MAX_PREFERRED_HEIGHT = 640;
+    /** Ancho máximo que pide el panel, para que la ventana de la simulación quepa en una pantalla de 1366 × 768. */
+    public static final int MAX_PREFERRED_WIDTH = 1060;
+    /** Alto máximo que pide el panel, por la misma razón. */
+    public static final int MAX_PREFERRED_HEIGHT = 450;
 
     private transient HospitalLayout layout;
     private final transient SceneRenderer renderer;

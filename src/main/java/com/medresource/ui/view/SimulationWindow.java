@@ -39,7 +39,9 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -60,6 +62,9 @@ import java.util.Optional;
  * eventos y dejar solo los del paciente seleccionado: al cambiar el filtro se vuelven a mostrar los eventos
  * anteriores que lo cumplen.</p>
  *
+ * <p>Cabe completa en una pantalla de 1366 × 768 ({@link ScreenFit}): la columna derecha tiene su propia barra
+ * de desplazamiento y la ventana nunca abre más grande que el espacio libre de la pantalla.</p>
+ *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
  */
@@ -69,6 +74,10 @@ public final class SimulationWindow extends JFrame {
 
     private static final int FRAME_MILLIS = 33;
     private static final int MAX_LOG_LINES = 400;
+    /** Tamaño mínimo de la ventana, si la pantalla lo permite. */
+    private static final Dimension MIN_SIZE = new Dimension(900, 600);
+    /** Alto que pide la columna derecha; el resto lo recorre su barra de desplazamiento. */
+    private static final int SIDE_PREFERRED_HEIGHT = 300;
 
     private final transient SimulationController controller;
     private final HospitalMapPanel mapPanel;
@@ -118,7 +127,7 @@ public final class SimulationWindow extends JFrame {
         JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, mapPanel, buildLogPanel());
         center.setResizeWeight(0.8);
         add(center, BorderLayout.CENTER);
-        add(buildSidePanel(), BorderLayout.EAST);
+        add(buildSideScroll(), BorderLayout.EAST);
         add(progressBar, BorderLayout.SOUTH);
         progressBar.setStringPainted(true);
         addWindowListener(new WindowAdapter() {
@@ -129,8 +138,9 @@ public final class SimulationWindow extends JFrame {
         });
         refresh();
         pack();
-        setMinimumSize(new Dimension(900, 600));
-        setLocationRelativeTo(null);
+        Rectangle usable = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setMinimumSize(ScreenFit.fit(MIN_SIZE, usable));
+        setBounds(ScreenFit.centered(getSize(), usable));
         timer.start();
     }
 
@@ -171,6 +181,18 @@ public final class SimulationWindow extends JFrame {
         bar.add(clockLabel);
         bar.add(Box.createHorizontalStrut(8));
         return bar;
+    }
+
+    /** Columna derecha con su propia barra de desplazamiento, para que no estire la ventana hacia abajo. */
+    private JScrollPane buildSideScroll() {
+        JPanel side = buildSidePanel();
+        JScrollPane scroll = new JScrollPane(side, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.setPreferredSize(new Dimension(side.getPreferredSize().width
+                + scroll.getVerticalScrollBar().getPreferredSize().width, SIDE_PREFERRED_HEIGHT));
+        return scroll;
     }
 
     private JPanel buildSidePanel() {

@@ -40,7 +40,7 @@ public final class PatientCardPanel extends JPanel {
     /** Texto que se ve cuando no hay paciente seleccionado. */
     public static final String HINT = "Haz clic en un paciente del plano para ver su ficha.";
 
-    private static final int VALUE_WIDTH = 150;
+    private static final int VALUE_WIDTH = 130;
     private static final String[] FIELDS = {"Paciente", "Edad y sexo", "Sangre", "Enfermedad", "Síntomas",
             "Triage", "Ahora", "Lugar", "Llegó", "Lo atienden"};
 

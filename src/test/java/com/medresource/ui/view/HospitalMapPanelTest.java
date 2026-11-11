@@ -124,11 +124,11 @@ class HospitalMapPanelTest {
 
     @Test
     void showsTheNewPlanWhenItIsChanged() {
-        Dimension before = panel.getPreferredSize();
+        double before = panel.cameraFor(3000, 3000).orElseThrow().zoom();
 
         panel.showLayout(layoutOf(new HospitalConfig(1, 1, 1, 1, 1, 0, 1)));
 
-        assertNotEquals(before, panel.getPreferredSize());
+        assertNotEquals(before, panel.cameraFor(3000, 3000).orElseThrow().zoom());
     }
 
     @Test
@@ -138,12 +138,14 @@ class HospitalMapPanelTest {
 
         panel.showLayout(small);
 
-        assertEquals(new Dimension(Math.min(smallWorld.width, 1200) + 2 * MARGIN,
-                Math.min(smallWorld.height, 640) + 2 * MARGIN), panel.getPreferredSize());
+        assertEquals(new Dimension(Math.min(smallWorld.width, HospitalMapPanel.MAX_PREFERRED_WIDTH) + 2 * MARGIN,
+                Math.min(smallWorld.height, HospitalMapPanel.MAX_PREFERRED_HEIGHT) + 2 * MARGIN),
+                panel.getPreferredSize());
 
         panel.showLayout(layoutOf(new HospitalConfig(200, 50, 20, 50, 100, 100, 50)));
 
-        assertEquals(new Dimension(1200 + 2 * MARGIN, 640 + 2 * MARGIN), panel.getPreferredSize());
+        assertEquals(new Dimension(HospitalMapPanel.MAX_PREFERRED_WIDTH + 2 * MARGIN,
+                HospitalMapPanel.MAX_PREFERRED_HEIGHT + 2 * MARGIN), panel.getPreferredSize());
     }
 
     // ---------- pacientes ----------
