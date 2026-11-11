@@ -13,18 +13,25 @@ import com.medresource.services.strategy.RandomStrategy;
  */
 public enum StrategyOption {
 
-    CLINICAL_PRIORITY("Prioridad clínica (triage)"),
-    FIFO("FIFO (orden de llegada)"),
-    RANDOM("Aleatoria");
+    CLINICAL_PRIORITY("Prioridad clínica (triage)", "El más grave primero"),
+    FIFO("FIFO (orden de llegada)", "Línea base: el que llegó primero"),
+    RANDOM("Aleatoria", "Al azar, para comparar");
 
     private final String displayName;
+    private final String description;
 
-    StrategyOption(String displayName) {
+    StrategyOption(String displayName, String description) {
         this.displayName = displayName;
+        this.description = description;
     }
 
     public String getDisplayName() {
         return displayName;
+    }
+
+    /** Cómo decide la estrategia, en una línea corta para su tarjeta. */
+    public String getDescription() {
+        return description;
     }
 
     /**
