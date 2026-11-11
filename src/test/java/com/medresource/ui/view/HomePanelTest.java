@@ -112,4 +112,22 @@ class HomePanelTest {
                 () -> { }));
         assertThrows(IllegalArgumentException.class, () -> HomePanel.describe(null, 1));
     }
+
+    @Test
+    void inABiggerWindowTheContentStaysCentered() {
+        Dimension size = panel.getPreferredSize();
+        panel.setSize(size.width + 400, size.height + 300);
+        layOut(panel);
+
+        int left = panel.quickCard().getX();
+        int right = panel.getWidth() - left - panel.quickCard().getWidth();
+        assertTrue(Math.abs(left - right) <= 3, "centrada a lo ancho: " + left + " y " + right);
+        int top = panel.newSimulationButton().getY();
+        assertTrue(top > 150 + 150, "bajó con el espacio de arriba: " + top);
+        Component first = panel.getComponent(1);
+        Component last = panel.getComponent(panel.getComponentCount() - 2);
+        int above = first.getY() - panel.getInsets().top;
+        int below = panel.getHeight() - panel.getInsets().bottom - last.getY() - last.getHeight();
+        assertTrue(Math.abs(above - below) <= 2, "centrada a lo alto: " + above + " y " + below);
+    }
 }

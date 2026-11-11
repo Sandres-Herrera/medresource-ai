@@ -25,7 +25,8 @@ import java.util.List;
  * simulación nueva o se lanza una rápida con el hospital estándar.
  *
  * <p>Lleva el logo de la aplicación como icono, empieza con el foco en «Nueva simulación» (Enter la abre) y se
- * cierra también con la tecla Escape.</p>
+ * cierra también con la tecla Escape. Se puede agrandar o maximizar: el contenido queda centrado. No se puede
+ * achicar por debajo del tamaño en que todo se ve completo.</p>
  */
 public final class MainWindow extends JFrame {
 
@@ -66,7 +67,7 @@ public final class MainWindow extends JFrame {
         });
         setContentPane(home);
         pack();
-        setResizable(false);
+        setMinimumSize(getSize());
         setLocationRelativeTo(null);
         addWindowListener(new WindowAdapter() {
             @Override
