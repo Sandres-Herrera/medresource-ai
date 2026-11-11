@@ -15,6 +15,8 @@ import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.TreatmentType;
+import com.medresource.model.TriageLevel;
+import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
@@ -463,5 +465,56 @@ class ScenePlayerTest {
         Point2D desk = renderer.centerOf(layout.consultDeskOf(doctor).orElseThrow());
         assertEquals(layout.consultDeskOf(doctor).orElseThrow(), player.getState().positionOf("P001").orElseThrow());
         assertEquals(new Point2D.Double(desk.getX() - 32, desk.getY()), staffAt(player, doctor));
+    }
+
+    // ---------- pacientes críticos y primeros auxilios ----------
+
+    @Test
+    void aCriticalPatientNeverQueuesInTheTriageNorSitsInTheWaitingRoom() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.CATASTROPHE, 120);
+        Set<Phase> notForCritical = EnumSet.of(Phase.TRIAGE_QUEUE, Phase.IN_TRIAGE, Phase.QUEUED);
+        int critical = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.triage() == TriageLevel.I) {
+                    critical++;
+                    Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                    assertFalse(notForCritical.contains(phase), marker.code() + " " + phase);
+                }
+            }
+        }
+        assertTrue(critical > 0);
+    }
+
+    /** Dos infartos, el segundo cinco minutos después, cuando el único médico ya atiende al primero. */
+    private static SimulationCase twoHeartAttacks() {
+        Disease heartAttack = DiseaseCatalog.findById(9).orElseThrow();
+        return new SimulationCase(new CaseConfig(1L, Scenario.NORMAL, 2, 60), List.of(
+                new PatientProfile(1, 70, Sex.MALE, BloodType.O_POSITIVE, heartAttack, heartAttack.getSymptoms(), 0,
+                        60.0, false),
+                new PatientProfile(2, 70, Sex.FEMALE, BloodType.O_POSITIVE, heartAttack, heartAttack.getSymptoms(), 5,
+                        60.0, false)));
+    }
+
+    @Test
+    void aFreeNurseGoesToTheBedWhereTheCriticalPatientWaitsForHisDoctor() {
+        HospitalConfig config = new HospitalConfig(2, 2, 1, 1, 3, 1, 2);
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(config));
+        SimulationEngine engine = new SimulationEngine(twoHeartAttacks(),
+                new HospitalFactory().create(config), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        while (player.getState().phaseOf("P002").orElse(null) != Phase.FIRST_AID) {
+            assertTrue(tick(player), "P002 nunca recibió primeros auxilios en una cama");
+        }
+        Patient critical = engine.getPatients().get(1);
+        String nurse = engine.getHospital().getNurses().stream()
+                .filter(member -> member.getAssignedPatient() == critical).findFirst().orElseThrow().getCode();
+
+        player.advanceTo(player.getTime() + LONGEST_WALK);
+
+        Position bed = player.getState().positionOf("P002").orElseThrow();
+        assertEquals(ZoneType.ICU, layout.areaAt(bed).orElseThrow().zone());
+        Point2D center = renderer.centerOf(bed);
+        assertEquals(new Point2D.Double(center.getX() - 32, center.getY()), staffAt(player, nurse));
     }
 }

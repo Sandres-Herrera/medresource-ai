@@ -42,7 +42,8 @@ import java.util.Set;
  * un recorrido largo tarda más que uno corto.</p>
  *
  * <p>Los médicos y enfermeros también se mueven: libres, están sentados en su puesto de la sala del personal;
- * ocupados, se paran junto al paciente que atienden desde que se ve que su tratamiento empezó, y vuelven a su
+ * ocupados, se paran junto al paciente que atienden desde que se ve que su tratamiento empezó (o, si le dan
+ * primeros auxilios mientras espera, junto a su silla, su cama o la entrada), y vuelven a su
  * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
  * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
  *
@@ -90,7 +91,7 @@ public final class ScenePlayer {
         this.engine = engine;
         this.layout = layout;
         this.renderer = renderer;
-        this.state = new SceneState(layout);
+        this.state = new SceneState(layout, this::passesDirectly);
         this.planner = new WalkPlanner(layout, renderer);
         engine.getPatients().forEach(patient -> patients.put(patient.getCode(), patient));
         List<StaffMember> members = new ArrayList<>(engine.getHospital().getDoctors());
@@ -218,6 +219,21 @@ public final class ScenePlayer {
         return state;
     }
 
+    /** Indica si un paciente es crítico y pasa directo, sin hacer fila en el triage: el motor ya lo clasificó. */
+    private boolean passesDirectly(String patientCode) {
+        Patient patient = patients.get(patientCode);
+        return patient != null && patient.getTriageLevel() != null && patient.getTriageLevel().skipsTriageStation();
+    }
+
+    /**
+     * Indica si el personal que atiende a un paciente debe pararse a su lado: mientras recibe su tratamiento o
+     * primeros auxilios, no mientras hace fila en el triage, ya murió o va de salida.
+     */
+    private static boolean isAttendedWhereHeIs(SceneState.Phase phase) {
+        return phase == SceneState.Phase.TREATING || phase == SceneState.Phase.FIRST_AID
+                || phase == SceneState.Phase.QUEUED || phase == SceneState.Phase.DIRECT_PASS;
+    }
+
     private static boolean isDead(SceneState.Phase phase) {
         return phase == SceneState.Phase.DECEASED || phase == SceneState.Phase.IN_MORGUE;
     }
@@ -262,8 +278,8 @@ public final class ScenePlayer {
     }
 
     /**
-     * Da a cada miembro del personal su destino: junto a su paciente si se ve que el tratamiento ya empezó, o
-     * su puesto en la sala del personal si está libre.
+     * Da a cada miembro del personal su destino: junto a su paciente si se ve que el tratamiento o los primeros
+     * auxilios ya empezaron, o su puesto en la sala del personal si está libre.
      */
     private void retargetStaff(double at) {
         Map<String, String> attended = attendedByMinute.getOrDefault(staffMinute, Map.of());
@@ -273,7 +289,7 @@ public final class ScenePlayer {
             Position cell = seat.table();
             Point2D target = renderer.seatOf(seat);
             String patient = attended.get(member.getCode());
-            if (patient != null && state.phaseOf(patient).orElse(null) == SceneState.Phase.TREATING) {
+            if (patient != null && state.phaseOf(patient).map(ScenePlayer::isAttendedWhereHeIs).orElse(false)) {
                 int index = companions.merge(patient, 1, Integer::sum) - 1;
                 cell = state.positionOf(patient).orElseThrow();
                 Point2D place = renderer.centerOf(cell);
