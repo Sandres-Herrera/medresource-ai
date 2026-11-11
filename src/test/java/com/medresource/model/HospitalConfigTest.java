@@ -57,4 +57,14 @@ class HospitalConfigTest {
         assertThrows(IllegalArgumentException.class, () -> new HospitalConfig(20, 4, 3, 8, 12, 101, 3));
         assertThrows(IllegalArgumentException.class, () -> new HospitalConfig(20, 4, 3, 8, 12, 5, 51));
     }
+
+    @Test
+    void theSmallHospitalIsHalfTheStandardOne() {
+        assertEquals(new HospitalConfig(15, 3, 2, 8, 12, 5, 3), HospitalConfig.small());
+    }
+
+    @Test
+    void theLargeHospitalIsTwiceTheStandardOne() {
+        assertEquals(new HospitalConfig(60, 12, 8, 32, 48, 20, 10), HospitalConfig.large());
+    }
 }

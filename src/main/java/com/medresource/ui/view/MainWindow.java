@@ -3,7 +3,6 @@ package com.medresource.ui.view;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
-import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.controller.SimulationSetup;
 import com.medresource.ui.render.Renderer2D;
@@ -55,7 +54,7 @@ public final class MainWindow extends JFrame {
         setIconImages(List.of(LogoBadge.image(16), LogoBadge.image(32), LogoBadge.image(64)));
         HomePanel home = new HomePanel(HospitalConfig.standard(), QUICK_CASE, DEMO_CASE, DEMO_SPEED,
                 new HomePanel.Actions(
-                        () -> CaseConfigDialog.ask(this).ifPresent(setup -> open(setup, SimulationClock.DEFAULT_SPEED)),
+                        () -> CaseConfigDialog.ask(this).ifPresent(request -> open(request.setup(), request.speed())),
                         () -> open(SimulationSetup.standard(QUICK_CASE), DEMO_SPEED),
                         () -> open(SimulationSetup.standard(DEMO_CASE), DEMO_SPEED),
                         this::dispose));

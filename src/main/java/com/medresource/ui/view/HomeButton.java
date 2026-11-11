@@ -11,11 +11,13 @@ import java.awt.geom.Line2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Botón de la pantalla de inicio, en uno de dos estilos.
+ * Botón de la pantalla de inicio y del formulario de una simulación nueva, en uno de tres estilos.
  *
  * <ul>
  *     <li>{@linkplain Style#PRIMARY Principal}: ancho, relleno con el color de acento, con un icono opcional a la
  *     izquierda del texto. Con el ratón encima se aclara y al presionarlo se oscurece un poco.</li>
+ *     <li>{@linkplain Style#COMPACT Compacto}: igual que el principal pero del ancho de su texto y más bajo, para
+ *     el pie de un formulario.</li>
  *     <li>{@linkplain Style#LINK Enlace}: solo el texto, en gris; con el ratón encima se pone blanco y se
  *     subraya.</li>
  * </ul>
@@ -31,6 +33,8 @@ public final class HomeButton extends Clickable {
     public enum Style {
         /** Botón ancho relleno con el color de acento: la acción principal. */
         PRIMARY,
+        /** Relleno con el color de acento, del ancho de su texto: la acción principal de un formulario. */
+        COMPACT,
         /** Solo texto, como un enlace: una acción secundaria. */
         LINK
     }
@@ -39,6 +43,8 @@ public final class HomeButton extends Clickable {
     public static final int PRIMARY_HEIGHT = 52;
     /** Ancho del botón principal: el de las tarjetas más el espacio del anillo de foco a cada lado. */
     public static final int PRIMARY_WIDTH = ActionCard.WIDTH + 6;
+    /** Alto del botón compacto. */
+    public static final int COMPACT_HEIGHT = 40;
 
     private static final int ICON_SIZE = 18;
     private static final int ARC = 14;
@@ -52,7 +58,7 @@ public final class HomeButton extends Clickable {
      *
      * @param style estilo del botón
      * @param text  texto del botón
-     * @param icon  icono a la izquierda del texto (solo en el estilo principal); nulo si no lleva
+     * @param icon  icono a la izquierda del texto (solo en los estilos con relleno); nulo si no lleva
      * @throws IllegalArgumentException si falta el estilo o el texto
      */
     public HomeButton(Style style, String text, HomeIcon icon) {
@@ -62,7 +68,7 @@ public final class HomeButton extends Clickable {
         }
         this.style = style;
         this.text = text;
-        this.icon = style == Style.PRIMARY ? icon : null;
+        this.icon = style == Style.LINK ? null : icon;
     }
 
     /** Estilo del botón. */
@@ -81,6 +87,10 @@ public final class HomeButton extends Clickable {
             return new Dimension(PRIMARY_WIDTH, PRIMARY_HEIGHT);
         }
         FontMetrics metrics = getFontMetrics(font());
+        if (style == Style.COMPACT) {
+            int gap = icon == null ? 0 : ICON_SIZE + 8;
+            return new Dimension(metrics.stringWidth(text) + gap + 40, COMPACT_HEIGHT);
+        }
         return new Dimension(metrics.stringWidth(text) + 16, metrics.getHeight() + 10);
     }
 
@@ -95,7 +105,7 @@ public final class HomeButton extends Clickable {
         surface.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         surface.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         surface.setFont(font());
-        if (style == Style.PRIMARY) {
+        if (style != Style.LINK) {
             paintPrimary(surface);
         } else {
             paintLink(surface);
@@ -104,7 +114,11 @@ public final class HomeButton extends Clickable {
     }
 
     private Font font() {
-        return style == Style.PRIMARY ? HomeTheme.font(Font.BOLD, 15f) : HomeTheme.font(Font.PLAIN, 13f);
+        return switch (style) {
+            case PRIMARY -> HomeTheme.font(Font.BOLD, 15f);
+            case COMPACT -> HomeTheme.font(Font.BOLD, 13.5f);
+            case LINK -> HomeTheme.font(Font.PLAIN, 13f);
+        };
     }
 
     private void paintPrimary(Graphics2D surface) {

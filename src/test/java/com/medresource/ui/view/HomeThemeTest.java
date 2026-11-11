@@ -1,9 +1,12 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.Scenario;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;
 import java.awt.Font;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -72,5 +75,26 @@ class HomeThemeTest {
     void rejectsAFontWithoutSize() {
         assertThrows(IllegalArgumentException.class, () -> HomeTheme.font(Font.PLAIN, 0f));
         assertThrows(IllegalArgumentException.class, () -> HomeTheme.font(Font.PLAIN, -3f));
+    }
+
+    @Test
+    void eachScenarioHasItsOwnColorThatCanBeReadOnACard() {
+        List<Color> colors = new ArrayList<>();
+        for (Scenario scenario : Scenario.values()) {
+            Color color = HomeTheme.scenarioColor(scenario);
+            colors.add(color);
+            assertTrue(contrast(color, HomeTheme.CARD) >= 4.5, scenario.name());
+        }
+
+        assertEquals(Scenario.values().length, new HashSet<>(colors).size());
+        assertEquals(HomeTheme.ACCENT, HomeTheme.scenarioColor(Scenario.NORMAL));
+        assertThrows(IllegalArgumentException.class, () -> HomeTheme.scenarioColor(null));
+    }
+
+    @Test
+    void theFieldsAndTheChosenOptionsStandOutFromTheCards() {
+        assertTrue(luminance(HomeTheme.FIELD) < luminance(HomeTheme.CARD));
+        assertTrue(contrast(HomeTheme.TEXT, HomeTheme.FIELD) >= 7);
+        assertTrue(contrast(HomeTheme.TEXT, HomeTheme.SELECTED) >= 7);
     }
 }
