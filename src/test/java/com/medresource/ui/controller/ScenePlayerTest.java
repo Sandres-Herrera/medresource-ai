@@ -622,4 +622,65 @@ class ScenePlayerTest {
 
         assertTrue(deceased > 0);
     }
+
+    // ---------- camilla ----------
+
+    @Test
+    void theDeceasedLieOnAStretcherThatCarriesThemToTheMorgue() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        boolean carried = false;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased()) {
+                    assertTrue(marker.onStretcher(), marker.code());
+                    carried |= marker.isCarried()
+                            && player.getState().phaseOf(marker.code()).orElseThrow() == Phase.IN_MORGUE;
+                }
+            }
+        }
+
+        assertTrue(carried, "ningún fallecido se vio camino a la morgue");
+    }
+
+    @Test
+    void aPatientWithAFractureGoesOnAStretcherUntilHeLeaves() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(5),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        boolean carried = false;
+        boolean leftOnFoot = false;
+        for (double at = 0; !player.isFinished(); at += 2) {
+            player.advanceTo(at);
+            for (PatientMarker marker : player.markers()) {
+                Phase phase = player.getState().phaseOf(marker.code()).orElseThrow();
+                if (phase == Phase.LEAVING) {
+                    leftOnFoot |= !marker.onStretcher();
+                } else {
+                    assertTrue(marker.onStretcher(), phase.name());
+                    carried |= marker.isCarried();
+                }
+            }
+        }
+
+        assertTrue(carried);
+        assertTrue(leftOnFoot);
+    }
+
+    @Test
+    void aPatientWhoCanWalkNeverUsesAStretcher() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = new SimulationEngine(onePatientWith(1),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        int seen = 0;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                seen++;
+                assertFalse(marker.onStretcher());
+            }
+        }
+
+        assertTrue(seen > 0);
+    }
 }

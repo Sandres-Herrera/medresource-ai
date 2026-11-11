@@ -54,6 +54,12 @@ import java.util.Set;
  * cambia sin saltos aunque el motor vaya un minuto adelante. El avance del tratamiento sale del minuto en que
  * empezó y del minuto en que termina, que el reproductor anota en cuanto el motor lo empieza.</p>
  *
+ * <p>Quien no puede caminar va en camilla ({@link Patient#canWalk()}): con una fractura, inconsciente o sin poder
+ * caminar, va acostado en ella desde la entrada hasta que sale de alta, y espera en ella en vez de sentarse.
+ * Los fallecidos también: quedan acostados donde murieron y la camilla los lleva a la morgue. Mientras la camilla
+ * se mueve, un camillero la empuja; los camilleros no son personal del motor, así que no le quitan a nadie
+ * enfermeros ni médicos.</p>
+ *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
 public final class ScenePlayer {
@@ -170,12 +176,14 @@ public final class ScenePlayer {
         List<PatientMarker> markers = new ArrayList<>();
         for (SceneState.Placement placement : state.placements()) {
             Patient patient = patients.get(placement.patientCode());
-            Point2D at = itineraries.get(placement.patientCode()).getCurrent();
+            Itinerary itinerary = itineraries.get(placement.patientCode());
+            Point2D at = itinerary.getCurrent();
             boolean dead = isDead(placement.phase());
+            boolean onStretcher = dead || !patient.canWalk() && placement.phase() != SceneState.Phase.LEAVING;
             markers.add(new PatientMarker(patient.getCode(), patient.getTriageLevel(), patient.getSex(),
                     patient.isMinor(), dead, at.getX(), at.getY(), dead ? 0.0 : healthOf(patient),
                     placement.phase() == SceneState.Phase.TREATING ? progressOf(patient.getCode())
-                            : PatientMarker.NO_PROGRESS));
+                            : PatientMarker.NO_PROGRESS, onStretcher, !itinerary.hasArrived()));
         }
         return markers;
     }
