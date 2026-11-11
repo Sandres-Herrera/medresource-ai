@@ -3,7 +3,11 @@ package com.medresource.ui.view;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.TriageLevel;
+import com.medresource.ui.controller.EventCategory;
+import com.medresource.ui.controller.EventFilter;
+import com.medresource.ui.controller.EventLog;
 import com.medresource.ui.controller.LiveCounters;
+import com.medresource.ui.controller.PatientCard;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.render.Palette;
@@ -14,6 +18,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -32,6 +37,7 @@ import javax.swing.text.BadLocationException;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
@@ -40,6 +46,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Ventana de la simulación 2D: el plano con los pacientes moviéndose, los controles del reloj, los contadores
@@ -47,6 +54,11 @@ import java.util.Map;
  *
  * <p>El reloj corre en tiempo real (×1) o más rápido (×2, ×5, ×10) y muestra el día y la hora con segundos.
  * El botón «Saltar al siguiente evento» adelanta los ratos en que no pasa nada.</p>
+ *
+ * <p>Al hacer clic sobre un paciente del plano se ve su ficha en la columna derecha, que se actualiza en cada
+ * cuadro; desde la ficha se le puede seguir con la cámara. El registro de eventos se puede filtrar por grupo de
+ * eventos y dejar solo los del paciente seleccionado: al cambiar el filtro se vuelven a mostrar los eventos
+ * anteriores que lo cumplen.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -69,6 +81,10 @@ public final class SimulationWindow extends JFrame {
     private final JLabel clockLabel = new JLabel();
     private final JProgressBar progressBar = new JProgressBar(0, 100);
     private final JTextArea log = new JTextArea();
+    private final transient EventLog eventLog = new EventLog();
+    private final JComboBox<EventCategory> categoryBox = new JComboBox<>(EventCategory.values());
+    private final JCheckBox onlySelectedBox = new JCheckBox("Solo el paciente seleccionado");
+    private final PatientCardPanel cardPanel = new PatientCardPanel();
     private final transient Map<String, JLabel> counterLabels = new LinkedHashMap<>();
     private final Timer timer;
     private long lastFrameNanos;
@@ -89,6 +105,13 @@ public final class SimulationWindow extends JFrame {
         this.controller = controller;
         this.mapPanel = new HospitalMapPanel(controller.getLayout(), renderer);
         this.timer = new Timer(FRAME_MILLIS, event -> onFrame());
+        mapPanel.setSelectionListener(code -> onSelectionChanged());
+        cardPanel.followButton().addActionListener(event ->
+                mapPanel.setFollowing(cardPanel.followButton().isSelected()));
+        cardPanel.closeButton().addActionListener(event -> {
+            mapPanel.select(null);
+            onSelectionChanged();
+        });
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
         add(buildToolBar(), BorderLayout.NORTH);
@@ -159,6 +182,9 @@ public final class SimulationWindow extends JFrame {
                 + controller.getSetup().caseConfig().seed() + "</html>");
         side.add(info);
         side.add(Box.createVerticalStrut(8));
+        cardPanel.setAlignmentX(LEFT_ALIGNMENT);
+        side.add(cardPanel);
+        side.add(Box.createVerticalStrut(8));
         side.add(counterSection("Pacientes", "Llegados", "En espera", "En tratamiento", "En UCI",
                 "Alta", "Remitidos", "Fallecidos", "Sin atender"));
         side.add(Box.createVerticalStrut(8));
@@ -194,13 +220,25 @@ public final class SimulationWindow extends JFrame {
         return legend;
     }
 
-    private JScrollPane buildLogPanel() {
+    private JPanel buildLogPanel() {
         log.setEditable(false);
         log.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane scroll = new JScrollPane(log);
-        scroll.setBorder(BorderFactory.createTitledBorder("Registro de eventos"));
-        scroll.setPreferredSize(new Dimension(600, 150));
-        return scroll;
+        scroll.setPreferredSize(new Dimension(600, 130));
+        categoryBox.setToolTipText("Muestra solo un grupo de eventos.");
+        categoryBox.addActionListener(event -> showLog());
+        onlySelectedBox.setToolTipText("Muestra solo la historia del paciente cuya ficha se ve.");
+        onlySelectedBox.setEnabled(false);
+        onlySelectedBox.addActionListener(event -> showLog());
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        filters.add(new JLabel("Mostrar:"));
+        filters.add(categoryBox);
+        filters.add(onlySelectedBox);
+        JPanel panel = new JPanel(new BorderLayout(0, 2));
+        panel.setBorder(BorderFactory.createTitledBorder("Registro de eventos"));
+        panel.add(filters, BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
     }
 
     private void togglePlay() {
@@ -216,7 +254,10 @@ public final class SimulationWindow extends JFrame {
     private void restart() {
         controller.reset();
         mapPanel.showLayout(controller.getLayout());
+        mapPanel.select(null);
+        eventLog.clear();
         log.setText("");
+        onSelectionChanged();
         summaryShown = false;
         refresh();
     }
@@ -263,6 +304,7 @@ public final class SimulationWindow extends JFrame {
         progressBar.setString(counters.finished() + " de " + counters.totalPatients()
                 + " pacientes terminaron su caso (" + counters.progressPercent() + " %)");
         appendEvents();
+        updateCard();
         updateButtons();
     }
 
@@ -270,12 +312,16 @@ public final class SimulationWindow extends JFrame {
         counterLabels.get(name).setText(String.valueOf(value));
     }
 
+    /** Anota los eventos nuevos en el registro y escribe los que cumplen el filtro. */
     private void appendEvents() {
         StringBuilder text = new StringBuilder();
         String now = SimulationClock.formatTimeOfDay(controller.getMinute(), controller.getSecond());
+        EventFilter filter = currentFilter();
         for (SimulationEvent event : controller.drainNewEvents()) {
-            text.append(String.format("[%s] %-22s %s%n", now, event.type().getDisplayName(),
-                    event.description()));
+            EventLog.Entry entry = eventLog.add(now, event);
+            if (filter.accepts(event)) {
+                text.append(entry.line()).append(System.lineSeparator());
+            }
         }
         if (text.isEmpty()) {
             return;
@@ -290,6 +336,52 @@ public final class SimulationWindow extends JFrame {
             }
         }
         log.setCaretPosition(log.getDocument().getLength());
+    }
+
+    /** Filtro que eligió el usuario: el grupo de eventos y, si lo pidió, solo el paciente seleccionado. */
+    private EventFilter currentFilter() {
+        EventCategory category = (EventCategory) categoryBox.getSelectedItem();
+        String patient = onlySelectedBox.isSelected() ? mapPanel.getSelected().orElse(null) : null;
+        return new EventFilter(category == null ? EventCategory.ALL : category, patient);
+    }
+
+    /** Vuelve a escribir el registro con los eventos anteriores que cumplen el filtro actual. */
+    private void showLog() {
+        StringBuilder text = new StringBuilder();
+        for (EventLog.Entry entry : eventLog.entries(currentFilter(), MAX_LOG_LINES)) {
+            text.append(entry.line()).append(System.lineSeparator());
+        }
+        log.setText(text.toString());
+        log.setCaretPosition(log.getDocument().getLength());
+    }
+
+    /** Cuando cambia el paciente seleccionado: su ficha, la cámara y el registro si se filtra por paciente. */
+    private void onSelectionChanged() {
+        Optional<String> selected = mapPanel.getSelected();
+        onlySelectedBox.setEnabled(selected.isPresent());
+        if (selected.isEmpty()) {
+            onlySelectedBox.setSelected(false);
+            mapPanel.setFollowing(false);
+            cardPanel.clear();
+        }
+        updateCard();
+        showLog();
+    }
+
+    /** Pone en la ficha lo que se ve ahora del paciente seleccionado, o avisa que ya salió del hospital. */
+    private void updateCard() {
+        Optional<String> selected = mapPanel.getSelected();
+        if (selected.isEmpty()) {
+            return;
+        }
+        Optional<PatientCard> card = controller.patientCard(selected.get());
+        if (card.isPresent()) {
+            cardPanel.showCard(card.get());
+        } else if (cardPanel.isShowingCard() || mapPanel.isFollowing()) {
+            mapPanel.setFollowing(false);
+            cardPanel.followButton().setSelected(false);
+            cardPanel.showGone(selected.get());
+        }
     }
 
     private void updateButtons() {
