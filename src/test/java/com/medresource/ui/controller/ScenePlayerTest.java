@@ -23,6 +23,7 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
@@ -734,5 +735,31 @@ class ScenePlayerTest {
                 }
             }
         }
+    }
+
+    // ---------- movimiento de reposo ----------
+
+    @Test
+    void theRestingPeopleBreatheAndTheDeceasedAndTheWalkingDoNot() {
+        ScenePlayer player = playerOf(TINY, Scenario.CATASTROPHE, 120);
+        boolean patientBreathes = false;
+        boolean staffBreathes = false;
+        while (tick(player)) {
+            for (PatientMarker marker : player.markers()) {
+                if (marker.deceased() || marker.moving()) {
+                    assertEquals(0.0, marker.bob(), 0.0, marker.code());
+                } else {
+                    assertEquals(IdleMotion.bob(marker.code(), player.getTime(), false), marker.bob(), 1e-9);
+                    patientBreathes |= marker.bob() != 0.0;
+                }
+            }
+            for (StaffMarker member : player.staffMarkers()) {
+                assertTrue(Math.abs(member.bob()) <= IdleMotion.AMPLITUDE + 1e-9, member.code());
+                staffBreathes |= member.seated() && member.bob() != 0.0;
+            }
+        }
+
+        assertTrue(patientBreathes);
+        assertTrue(staffBreathes);
     }
 }

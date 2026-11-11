@@ -205,7 +205,7 @@ class PatientPainterTest {
 
     private PatientMarker onStretcher(boolean deceased, boolean moving) {
         return new PatientMarker("P001", TriageLevel.II, Sex.MALE, false, deceased, 50, 50,
-                deceased ? 0 : 60, PatientMarker.NO_PROGRESS, true, moving);
+                deceased ? 0 : 60, PatientMarker.NO_PROGRESS, true, moving, 0.0);
     }
 
     @Test
@@ -241,5 +241,23 @@ class PatientPainterTest {
 
         assertEquals(BACKGROUND, image.getRGB(CX - 13, 55));
         assertEquals(BACKGROUND, image.getRGB(CX + 21, 55));
+    }
+
+    // ---------- movimiento de reposo ----------
+
+    @Test
+    void theFigureBobsButTheHealthBarStaysInItsPlace() {
+        paint(new PatientMarker("P001", TriageLevel.III, Sex.MALE, false, false, 50, 50, 100,
+                PatientMarker.NO_PROGRESS, false, false, 3.0));
+
+        assertEquals(Palette.triage(TriageLevel.III).getRGB(), image.getRGB(CX, 62));
+        assertEquals(Palette.HEALTH_GOOD.getRGB(), image.getRGB(CX - 8, 65));
+    }
+
+    @Test
+    void withoutBobTheFigureEndsAboveItsHealthBar() {
+        paint(withCare(100, PatientMarker.NO_PROGRESS, false));
+
+        assertEquals(BACKGROUND, image.getRGB(CX, 62));
     }
 }

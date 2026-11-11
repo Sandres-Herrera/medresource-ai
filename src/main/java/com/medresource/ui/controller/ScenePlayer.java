@@ -11,6 +11,7 @@ import com.medresource.model.StaffMember;
 import com.medresource.model.StaffSeat;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
+import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.SceneState;
@@ -66,6 +67,10 @@ import java.util.Set;
  * Los fallecidos también: quedan acostados donde murieron y la camilla los lleva a la morgue. Mientras la camilla
  * se mueve, un camillero la empuja; los camilleros no son personal del motor, así que no le quitan a nadie
  * enfermeros ni médicos.</p>
+ *
+ * <p>Y quien está quieto respira: los pacientes que esperan o están en su cama y el personal en su puesto o junto a
+ * un paciente suben y bajan apenas con el {@linkplain IdleMotion movimiento de reposo}, así que el hospital nunca
+ * se ve congelado aunque nadie cambie de lugar. Los fallecidos no se mueven.</p>
  *
  * <p>Solo lee el motor: nunca cambia el resultado, y el movimiento no gasta minutos simulados.</p>
  */
@@ -187,10 +192,12 @@ public final class ScenePlayer {
             Point2D at = itinerary.getCurrent();
             boolean dead = isDead(placement.phase());
             boolean onStretcher = dead || !patient.canWalk() && placement.phase() != SceneState.Phase.LEAVING;
+            boolean moving = !itinerary.hasArrived();
             markers.add(new PatientMarker(patient.getCode(), patient.getTriageLevel(), patient.getSex(),
                     patient.isMinor(), dead, at.getX(), at.getY(), dead ? 0.0 : healthOf(patient),
                     placement.phase() == SceneState.Phase.TREATING ? progressOf(patient.getCode())
-                            : PatientMarker.NO_PROGRESS, onStretcher, !itinerary.hasArrived()));
+                            : PatientMarker.NO_PROGRESS, onStretcher, moving,
+                    IdleMotion.bob(patient.getCode(), time, moving || dead)));
         }
         return markers;
     }
@@ -203,11 +210,12 @@ public final class ScenePlayer {
     public List<StaffMarker> staffMarkers() {
         List<StaffMarker> markers = new ArrayList<>();
         for (StaffMember member : staff.values()) {
-            Point2D at = staffWalkers.get(member.getCode()).getCurrent();
+            Walker walker = staffWalkers.get(member.getCode());
+            Point2D at = walker.getCurrent();
             boolean seated = at.equals(renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow()));
             markers.add(new StaffMarker(member.getCode(),
                     member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
-                    at.getX(), at.getY()));
+                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving())));
         }
         return markers;
     }

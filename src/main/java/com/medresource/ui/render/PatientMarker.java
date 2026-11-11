@@ -19,10 +19,12 @@ import com.medresource.model.TriageLevel;
  * @param progress parte de su tratamiento que ya pasó, de 0 a 1; {@value #NO_PROGRESS} si no está en tratamiento
  * @param onStretcher {@code true} si está acostado en una camilla: falleció o no puede caminar
  * @param moving      {@code true} si va de un lugar a otro; en camilla, un camillero la empuja
+ * @param bob         cuánto sube o baja la figura por el {@linkplain IdleMotion movimiento de reposo}, en píxeles;
+ *                    no cambia el punto donde está
  */
 public record PatientMarker(String code, TriageLevel triage, Sex sex, boolean minor, boolean deceased,
                             double x, double y, double health, double progress, boolean onStretcher,
-                            boolean moving) {
+                            boolean moving, double bob) {
 
     /** Valor de {@link #progress()} para un paciente que no está en tratamiento. */
     public static final double NO_PROGRESS = -1.0;
@@ -67,7 +69,7 @@ public record PatientMarker(String code, TriageLevel triage, Sex sex, boolean mi
     }
 
     /**
-     * Crea un paciente de pie y quieto, con su salud y el avance de su tratamiento.
+     * Crea un paciente de pie y quieto, sin movimiento de reposo, con su salud y el avance de su tratamiento.
      *
      * @param code     código del paciente
      * @param triage   nivel de triage; puede ser nulo
@@ -82,7 +84,7 @@ public record PatientMarker(String code, TriageLevel triage, Sex sex, boolean mi
      */
     public PatientMarker(String code, TriageLevel triage, Sex sex, boolean minor, boolean deceased, double x,
                          double y, double health, double progress) {
-        this(code, triage, sex, minor, deceased, x, y, health, progress, false, false);
+        this(code, triage, sex, minor, deceased, x, y, health, progress, false, false, 0.0);
     }
 
     /** Indica si un camillero lo está llevando: va en camilla y se está moviendo. */

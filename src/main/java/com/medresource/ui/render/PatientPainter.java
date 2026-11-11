@@ -32,6 +32,9 @@ import java.util.List;
  * cabeza a la izquierda; mientras la camilla se mueve, un camillero de uniforme gris azulado la empuja desde la
  * derecha.</p>
  *
+ * <p>La figura (y su camilla) sube o baja lo que diga el {@linkplain IdleMotion movimiento de reposo} del
+ * marcador; las barras se quedan en su sitio para que se lean bien.</p>
+ *
  * <p>Solo usa puntos del mundo, como los que da {@link SceneRenderer#centerOf}, así sirve igual para la vista
  * 2D y para la 2.5D.</p>
  */
@@ -106,7 +109,7 @@ public final class PatientPainter {
     private void paintPatient(Graphics2D graphics, PatientMarker marker) {
         double scale = marker.minor() ? MINOR_SCALE : 1.0;
         double cx = marker.x() + OFFSET_X;
-        double cy = marker.y();
+        double cy = marker.y() + marker.bob();
         Color body = marker.deceased() ? Palette.DECEASED
                 : marker.triage() == null ? UNKNOWN_TRIAGE : Palette.triage(marker.triage());
         Color head = marker.deceased() ? Palette.DECEASED : Palette.PATIENT_HEAD;
@@ -127,10 +130,10 @@ public final class PatientPainter {
         if (marker.deceased()) {
             return;
         }
-        paintBar(graphics, cx, cy + HEALTH_BAR_TOP, HEALTH_BAR_WIDTH, marker.health() / Patient.MAX_HEALTH,
+        paintBar(graphics, cx, marker.y() + HEALTH_BAR_TOP, HEALTH_BAR_WIDTH, marker.health() / Patient.MAX_HEALTH,
                 Palette.health(marker.health()));
         if (marker.inTreatment()) {
-            paintBar(graphics, cx, cy + PROGRESS_BAR_TOP, PROGRESS_BAR_WIDTH, marker.progress(),
+            paintBar(graphics, cx, marker.y() + PROGRESS_BAR_TOP, PROGRESS_BAR_WIDTH, marker.progress(),
                     Palette.TREATMENT_PROGRESS);
         }
     }

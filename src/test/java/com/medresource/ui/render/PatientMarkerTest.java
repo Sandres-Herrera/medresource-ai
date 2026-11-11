@@ -76,7 +76,7 @@ class PatientMarkerTest {
     void aPatientIsOnFootUnlessHeIsOnAStretcher() {
         PatientMarker walking = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0, 50, 0.5);
         PatientMarker lying = new PatientMarker("P001", TriageLevel.II, Sex.FEMALE, false, false, 0, 0, 50, 0.5,
-                true, false);
+                true, false, 0.0);
 
         assertFalse(walking.onStretcher());
         assertFalse(walking.moving());
@@ -87,8 +87,18 @@ class PatientMarkerTest {
     @Test
     void aPatientIsCarriedOnlyWhileHisStretcherMoves() {
         assertTrue(new PatientMarker("P001", null, Sex.MALE, false, true, 0, 0, 0, PatientMarker.NO_PROGRESS,
-                true, true).isCarried());
+                true, true, 0.0).isCarried());
         assertFalse(new PatientMarker("P001", null, Sex.MALE, false, false, 0, 0, 80, PatientMarker.NO_PROGRESS,
-                false, true).isCarried());
+                false, true, 0.0).isCarried());
+    }
+
+    @Test
+    void keepsHowMuchTheFigureBobsWithoutMovingItsPoint() {
+        PatientMarker marker = new PatientMarker("P001", null, Sex.MALE, false, false, 10, 20, 80,
+                PatientMarker.NO_PROGRESS, false, false, 1.2);
+
+        assertEquals(1.2, marker.bob(), 0.0);
+        assertEquals(20.0, marker.y(), 0.0);
+        assertEquals(0.0, new PatientMarker("P001", null, Sex.MALE, false, false, 10, 20).bob(), 0.0);
     }
 }
