@@ -115,9 +115,8 @@ public final class SimulationWindow extends JFrame {
         this.mapPanel = new HospitalMapPanel(controller.getLayout(), renderer);
         this.timer = new Timer(FRAME_MILLIS, event -> onFrame());
         mapPanel.setSelectionListener(code -> onSelectionChanged());
-        cardPanel.followButton().addActionListener(event ->
-                mapPanel.setFollowing(cardPanel.followButton().isSelected()));
-        cardPanel.closeButton().addActionListener(event -> {
+        cardPanel.onFollow(mapPanel::setFollowing);
+        cardPanel.onClose(() -> {
             mapPanel.select(null);
             onSelectionChanged();
         });
@@ -398,10 +397,10 @@ public final class SimulationWindow extends JFrame {
         }
         Optional<PatientCard> card = controller.patientCard(selected.get());
         if (card.isPresent()) {
-            cardPanel.showCard(card.get());
+            cardPanel.showCard(card.get(), eventLog.entries(new EventFilter(EventCategory.ALL, selected.get()),
+                    PatientCardPanel.TRAIL_SIZE));
         } else if (cardPanel.isShowingCard() || mapPanel.isFollowing()) {
             mapPanel.setFollowing(false);
-            cardPanel.followButton().setSelected(false);
             cardPanel.showGone(selected.get());
         }
     }
