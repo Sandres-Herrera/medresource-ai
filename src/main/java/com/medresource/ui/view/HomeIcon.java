@@ -17,7 +17,7 @@ import java.awt.geom.RoundRectangle2D;
  * <p>Cada icono ocupa un cuadro de {@code size} × {@code size} píxeles y se traza con un grosor proporcional a
  * su tamaño, con puntas y uniones redondeadas, en el estilo de los iconos de línea modernos.</p>
  *
- * <p>Los usan la pantalla de inicio y el formulario de una simulación nueva.</p>
+ * <p>Los usan la pantalla de inicio, el formulario de una simulación nueva y la ventana de la simulación.</p>
  */
 public enum HomeIcon {
 
@@ -54,7 +54,21 @@ public enum HomeIcon {
     /** Signo menos: bajar una cantidad. */
     MINUS,
     /** Reloj: la velocidad de la simulación. */
-    CLOCK;
+    CLOCK,
+    /** Dos barras: pausar. */
+    PAUSE,
+    /** Triángulo con una barra: saltar al siguiente evento. */
+    SKIP,
+    /** Flecha en círculo: volver a empezar. */
+    RESTART,
+    /** Cámara de fotos: guardar una captura. */
+    CAMERA,
+    /** Plano con salas: el plano del hospital. */
+    MAP,
+    /** Esquinas de un visor con un punto: seguir con la cámara. */
+    TARGET,
+    /** Puntero del ratón: hacer clic en algo. */
+    CURSOR;
 
     /**
      * Dibuja el icono.
@@ -118,6 +132,18 @@ public enum HomeIcon {
             case PLAY -> new Shape[]{polyline(7, 4, 19, 12, 7, 20, 7, 4)};
             case MINUS -> new Shape[]{new Line2D.Double(6, 12, 18, 12)};
             case CLOCK -> new Shape[]{new Ellipse2D.Double(3, 3, 18, 18), polyline(12, 7, 12, 12, 15.5, 14)};
+            case PAUSE -> new Shape[]{new RoundRectangle2D.Double(6, 5, 4, 14, 1.5, 1.5),
+                new RoundRectangle2D.Double(14, 5, 4, 14, 1.5, 1.5)};
+            case SKIP -> new Shape[]{polyline(5, 5, 15, 12, 5, 19, 5, 5), new Line2D.Double(19, 5, 19, 19)};
+            case RESTART -> new Shape[]{new Arc2D.Double(4, 4, 16, 16, 100, 290, Arc2D.OPEN),
+                polyline(4, 4, 4, 9, 9, 9)};
+            case CAMERA -> new Shape[]{polyline(3, 8, 3, 19, 21, 19, 21, 8, 16.5, 8, 15, 5, 9, 5, 7.5, 8, 3, 8),
+                new Ellipse2D.Double(8.5, 9.5, 7, 7)};
+            case MAP -> new Shape[]{new RoundRectangle2D.Double(3, 4, 18, 16, 3, 3), new Line2D.Double(3, 11, 21, 11),
+                new Line2D.Double(11, 4, 11, 11), new Line2D.Double(14, 11, 14, 20)};
+            case TARGET -> new Shape[]{polyline(4, 8, 4, 4, 8, 4), polyline(16, 4, 20, 4, 20, 8),
+                polyline(20, 16, 20, 20, 16, 20), polyline(8, 20, 4, 20, 4, 16), new Ellipse2D.Double(9, 9, 6, 6)};
+            case CURSOR -> new Shape[]{polyline(7, 4, 17, 11, 12, 12, 15, 18, 13, 19, 10, 13, 7, 17, 7, 4)};
         };
     }
 
