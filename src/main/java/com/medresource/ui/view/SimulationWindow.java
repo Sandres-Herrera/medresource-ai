@@ -56,7 +56,9 @@ import java.util.Optional;
  * <p>Al hacer clic en un paciente del plano, o en una fila del registro, se selecciona: su ficha se actualiza en
  * cada cuadro, sus filas del registro se resaltan y la cámara lo puede seguir. Cabe en una pantalla de
  * 1366 × 768 ({@link ScreenFit}): el plano llena todo su recuadro, lo que no cabe se ve arrastrándolo, y la
- * columna derecha tiene su propia barra.</p>
+ * columna derecha tiene su propia barra. La rueda del ratón acerca el plano, y el botón de arriba a la derecha de su
+ * marco lo abre a pantalla completa ({@link MapFullscreen}) con los controles de la simulación; al salir, el plano
+ * vuelve a su marco con la misma selección y el mismo zoom.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -91,6 +93,8 @@ public final class SimulationWindow extends JFrame {
     private final Timer timer;
     private long lastFrameNanos;
     private boolean summaryShown;
+    private transient MapFullscreen fullscreen;
+    private transient FullscreenBar fullscreenBar;
 
     /**
      * Crea la ventana con una simulación lista para empezar.
@@ -118,6 +122,7 @@ public final class SimulationWindow extends JFrame {
             @Override
             public void windowClosed(WindowEvent event) {
                 timer.stop();
+                closeFullscreen();
             }
         });
         topBar.setSpeed(controller.getSpeed());
@@ -131,7 +136,7 @@ public final class SimulationWindow extends JFrame {
 
     /**
      * Texto del tamaño del plano para su marco, por ejemplo «estándar · 20 × 16 m · clic en un paciente ·
-     * arrastra para moverlo».
+     * arrastra para moverlo · rueda para acercar».
      *
      * @param controller controlador de la simulación
      * @return el texto
@@ -140,7 +145,8 @@ public final class SimulationWindow extends JFrame {
         HospitalLayout layout = controller.getLayout();
         String size = HospitalPreset.matching(controller.getSetup().hospital())
                 .map(preset -> preset.getDisplayName().toLowerCase(Locale.ROOT)).orElse("personalizado");
-        return size + " · " + layout.getCols() + " × " + layout.getRows() + " m · clic en un paciente · arrastra para moverlo";
+        return size + " · " + layout.getCols() + " × " + layout.getRows()
+                + " m · clic en un paciente · arrastra para moverlo · rueda para acercar";
     }
 
     // ---------- armado ----------
@@ -215,14 +221,11 @@ public final class SimulationWindow extends JFrame {
 
     private void wireActions() {
         topBar.playButton().addActionListener(event -> togglePlay());
-        topBar.skipButton().addActionListener(event -> {
-            controller.skipToNextEvent();
-            lastFrameNanos = System.nanoTime();
-            refresh();
-        });
+        topBar.skipButton().addActionListener(event -> skipToNextEvent());
         topBar.restartButton().addActionListener(event -> restart());
         topBar.captureButton().addActionListener(event -> saveCapture());
-        topBar.onSpeed(controller::setSpeed);
+        topBar.onSpeed(this::changeSpeed);
+        mapFrame.onFullscreen(this::openFullscreen);
         mapPanel.setSelectionListener(code -> onSelectionChanged());
         logPanel.onPatientClicked(code -> {
             mapPanel.select(code);
@@ -231,7 +234,7 @@ public final class SimulationWindow extends JFrame {
         logPanel.onFilterChanged(this::showLog);
         cardPanel.onFollow(following -> {
             mapPanel.setFollowing(following);
-            mapFrame.showFollowing(following ? mapPanel.getSelected().orElse(null) : null);
+            showFollowing(following ? mapPanel.getSelected().orElse(null) : null);
         });
         cardPanel.onClose(() -> {
             mapPanel.select(null);
@@ -240,6 +243,58 @@ public final class SimulationWindow extends JFrame {
     }
 
     // ---------- acciones ----------
+
+    private void skipToNextEvent() {
+        controller.skipToNextEvent();
+        lastFrameNanos = System.nanoTime();
+        refresh();
+    }
+
+    private void changeSpeed(int speed) {
+        controller.setSpeed(speed);
+        topBar.setSpeed(speed);
+        if (fullscreenBar != null) {
+            fullscreenBar.setSpeed(speed);
+        }
+    }
+
+    /** Muestra a quién sigue la cámara en el marco del plano y, si está abierta, en la pantalla completa. */
+    private void showFollowing(String patientCode) {
+        mapFrame.showFollowing(patientCode);
+        if (fullscreenBar != null) {
+            fullscreenBar.showFollowing(patientCode);
+        }
+    }
+
+    /** Abre el plano a pantalla completa, con los controles de la simulación arriba. */
+    private void openFullscreen() {
+        if (fullscreen != null) {
+            return;
+        }
+        FullscreenBar bar = new FullscreenBar();
+        bar.playButton().addActionListener(event -> togglePlay());
+        bar.skipButton().addActionListener(event -> skipToNextEvent());
+        bar.onSpeed(this::changeSpeed);
+        bar.setSpeed(controller.getSpeed());
+        bar.showFollowing(mapPanel.isFollowing() ? mapPanel.getSelected().orElse(null) : null);
+        fullscreenBar = bar;
+        fullscreen = new MapFullscreen(this, bar, mapPanel);
+        fullscreen.onClose(() -> {
+            fullscreen = null;
+            fullscreenBar = null;
+            mapFrame.restoreMap();
+        });
+        refresh();
+        fullscreen.setVisible(true);
+        mapPanel.requestFocusInWindow();
+    }
+
+    /** Cierra la pantalla completa si está abierta; el plano vuelve a su marco. */
+    private void closeFullscreen() {
+        if (fullscreen != null) {
+            fullscreen.close();
+        }
+    }
 
     private void togglePlay() {
         if (controller.isRunning()) {
@@ -273,6 +328,7 @@ public final class SimulationWindow extends JFrame {
         if (controller.isFinished() && !summaryShown) {
             summaryShown = true;
             refresh();
+            closeFullscreen();
             showSummary();
         }
     }
@@ -289,6 +345,9 @@ public final class SimulationWindow extends JFrame {
         deceased.setValue(counters.deceased());
         resourcesPanel.show(counters);
         topBar.showTime(controller.getMinute(), controller.getSecond());
+        if (fullscreenBar != null) {
+            fullscreenBar.showTime(controller.getMinute(), controller.getSecond());
+        }
         progressBar.setFraction(counters.progressPercent() / 100.0);
         progressText.setText(counters.finished() + " de " + counters.totalPatients()
                 + " pacientes terminaron su caso (" + counters.progressPercent() + " %)");
@@ -327,7 +386,7 @@ public final class SimulationWindow extends JFrame {
         logPanel.setOnlySelectedEnabled(selected.isPresent());
         logPanel.setSelectedPatient(selected.orElse(null));
         mapPanel.setFollowing(false);
-        mapFrame.showFollowing(null);
+        showFollowing(null);
         if (selected.isEmpty()) {
             cardPanel.clear();
         } else {
@@ -349,7 +408,7 @@ public final class SimulationWindow extends JFrame {
                     PatientCardPanel.TRAIL_SIZE));
         } else if (cardPanel.isShowingCard() || mapPanel.isFollowing() || !cardPanel.isHighlighted()) {
             mapPanel.setFollowing(false);
-            mapFrame.showFollowing(null);
+            showFollowing(null);
             cardPanel.showGone(selected.get());
         }
     }
@@ -359,6 +418,11 @@ public final class SimulationWindow extends JFrame {
         topBar.setRunning(controller.isRunning());
         topBar.playButton().setEnabled(!finished);
         topBar.skipButton().setEnabled(!finished);
+        if (fullscreenBar != null) {
+            fullscreenBar.setRunning(controller.isRunning());
+            fullscreenBar.playButton().setEnabled(!finished);
+            fullscreenBar.skipButton().setEnabled(!finished);
+        }
     }
 
     private void showSummary() {
