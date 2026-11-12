@@ -16,6 +16,7 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -36,8 +37,11 @@ import java.util.function.Consumer;
  * <p>Al hacer clic sobre un paciente, el panel lo selecciona (lo marca con un anillo) y avisa a quien escucha con
  * {@link #setSelectionListener}; al hacer clic donde no hay nadie, quita la selección. Con
  * {@link #setFollowing(boolean)} la cámara sigue al paciente seleccionado más de cerca
- * ({@value #FOLLOW_ZOOM} veces el aumento que deja ver todo el plano en el tamaño del panel), sin mostrar lo
+ * ({@value #FOLLOW_ZOOM} veces el aumento con que se ve el plano cuando no sigue a nadie), sin mostrar lo
  * que hay fuera del plano.</p>
+ *
+ * <p>Con {@link #setCovering(boolean)} el plano llena todo el panel, sin dejar fondo a los lados: se ve más grande
+ * y lo que no cabe se ve arrastrando el plano con el ratón ({@link #panBy}).</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -47,10 +51,13 @@ public final class HospitalMapPanel extends JPanel {
     public static final int MARGIN = 8;
 
     /**
-     * Cuántas veces más cerca que el plano completo se ve al paciente seleccionado mientras la cámara lo sigue; así
-     * el acercamiento es el mismo con la ventana grande o pequeña.
+     * Cuántas veces más cerca que el plano sin seguir a nadie se ve al paciente seleccionado mientras la cámara lo
+     * sigue; así el acercamiento es el mismo con la ventana grande o pequeña.
      */
     public static final double FOLLOW_ZOOM = 2.0;
+
+    /** Cuántos píxeles hay que mover el ratón presionado para que cuente como arrastre y no como clic. */
+    public static final int DRAG_THRESHOLD = 4;
 
     /** Ancho máximo que pide el panel, para que la ventana de la simulación quepa en una pantalla de 1366 × 768. */
     public static final int MAX_PREFERRED_WIDTH = 1060;
@@ -66,6 +73,11 @@ public final class HospitalMapPanel extends JPanel {
     private int overflow;
     private String selected;
     private boolean following;
+    private boolean covering;
+    private double centerX = Double.NaN;
+    private double centerY = Double.NaN;
+    private transient Point dragFrom;
+    private boolean dragged;
     private transient Consumer<String> selectionListener = code -> { };
 
     /**
@@ -85,9 +97,42 @@ public final class HospitalMapPanel extends JPanel {
         MouseAdapter mouse = new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
+                if (dragged) {
+                    return;
+                }
                 String code = patientAt(event.getX(), event.getY()).orElse(null);
                 select(code);
                 selectionListener.accept(code);
+            }
+
+            @Override
+            public void mousePressed(MouseEvent event) {
+                dragFrom = event.getPoint();
+                dragged = false;
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (dragFrom == null || !canPan()) {
+                    return;
+                }
+                int dx = event.getX() - dragFrom.x;
+                int dy = event.getY() - dragFrom.y;
+                if (!dragged && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) {
+                    return;
+                }
+                dragged = true;
+                setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                panBy(dx, dy);
+                dragFrom = event.getPoint();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                dragFrom = null;
+                if (dragged) {
+                    setCursor(Cursor.getDefaultCursor());
+                }
             }
 
             @Override
@@ -108,6 +153,8 @@ public final class HospitalMapPanel extends JPanel {
      */
     public void showLayout(HospitalLayout layout) {
         this.layout = requireLayout(layout);
+        centerX = Double.NaN;
+        centerY = Double.NaN;
         revalidate();
         repaint();
     }
@@ -175,6 +222,46 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     /**
+     * Hace que el plano llene todo el panel o que se vea completo.
+     *
+     * @param covering {@code true} para que llene el panel sin dejar fondo a los lados (lo que no cabe se ve
+     *                 arrastrando); {@code false} para ver todo el plano con un margen alrededor
+     */
+    public void setCovering(boolean covering) {
+        this.covering = covering;
+        repaint();
+    }
+
+    public boolean isCovering() {
+        return covering;
+    }
+
+    /**
+     * Mueve el plano como si se arrastrara con el ratón, sin pasarse de sus bordes. Solo hace algo cuando el plano
+     * llena el panel y la cámara no sigue a nadie.
+     *
+     * @param dx píxeles que se mueve el plano hacia la derecha (negativo: hacia la izquierda)
+     * @param dy píxeles que se mueve el plano hacia abajo (negativo: hacia arriba)
+     */
+    public void panBy(int dx, int dy) {
+        if (!canPan()) {
+            return;
+        }
+        Optional<Camera> camera = cameraFor(getWidth(), getHeight());
+        if (camera.isEmpty()) {
+            return;
+        }
+        Dimension world = renderer.worldSize(layout);
+        Point2D wanted = camera.get().toWorld(getWidth() / 2.0 - dx, getHeight() / 2.0 - dy);
+        Camera moved = Camera.cover(world.width, world.height, getWidth(), getHeight(), wanted.getX(),
+                wanted.getY());
+        Point2D center = moved.toWorld(getWidth() / 2.0, getHeight() / 2.0);
+        centerX = center.getX();
+        centerY = center.getY();
+        repaint();
+    }
+
+    /**
      * Cambia a quién se avisa cuando el usuario hace clic en el plano.
      *
      * @param listener recibe el código del paciente al que se le hizo clic, o nulo si fue donde no hay nadie
@@ -205,7 +292,8 @@ public final class HospitalMapPanel extends JPanel {
 
     /**
      * Cámara con la que se dibuja el plano en un panel de ese tamaño: sigue al paciente seleccionado si así se
-     * pidió y está en la escena; si no, muestra el plano completo.
+     * pidió y está en la escena; si no, muestra el plano completo o, si el plano llena el panel, la parte a la que
+     * se arrastró.
      *
      * @param width  ancho del panel en píxeles
      * @param height alto del panel en píxeles
@@ -216,12 +304,16 @@ public final class HospitalMapPanel extends JPanel {
             return Optional.empty();
         }
         Dimension world = renderer.worldSize(layout);
-        Camera fit = Camera.fit(world.width, world.height, width, height, MARGIN);
+        Camera whole = covering
+                ? Camera.cover(world.width, world.height, width, height,
+                        Double.isNaN(centerX) ? world.width / 2.0 : centerX,
+                        Double.isNaN(centerY) ? world.height / 2.0 : centerY)
+                : Camera.fit(world.width, world.height, width, height, MARGIN);
         Optional<PatientMarker> target = selectedMarker();
         if (!following || target.isEmpty()) {
-            return Optional.of(fit);
+            return Optional.of(whole);
         }
-        double zoom = Math.min(Camera.MAX_ZOOM, fit.zoom() * FOLLOW_ZOOM);
+        double zoom = Math.min(Camera.MAX_ZOOM, whole.zoom() * FOLLOW_ZOOM);
         PatientMarker marker = target.get();
         return Optional.of(Camera.follow(marker.x() + PatientPainter.OFFSET_X, marker.y(), world.width,
                 world.height, width, height, zoom));
@@ -278,6 +370,11 @@ public final class HospitalMapPanel extends JPanel {
         selectedMarker().ifPresent(marker -> patientPainter.paintSelection(graphics, marker));
         List<Position> seats = layout.getWaitingSpots();
         patientPainter.paintOverflow(graphics, renderer.centerOf(seats.get(seats.size() - 1)), overflow);
+    }
+
+    /** Indica si el plano se puede arrastrar: llena el panel y la cámara no sigue a nadie. */
+    private boolean canPan() {
+        return covering && !(following && selectedMarker().isPresent());
     }
 
     /** El paciente seleccionado tal como se dibuja ahora, si está en la escena. */

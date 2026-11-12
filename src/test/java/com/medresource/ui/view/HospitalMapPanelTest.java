@@ -336,6 +336,101 @@ class HospitalMapPanelTest {
         assertNull(heard.get(1));
     }
 
+    // ---------- plano que llena el panel ----------
+
+    private static final int WIDE = 1000;
+    private static final int LOW = 300;
+
+    private double coverZoom(int width, int height) {
+        Dimension world = renderer.worldSize(standard);
+        return Math.max(width / (double) world.width, height / (double) world.height);
+    }
+
+    private void press(int x, int y) {
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_PRESSED, 0L, 0, x, y, 1, false,
+                MouseEvent.BUTTON1));
+    }
+
+    private void drag(int x, int y) {
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_DRAGGED, 0L, 0, x, y, 0, false,
+                MouseEvent.BUTTON1));
+    }
+
+    private void release(int x, int y) {
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_RELEASED, 0L, 0, x, y, 1, false,
+                MouseEvent.BUTTON1));
+    }
+
+    @Test
+    void coveringThePlanLeavesNoBackgroundAtTheSides() {
+        panel.setCovering(true);
+
+        Camera camera = panel.cameraFor(WIDE, LOW).orElseThrow();
+        Dimension world = renderer.worldSize(standard);
+
+        assertTrue(panel.isCovering());
+        assertEquals(coverZoom(WIDE, LOW), camera.zoom(), 1e-9);
+        assertTrue(camera.toScreen(0, 0).getX() <= 0 && camera.toScreen(0, 0).getY() <= 0);
+        assertTrue(camera.toScreen(world.width, world.height).getX() >= WIDE);
+        assertTrue(camera.toScreen(world.width, world.height).getY() >= LOW);
+    }
+
+    @Test
+    void draggingMovesTheCoveringPlanAndIsNotAClick() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        List<String> heard = new ArrayList<>();
+        panel.setSelectionListener(heard::add);
+        double before = panel.cameraFor(WIDE, LOW).orElseThrow().offsetY();
+
+        press(500, 150);
+        drag(500, 130);
+        release(500, 130);
+        click(500, 130);
+
+        assertEquals(before - 20, panel.cameraFor(WIDE, LOW).orElseThrow().offsetY(), 1e-6);
+        assertTrue(heard.isEmpty());
+    }
+
+    @Test
+    void theCoveringPlanStopsAtItsEdges() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        Dimension world = renderer.worldSize(standard);
+
+        panel.panBy(0, -10_000);
+
+        assertEquals(LOW - world.height * coverZoom(WIDE, LOW), panel.cameraFor(WIDE, LOW).orElseThrow().offsetY(),
+                1e-6);
+
+        panel.panBy(0, 10_000);
+
+        assertEquals(0, panel.cameraFor(WIDE, LOW).orElseThrow().offsetY(), 1e-6);
+    }
+
+    @Test
+    void thePlanDoesNotMoveWhenItShowsWhole() {
+        panel.setSize(WIDE, LOW);
+        Camera before = panel.cameraFor(WIDE, LOW).orElseThrow();
+
+        panel.panBy(0, -50);
+
+        assertEquals(before, panel.cameraFor(WIDE, LOW).orElseThrow());
+    }
+
+    @Test
+    void whileCoveringTheCameraFollowsCloserThanTheCoveringPlan() {
+        showOnePatientOnTheFirstSeat();
+        panel.setCovering(true);
+        panel.select("P001");
+        panel.setFollowing(true);
+
+        Camera camera = panel.cameraFor(WIDE, LOW).orElseThrow();
+
+        assertEquals(Math.min(Camera.MAX_ZOOM, coverZoom(WIDE, LOW) * HospitalMapPanel.FOLLOW_ZOOM), camera.zoom(),
+                1e-9);
+    }
+
     @Test
     void rejectsAMissingListener() {
         assertThrows(IllegalArgumentException.class, () -> panel.setSelectionListener(null));
