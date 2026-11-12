@@ -20,6 +20,7 @@ import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
@@ -42,6 +43,10 @@ import java.util.function.Consumer;
  *
  * <p>Con {@link #setCovering(boolean)} el plano llena todo el panel, sin dejar fondo a los lados: se ve más grande
  * y lo que no cabe se ve arrastrando el plano con el ratón ({@link #panBy}).</p>
+ *
+ * <p>La rueda del ratón acerca o aleja el plano alrededor del puntero ({@link #zoomAt}), hasta
+ * {@value #MAX_ZOOM_LEVEL} veces el aumento normal; acercado, el plano también se arrastra. Mientras la cámara sigue
+ * a un paciente, la rueda cambia cuán de cerca lo sigue.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -58,6 +63,12 @@ public final class HospitalMapPanel extends JPanel {
 
     /** Cuántos píxeles hay que mover el ratón presionado para que cuente como arrastre y no como clic. */
     public static final int DRAG_THRESHOLD = 4;
+
+    /** Cuántas veces más cerca que lo normal se puede ver el plano con la rueda del ratón. */
+    public static final double MAX_ZOOM_LEVEL = 6.0;
+
+    /** Cuánto acerca cada paso de la rueda del ratón. */
+    public static final double WHEEL_STEP = 1.15;
 
     /** Ancho máximo que pide el panel, para que la ventana de la simulación quepa en una pantalla de 1366 × 768. */
     public static final int MAX_PREFERRED_WIDTH = 1060;
@@ -76,6 +87,8 @@ public final class HospitalMapPanel extends JPanel {
     private boolean covering;
     private double centerX = Double.NaN;
     private double centerY = Double.NaN;
+    private double zoomLevel = 1;
+    private double followLevel = 1;
     private transient Point dragFrom;
     private boolean dragged;
     private transient Consumer<String> selectionListener = code -> { };
@@ -143,6 +156,14 @@ public final class HospitalMapPanel extends JPanel {
         };
         addMouseListener(mouse);
         addMouseMotionListener(mouse);
+        addMouseWheelListener(this::onWheel);
+    }
+
+    private void onWheel(MouseWheelEvent event) {
+        double rotation = event.getPreciseWheelRotation();
+        if (rotation != 0) {
+            zoomAt(event.getX(), event.getY(), Math.pow(WHEEL_STEP, -rotation));
+        }
     }
 
     /**
@@ -155,6 +176,8 @@ public final class HospitalMapPanel extends JPanel {
         this.layout = requireLayout(layout);
         centerX = Double.NaN;
         centerY = Double.NaN;
+        zoomLevel = 1;
+        followLevel = 1;
         revalidate();
         repaint();
     }
@@ -213,6 +236,9 @@ public final class HospitalMapPanel extends JPanel {
      * @param following {@code true} para seguirlo de cerca; {@code false} para ver todo el plano
      */
     public void setFollowing(boolean following) {
+        if (following && !this.following) {
+            followLevel = 1;
+        }
         this.following = following;
         repaint();
     }
@@ -251,14 +277,54 @@ public final class HospitalMapPanel extends JPanel {
         if (camera.isEmpty()) {
             return;
         }
-        Dimension world = renderer.worldSize(layout);
         Point2D wanted = camera.get().toWorld(getWidth() / 2.0 - dx, getHeight() / 2.0 - dy);
-        Camera moved = Camera.cover(world.width, world.height, getWidth(), getHeight(), wanted.getX(),
-                wanted.getY());
+        keepCenter(wanted.getX(), wanted.getY());
+        repaint();
+    }
+
+    /**
+     * Acerca o aleja el plano dejando quieto el punto que está bajo el puntero, como hace la rueda del ratón. El
+     * aumento queda entre el normal y {@value #MAX_ZOOM_LEVEL} veces el normal. Si la cámara sigue a un paciente,
+     * cambia cuán de cerca lo sigue.
+     *
+     * @param screenX coordenada x del puntero en el panel
+     * @param screenY coordenada y del puntero en el panel
+     * @param factor  cuánto se acerca (mayor que 1) o se aleja (menor que 1)
+     * @throws IllegalArgumentException si el factor no es un número positivo
+     */
+    public void zoomAt(int screenX, int screenY, double factor) {
+        if (Double.isNaN(factor) || factor <= 0) {
+            throw new IllegalArgumentException("El factor de aumento debe ser positivo.");
+        }
+        Optional<Camera> camera = cameraFor(getWidth(), getHeight());
+        if (camera.isEmpty()) {
+            return;
+        }
+        if (following && selectedMarker().isPresent()) {
+            followLevel = clamp(followLevel * factor, 1 / FOLLOW_ZOOM, MAX_ZOOM_LEVEL / FOLLOW_ZOOM);
+            repaint();
+            return;
+        }
+        Point2D anchor = camera.get().toWorld(screenX, screenY);
+        zoomLevel = clamp(zoomLevel * factor, 1, MAX_ZOOM_LEVEL);
+        Dimension world = renderer.worldSize(layout);
+        double zoom = clamp(baseZoom(world, getWidth(), getHeight()) * zoomLevel, Camera.MIN_ZOOM, Camera.MAX_ZOOM);
+        keepCenter(anchor.getX() - (screenX - getWidth() / 2.0) / zoom,
+                anchor.getY() - (screenY - getHeight() / 2.0) / zoom);
+        repaint();
+    }
+
+    /** Cuántas veces más cerca que lo normal se ve el plano por la rueda del ratón; 1 es lo normal. */
+    public double getZoomLevel() {
+        return zoomLevel;
+    }
+
+    /** Guarda el centro de la vista, corregido para no pasarse de los bordes del plano. */
+    private void keepCenter(double x, double y) {
+        Camera moved = viewCamera(getWidth(), getHeight(), x, y);
         Point2D center = moved.toWorld(getWidth() / 2.0, getHeight() / 2.0);
         centerX = center.getX();
         centerY = center.getY();
-        repaint();
     }
 
     /**
@@ -304,16 +370,12 @@ public final class HospitalMapPanel extends JPanel {
             return Optional.empty();
         }
         Dimension world = renderer.worldSize(layout);
-        Camera whole = covering
-                ? Camera.cover(world.width, world.height, width, height,
-                        Double.isNaN(centerX) ? world.width / 2.0 : centerX,
-                        Double.isNaN(centerY) ? world.height / 2.0 : centerY)
-                : Camera.fit(world.width, world.height, width, height, MARGIN);
         Optional<PatientMarker> target = selectedMarker();
         if (!following || target.isEmpty()) {
-            return Optional.of(whole);
+            return Optional.of(viewCamera(width, height, centerX, centerY));
         }
-        double zoom = Math.min(Camera.MAX_ZOOM, whole.zoom() * FOLLOW_ZOOM);
+        double zoom = clamp(baseZoom(world, width, height) * FOLLOW_ZOOM * followLevel, Camera.MIN_ZOOM,
+                Camera.MAX_ZOOM);
         PatientMarker marker = target.get();
         return Optional.of(Camera.follow(marker.x() + PatientPainter.OFFSET_X, marker.y(), world.width,
                 world.height, width, height, zoom));
@@ -374,7 +436,33 @@ public final class HospitalMapPanel extends JPanel {
 
     /** Indica si el plano se puede arrastrar: llena el panel y la cámara no sigue a nadie. */
     private boolean canPan() {
-        return covering && !(following && selectedMarker().isPresent());
+        return (covering || zoomLevel > 1) && !(following && selectedMarker().isPresent());
+    }
+
+    /**
+     * Cámara sin seguir a nadie: el plano completo, o el que llena el panel, con el aumento de la rueda y centrada
+     * en el punto pedido (el centro del plano si no hay ninguno).
+     */
+    private Camera viewCamera(int width, int height, double x, double y) {
+        Dimension world = renderer.worldSize(layout);
+        if (!covering && zoomLevel <= 1) {
+            return Camera.fit(world.width, world.height, width, height, MARGIN);
+        }
+        double zoom = clamp(baseZoom(world, width, height) * zoomLevel, Camera.MIN_ZOOM, Camera.MAX_ZOOM);
+        return Camera.follow(Double.isNaN(x) ? world.width / 2.0 : x, Double.isNaN(y) ? world.height / 2.0 : y,
+                world.width, world.height, width, height, zoom);
+    }
+
+    /** Aumento normal: el que deja ver todo el plano o, si llena el panel, el que lo llena. */
+    private double baseZoom(Dimension world, int width, int height) {
+        if (covering) {
+            return Math.max(width / (double) world.width, height / (double) world.height);
+        }
+        return Camera.fit(world.width, world.height, width, height, MARGIN).zoom();
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     /** El paciente seleccionado tal como se dibuja ahora, si está en la escena. */
