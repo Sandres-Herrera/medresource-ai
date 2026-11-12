@@ -68,7 +68,11 @@ public enum HomeIcon {
     /** Esquinas de un visor con un punto: seguir con la cámara. */
     TARGET,
     /** Puntero del ratón: hacer clic en algo. */
-    CURSOR;
+    CURSOR,
+    /** Cuatro flechas hacia las esquinas: ver a pantalla completa. */
+    EXPAND,
+    /** Cuatro flechas hacia el centro: salir de la pantalla completa. */
+    COLLAPSE;
 
     /**
      * Dibuja el icono.
@@ -144,6 +148,12 @@ public enum HomeIcon {
             case TARGET -> new Shape[]{polyline(4, 8, 4, 4, 8, 4), polyline(16, 4, 20, 4, 20, 8),
                 polyline(20, 16, 20, 20, 16, 20), polyline(8, 20, 4, 20, 4, 16), new Ellipse2D.Double(9, 9, 6, 6)};
             case CURSOR -> new Shape[]{polyline(7, 4, 17, 11, 12, 12, 15, 18, 13, 19, 10, 13, 7, 17, 7, 4)};
+            case EXPAND -> new Shape[]{polyline(4, 9, 4, 4, 9, 4), new Line2D.Double(4, 4, 10, 10),
+                polyline(15, 4, 20, 4, 20, 9), new Line2D.Double(20, 4, 14, 10), polyline(20, 15, 20, 20, 15, 20),
+                new Line2D.Double(20, 20, 14, 14), polyline(9, 20, 4, 20, 4, 15), new Line2D.Double(4, 20, 10, 14)};
+            case COLLAPSE -> new Shape[]{polyline(4, 9, 9, 9, 9, 4), new Line2D.Double(9, 9, 4, 4),
+                polyline(15, 4, 15, 9, 20, 9), new Line2D.Double(15, 9, 20, 4), polyline(20, 15, 15, 15, 15, 20),
+                new Line2D.Double(15, 15, 20, 20), polyline(9, 20, 9, 15, 4, 15), new Line2D.Double(9, 15, 4, 20)};
         };
     }
 
