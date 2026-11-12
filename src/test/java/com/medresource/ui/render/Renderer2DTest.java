@@ -260,9 +260,23 @@ class Renderer2DTest {
     void marksEachDoorOnTheEdgeBetweenItsRoomAndTheCorridor() {
         for (Door door : layout.getDoors()) {
             int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
+            int center = door.inside().col() * CELL_W + CELL_W / 2;
 
-            assertEquals(Palette.DOOR.getRGB(), image.getRGB(door.inside().col() * CELL_W + CELL_W / 2, edge),
-                    door.toString());
+            assertEquals(Palette.DOOR.getRGB(), image.getRGB(center - 10, edge), door.toString());
+            assertEquals(Palette.DOOR.getRGB(), image.getRGB(center + 10, edge), door.toString());
+        }
+    }
+
+    @Test
+    void eachDoorHasAFrameAndALineThatSplitsItInTwoLeaves() {
+        for (Door door : layout.getDoors()) {
+            int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
+            int left = door.inside().col() * CELL_W + CELL_W / 4;
+
+            assertEquals(Palette.DOOR_FRAME.getRGB(), image.getRGB(left + CELL_W / 4, edge), door.toString());
+            assertEquals(Palette.DOOR_FRAME.getRGB(), image.getRGB(left, edge), door.toString());
+            assertEquals(Palette.DOOR_FRAME.getRGB(),
+                    image.getRGB(left + 10, edge - Renderer2D.DOOR_THICKNESS / 2), door.toString());
         }
     }
 

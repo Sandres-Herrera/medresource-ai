@@ -32,6 +32,10 @@ import java.util.List;
  * cabeza a la izquierda; mientras la camilla se mueve, un camillero de uniforme gris azulado la empuja desde la
  * derecha.</p>
  *
+ * <p>Quien está de pie lleva una sombra ovalada suave bajo los pies ({@link #paintShadow}), dibujada antes que
+ * la figura, para que se vea parado en el piso; la sombra no sube ni baja con el movimiento de reposo. Quien va
+ * acostado en camilla no lleva sombra, pero el camillero sí.</p>
+ *
  * <p>La figura (y su camilla) sube o baja lo que diga el {@linkplain IdleMotion movimiento de reposo} del
  * marcador; las barras se quedan en su sitio para que se lean bien.</p>
  *
@@ -58,6 +62,12 @@ public final class PatientPainter {
     private static final float SELECTION_STROKE = 2.5f;
     /** Dónde empieza la barra de salud, debajo de los pies del paciente. */
     private static final int HEALTH_BAR_TOP = 14;
+    /** Ancho de la sombra bajo los pies de un adulto, en píxeles. */
+    private static final double SHADOW_WIDTH = 18.0;
+    /** Alto de la sombra bajo los pies de un adulto, en píxeles. */
+    private static final double SHADOW_HEIGHT = 3.0;
+    /** Dónde queda el centro de la sombra, bajo el centro de la figura: a la altura de los pies. */
+    private static final double SHADOW_CENTER = 10.5;
     /** Dónde empieza la barra de avance, sobre la cabeza del paciente. */
     private static final int PROGRESS_BAR_TOP = -21;
 
@@ -73,7 +83,8 @@ public final class PatientPainter {
             throw new IllegalArgumentException("La superficie de dibujo y los pacientes son obligatorios.");
         }
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setStroke(new BasicStroke(1f));
+        graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
         for (PatientMarker marker : markers) {
             paintPatient(graphics, marker);
         }
@@ -127,7 +138,7 @@ public final class PatientPainter {
         graphics.setColor(Palette.SELECTION);
         graphics.draw(new Ellipse2D.Double(cx - SELECTION_RADIUS, cy - SELECTION_RADIUS, 2 * SELECTION_RADIUS,
                 2 * SELECTION_RADIUS));
-        graphics.setStroke(new BasicStroke(1f));
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
     }
 
     private void paintPatient(Graphics2D graphics, PatientMarker marker) {
@@ -144,9 +155,11 @@ public final class PatientPainter {
             fillAndOutline(graphics, new Ellipse2D.Double(cx - 11 - radius, cy - 1 - radius, 2 * radius,
                     2 * radius), head);
             if (marker.isCarried()) {
+                paintShadow(graphics, cx + 21, marker.y() - 1, 1.0);
                 paintPorter(graphics, cx + 21, cy);
             }
         } else {
+            paintShadow(graphics, cx, marker.y(), scale);
             fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy, scale), body);
             fillAndOutline(graphics, new Ellipse2D.Double(cx - radius, cy - 9 * scale - radius, 2 * radius,
                     2 * radius), head);
@@ -176,6 +189,22 @@ public final class PatientPainter {
             graphics.setColor(fill);
             graphics.fillRect(left, y, filled, BAR_HEIGHT);
         }
+    }
+
+    /**
+     * Dibuja la sombra ovalada bajo los pies de una figura de pie, en el piso.
+     *
+     * @param graphics superficie de dibujo
+     * @param cx       centro horizontal de la figura
+     * @param floorY   altura del centro de la figura sin el movimiento de reposo
+     * @param scale    tamaño de la figura (1 para un adulto)
+     */
+    static void paintShadow(Graphics2D graphics, double cx, double floorY, double scale) {
+        double width = SHADOW_WIDTH * scale;
+        double height = SHADOW_HEIGHT * scale;
+        graphics.setColor(Palette.FIGURE_SHADOW);
+        graphics.fill(new Ellipse2D.Double(cx - width / 2, floorY + SHADOW_CENTER * scale - height / 2, width,
+                height));
     }
 
     /** Camilla vista desde un lado: el colchón y, debajo, dos ruedas. */
