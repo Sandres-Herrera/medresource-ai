@@ -7,7 +7,13 @@ import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.ui.render.Renderer2D;
 import org.junit.jupiter.api.Test;
 
+import javax.swing.JPanel;
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,8 +50,37 @@ class MapFrameTest {
     }
 
     @Test
+    void theFullScreenButtonRunsItsAction() {
+        MapFrame frame = new MapFrame(map(), "estándar");
+        List<String> heard = new ArrayList<>();
+        frame.onFullscreen(() -> heard.add("completa"));
+
+        frame.fullscreenButton().doClick();
+
+        assertEquals(List.of("completa"), heard);
+        assertEquals("Pantalla completa", frame.fullscreenButton().getAccessibleContext().getAccessibleName());
+    }
+
+    @Test
+    void takesThePlanBackAfterItWasShownElsewhere() {
+        HospitalMapPanel map = map();
+        MapFrame frame = new MapFrame(map, "estándar");
+        assertTrue(frame.hasMap());
+
+        new JPanel().add(map);
+
+        assertFalse(frame.hasMap());
+
+        frame.restoreMap();
+
+        assertTrue(frame.hasMap());
+        assertSame(frame, map.getParent());
+    }
+
+    @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> new MapFrame(null, "estándar"));
         assertThrows(IllegalArgumentException.class, () -> new MapFrame(map(), " "));
+        assertThrows(IllegalArgumentException.class, () -> new MapFrame(map(), "estándar").onFullscreen(null));
     }
 }

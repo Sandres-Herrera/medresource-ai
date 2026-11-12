@@ -10,6 +10,9 @@ import java.awt.Font;
 /**
  * Marco del plano en la ventana de la simulación: una tarjeta con borde de acento y, arriba, el título «Plano del
  * hospital», el tamaño del plano y, mientras la cámara sigue a alguien, la etiqueta «Siguiendo a P003».
+ *
+ * <p>Arriba a la derecha lleva el botón de pantalla completa; quien usa el marco decide qué hacer al pulsarlo
+ * ({@link #onFullscreen}). Mientras el plano se ve en otra ventana, {@link #restoreMap()} lo devuelve al marco.</p>
  */
 public final class MapFrame extends ThemedCard {
 
@@ -19,7 +22,13 @@ public final class MapFrame extends ThemedCard {
     public static final String TITLE = "Plano del hospital";
 
     private final Chip followTag = new Chip("Siguiendo", HomeTheme.ACCENT, HomeTheme.SELECTED, null);
+    /** Lado del botón de pantalla completa, en píxeles. */
+    public static final int BUTTON_SIZE = 26;
+
     private final JLabel size = new JLabel();
+    private final IconButton expand = new IconButton(HomeIcon.EXPAND, "Pantalla completa", BUTTON_SIZE);
+    private final HospitalMapPanel map;
+    private transient Runnable fullscreenAction = () -> { };
 
     /**
      * Crea el marco alrededor del plano.
@@ -33,7 +42,11 @@ public final class MapFrame extends ThemedCard {
         if (map == null || sizeText == null || sizeText.isBlank()) {
             throw new IllegalArgumentException("El plano y su tamaño son obligatorios.");
         }
+        this.map = map;
         setHighlighted(true);
+        expand.setOutlined(true);
+        expand.setToolTipText("Ver el plano a pantalla completa");
+        expand.addActionListener(event -> fullscreenAction.run());
         JPanel header = new JPanel(new BorderLayout(8, 0));
         header.setOpaque(false);
         header.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
@@ -52,6 +65,7 @@ public final class MapFrame extends ThemedCard {
         size.setForeground(HomeTheme.MUTED);
         right.add(followTag);
         right.add(size);
+        right.add(expand);
         header.add(left, BorderLayout.WEST);
         header.add(right, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
@@ -73,6 +87,37 @@ public final class MapFrame extends ThemedCard {
     /** Texto de la etiqueta de seguimiento, o vacío si no se ve. */
     public String followText() {
         return followTag.isVisible() ? followTag.getText() : "";
+    }
+
+    /**
+     * Cambia lo que se hace al pulsar el botón de pantalla completa.
+     *
+     * @param action acción
+     * @throws IllegalArgumentException si es nula
+     */
+    public void onFullscreen(Runnable action) {
+        if (action == null) {
+            throw new IllegalArgumentException("La acción de pantalla completa es obligatoria.");
+        }
+        this.fullscreenAction = action;
+    }
+
+    /** Devuelve el plano al marco si se estaba viendo en otra ventana. */
+    public void restoreMap() {
+        if (map.getParent() != this) {
+            add(map, BorderLayout.CENTER);
+            revalidate();
+            repaint();
+        }
+    }
+
+    /** Indica si el plano está dentro del marco. */
+    public boolean hasMap() {
+        return map.getParent() == this;
+    }
+
+    public IconButton fullscreenButton() {
+        return expand;
     }
 
     /** Tamaño del plano que se ve arriba a la derecha. */
