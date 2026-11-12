@@ -76,4 +76,42 @@ class IconButtonTest {
         assertThrows(IllegalArgumentException.class, () -> new IconButton(HomeIcon.CLOSE, " ", 24));
         assertThrows(IllegalArgumentException.class, () -> new IconButton(HomeIcon.CLOSE, "Cerrar", 8));
     }
+
+    @Test
+    void theFilledButtonIsPaintedWithTheAccentAndADarkIcon() {
+        button.setFilled(true);
+        button.setSize(24, 24);
+        BufferedImage image = new BufferedImage(24, 24, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+
+        button.paint(graphics);
+        graphics.dispose();
+
+        assertTrue(button.isFilled());
+        assertEquals(HomeTheme.ACCENT_TEXT, button.iconColor());
+        assertEquals(HomeTheme.ACCENT.getRGB(), image.getRGB(3, 12));
+    }
+
+    @Test
+    void theOutlinedButtonHasACardBackgroundAndAWhiteIcon() {
+        button.setOutlined(true);
+        button.setSize(24, 24);
+        BufferedImage image = new BufferedImage(24, 24, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+
+        button.paint(graphics);
+        graphics.dispose();
+
+        assertTrue(button.isOutlined());
+        assertEquals(HomeTheme.TEXT, button.iconColor());
+        assertEquals(HomeTheme.CARD.getRGB(), image.getRGB(3, 12));
+    }
+
+    @Test
+    void theIconCanChange() {
+        button.setIcon(HomeIcon.PAUSE);
+
+        assertEquals(HomeIcon.PAUSE, button.getIcon());
+        assertThrows(IllegalArgumentException.class, () -> button.setIcon(null));
+    }
 }

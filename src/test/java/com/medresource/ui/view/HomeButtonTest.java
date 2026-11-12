@@ -103,4 +103,14 @@ class HomeButtonTest {
         assertTrue(compact.getPreferredSize().width > plain.getPreferredSize().width, "el icono ocupa espacio");
         assertEquals(HomeTheme.ACCENT.getRGB(), paint(compact).getRGB(8, HomeButton.COMPACT_HEIGHT / 2));
     }
+
+    @Test
+    void theOutlinedButtonHasTheCardBackgroundAndIsAsWideAsItsText() {
+        HomeButton outlined = new HomeButton(HomeButton.Style.OUTLINE, "Siguiente evento", HomeIcon.SKIP);
+        HomeButton plain = new HomeButton(HomeButton.Style.OUTLINE, "Siguiente evento", null);
+
+        assertEquals(HomeButton.OUTLINE_HEIGHT, outlined.getPreferredSize().height);
+        assertTrue(outlined.getPreferredSize().width > plain.getPreferredSize().width, "el icono ocupa espacio");
+        assertEquals(HomeTheme.CARD.getRGB(), paint(outlined).getRGB(4, HomeButton.OUTLINE_HEIGHT / 2));
+    }
 }
