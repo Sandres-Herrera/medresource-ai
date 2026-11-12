@@ -55,7 +55,7 @@ public class Renderer2D implements SceneRenderer {
     private static final double SEAT_OFFSET = CELL_W / 4.0;
     private static final int CHAIR_SIZE = 18;
     /** Grosor de la barra que marca una puerta, en píxeles. */
-    private static final int DOOR_THICKNESS = 6;
+    public static final int DOOR_THICKNESS = 8;
 
     @Override
     public Dimension worldSize(HospitalLayout layout) {
@@ -178,19 +178,42 @@ public class Renderer2D implements SceneRenderer {
         }
     }
 
-    /** Dibuja una puerta como una barra café sobre el borde que comparten su sala y el pasillo. */
+    /**
+     * Dibuja una puerta doble sobre el borde que comparten su sala y el pasillo: una sombra suave alrededor, la
+     * barra café con un marco más oscuro y una línea en el centro que la divide en dos hojas.
+     */
     private void paintDoor(Graphics2D graphics, Door door) {
         Position inside = door.inside();
         Position outside = door.outside();
-        graphics.setColor(Palette.DOOR);
-        if (inside.col() == outside.col()) {
+        boolean across = inside.col() == outside.col();
+        int x;
+        int y;
+        int width;
+        int height;
+        if (across) {
             int edge = Math.max(inside.row(), outside.row()) * CELL_H;
-            graphics.fillRect(inside.col() * CELL_W + CELL_W / 4, edge - DOOR_THICKNESS / 2, CELL_W / 2,
-                    DOOR_THICKNESS);
+            x = inside.col() * CELL_W + CELL_W / 4;
+            y = edge - DOOR_THICKNESS / 2;
+            width = CELL_W / 2;
+            height = DOOR_THICKNESS;
         } else {
             int edge = Math.max(inside.col(), outside.col()) * CELL_W;
-            graphics.fillRect(edge - DOOR_THICKNESS / 2, inside.row() * CELL_H + CELL_H / 4, DOOR_THICKNESS,
-                    CELL_H / 2);
+            x = edge - DOOR_THICKNESS / 2;
+            y = inside.row() * CELL_H + CELL_H / 4;
+            width = DOOR_THICKNESS;
+            height = CELL_H / 2;
+        }
+        graphics.setColor(Palette.DOOR_SHADOW);
+        graphics.fillRect(x - 1, y - 1, width + 2, height + 2);
+        graphics.setColor(Palette.DOOR);
+        graphics.fillRect(x, y, width, height);
+        graphics.setColor(Palette.DOOR_FRAME);
+        graphics.setStroke(new BasicStroke(1f));
+        graphics.drawRect(x, y, width - 1, height - 1);
+        if (across) {
+            graphics.drawLine(x + width / 2, y, x + width / 2, y + height - 1);
+        } else {
+            graphics.drawLine(x, y + height / 2, x + width - 1, y + height / 2);
         }
     }
 

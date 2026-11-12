@@ -35,6 +35,10 @@ public final class Palette {
     public static final Color CONSULT_DESK = new Color(0xF3, 0xEE, 0xFA);
     /** Puerta de una sala hacia un pasillo. */
     public static final Color DOOR = new Color(0x8D, 0x5B, 0x34);
+    /** Marco de las puertas y línea que separa sus dos hojas: café más oscuro. */
+    public static final Color DOOR_FRAME = new Color(0x5D, 0x3A, 0x1F);
+    /** Sombra suave alrededor de cada puerta. */
+    public static final Color DOOR_SHADOW = new Color(0x00, 0x00, 0x00, 70);
     /** Silla de la sala de espera. */
     public static final Color WAITING_SEAT = new Color(0xA1, 0x88, 0x7F);
     /** Puesto de triage. */
