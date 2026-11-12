@@ -13,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas del dibujo de los pacientes, sobre una imagen en memoria.
@@ -241,6 +242,33 @@ class PatientPainterTest {
 
         assertEquals(BACKGROUND, image.getRGB(CX - 13, 55));
         assertEquals(BACKGROUND, image.getRGB(CX + 21, 55));
+    }
+
+    // ---------- sombra en el piso ----------
+
+    private static boolean darkerThanTheBackground(int rgb) {
+        return new Color(rgb).getRed() < Palette.BACKGROUND.getRed();
+    }
+
+    @Test
+    void aStandingPatientHasAShadowOnTheFloorBesideHisFeet() {
+        paint(marker(TriageLevel.III, Sex.MALE, false, false));
+
+        assertTrue(darkerThanTheBackground(image.getRGB(CX + 8, 60)));
+        assertTrue(darkerThanTheBackground(image.getRGB(CX - 8, 60)));
+        assertEquals(BACKGROUND, image.getRGB(CX + 12, 60));
+    }
+
+    @Test
+    void aPatientLyingOnAStretcherHasNoShadowButThePorterHasOne() {
+        paint(onStretcher(false, false));
+
+        assertEquals(BACKGROUND, image.getRGB(CX + 7, 60));
+        assertEquals(BACKGROUND, image.getRGB(CX + 29, 59));
+
+        paint(onStretcher(false, true));
+
+        assertTrue(darkerThanTheBackground(image.getRGB(CX + 29, 59)));
     }
 
     // ---------- movimiento de reposo ----------

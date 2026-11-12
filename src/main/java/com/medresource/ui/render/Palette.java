@@ -50,6 +50,8 @@ public final class Palette {
      * figura se vea bien sobre cualquier color de sala.
      */
     public static final Color PATIENT_OUTLINE = new Color(0x26, 0x2B, 0x33, 230);
+    /** Sombra suave bajo los pies de las figuras que están de pie. */
+    public static final Color FIGURE_SHADOW = new Color(0x00, 0x00, 0x00, 55);
     /** Grosor del contorno de las figuras, en píxeles del mundo. */
     public static final float OUTLINE_WIDTH = 1.3f;
     /** Insignia con la cantidad de pacientes que no caben en la sala de espera. */

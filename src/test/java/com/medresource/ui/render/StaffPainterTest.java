@@ -4,6 +4,7 @@ import com.medresource.model.Sex;
 import com.medresource.model.Specialty;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
@@ -77,6 +78,15 @@ class StaffPainterTest {
         paint(new StaffMarker("E01", null, Sex.MALE, false, 50, 50));
 
         assertEquals(0, labelPixels());
+    }
+
+    @Test
+    void aStandingMemberOfTheStaffHasAShadowOnTheFloorButNotWhileSeated() {
+        paint(new StaffMarker("E01", null, Sex.MALE, true, 50, 50));
+        assertEquals(BACKGROUND, image.getRGB(58, 60));
+
+        paint(new StaffMarker("E01", null, Sex.MALE, false, 50, 50));
+        assertTrue(new Color(image.getRGB(58, 60)).getRed() < Palette.BACKGROUND.getRed());
     }
 
     @Test

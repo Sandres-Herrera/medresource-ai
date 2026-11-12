@@ -59,6 +59,9 @@ public final class StaffPainter {
         double cx = marker.x();
         double cy = marker.y() + marker.bob();
         Color body = marker.isDoctor() ? Palette.DOCTOR_COAT : Palette.NURSE_UNIFORM;
+        if (!marker.seated()) {
+            PatientPainter.paintShadow(graphics, cx, marker.y(), 1.0);
+        }
         fillAndOutline(graphics, bodyShape(marker.sex(), cx, cy), body);
         if (marker.isDoctor()) {
             graphics.setColor(Palette.specialty(marker.specialty()));
