@@ -1,43 +1,35 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.HospitalLayout;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
-import com.medresource.model.TriageLevel;
 import com.medresource.ui.controller.EventCategory;
 import com.medresource.ui.controller.EventFilter;
 import com.medresource.ui.controller.EventLog;
+import com.medresource.ui.controller.HospitalPreset;
 import com.medresource.ui.controller.LiveCounters;
 import com.medresource.ui.controller.PatientCard;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
-import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.Renderer2D;
 
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
-import javax.swing.JSplitPane;
-import javax.swing.JTextArea;
-import javax.swing.JToolBar;
 import javax.swing.Timer;
 import javax.swing.WindowConstants;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.swing.text.BadLocationException;
 import java.awt.BorderLayout;
-import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
@@ -46,24 +38,24 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Ventana de la simulación 2D: el plano con los pacientes moviéndose, los controles del reloj, los contadores
- * en vivo, la barra de progreso y el registro de eventos.
+ * Ventana de la simulación 2D, con el tema oscuro de la pantalla de inicio: un centro de control alrededor del
+ * plano.
  *
- * <p>El reloj corre en tiempo real (×1) o más rápido (×2, ×5, ×10) y muestra el día y la hora con segundos.
- * El botón «Saltar al siguiente evento» adelanta los ratos en que no pasa nada.</p>
+ * <p>Arriba, la barra con la marca, los datos del caso, los controles (reproducir o pausar, siguiente evento,
+ * volver a empezar, velocidad ×1 a ×10, captura) y el reloj; debajo, seis indicadores: llegados, en espera, en
+ * tratamiento, en UCI, altas y fallecidos. En el centro, el plano con su marco de acento; a la derecha, la ficha
+ * del paciente seleccionado, los recursos libres y la leyenda de triage. Abajo, el registro de eventos con sus
+ * filtros y el progreso del caso.</p>
  *
- * <p>Al hacer clic sobre un paciente del plano se ve su ficha en la columna derecha, que se actualiza en cada
- * cuadro; desde la ficha se le puede seguir con la cámara. El registro de eventos se puede filtrar por grupo de
- * eventos y dejar solo los del paciente seleccionado: al cambiar el filtro se vuelven a mostrar los eventos
- * anteriores que lo cumplen.</p>
- *
- * <p>Cabe completa en una pantalla de 1366 × 768 ({@link ScreenFit}): la columna derecha tiene su propia barra
- * de desplazamiento y la ventana nunca abre más grande que el espacio libre de la pantalla.</p>
+ * <p>Al hacer clic en un paciente del plano, o en una fila del registro, se selecciona: su ficha se actualiza en
+ * cada cuadro, sus filas del registro se resaltan y la cámara lo puede seguir. Cabe en una pantalla de
+ * 1366 × 768 ({@link ScreenFit}): el plano se achica y la columna derecha tiene su propia barra.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -73,28 +65,28 @@ public final class SimulationWindow extends JFrame {
     private static final long serialVersionUID = 1L;
 
     private static final int FRAME_MILLIS = 33;
-    private static final int MAX_LOG_LINES = 400;
+    private static final int GAP = 10;
     /** Tamaño mínimo de la ventana, si la pantalla lo permite. */
-    private static final Dimension MIN_SIZE = new Dimension(900, 600);
+    private static final Dimension MIN_SIZE = new Dimension(1000, 640);
     /** Alto que pide la columna derecha; el resto lo recorre su barra de desplazamiento. */
     private static final int SIDE_PREFERRED_HEIGHT = 300;
 
     private final transient SimulationController controller;
     private final HospitalMapPanel mapPanel;
-    private final JButton playButton = new JButton("Iniciar");
-    private final JButton stepButton = new JButton("Paso (+1 min)");
-    private final JButton skipButton = new JButton("Saltar al siguiente evento");
-    private final JButton resetButton = new JButton("Reiniciar");
-    private final JButton captureButton = new JButton("Guardar captura");
-    private final JComboBox<String> speedBox = new JComboBox<>();
-    private final JLabel clockLabel = new JLabel();
-    private final JProgressBar progressBar = new JProgressBar(0, 100);
-    private final JTextArea log = new JTextArea();
-    private final transient EventLog eventLog = new EventLog();
-    private final JComboBox<EventCategory> categoryBox = new JComboBox<>(EventCategory.values());
-    private final JCheckBox onlySelectedBox = new JCheckBox("Solo el paciente seleccionado");
+    private final MapFrame mapFrame;
+    private final SimulationTopBar topBar;
+    private final KpiTile arrived = new KpiTile("Llegados", HomeTheme.TEXT);
+    private final KpiTile waiting = new KpiTile("En espera", HomeTheme.AMBER);
+    private final KpiTile treating = new KpiTile("En tratamiento", HomeTheme.ACCENT);
+    private final KpiTile inIcu = new KpiTile("En UCI", HomeTheme.ROSE);
+    private final KpiTile discharged = new KpiTile("Altas", HomeTheme.GREEN);
+    private final KpiTile deceased = new KpiTile("Fallecidos", HomeTheme.RED);
     private final PatientCardPanel cardPanel = new PatientCardPanel();
-    private final transient Map<String, JLabel> counterLabels = new LinkedHashMap<>();
+    private final ResourcesPanel resourcesPanel = new ResourcesPanel();
+    private final EventLogPanel logPanel = new EventLogPanel();
+    private final MeterBar progressBar = new MeterBar(HomeTheme.ACCENT);
+    private final JLabel progressText = new JLabel();
+    private final transient EventLog eventLog = new EventLog();
     private final Timer timer;
     private long lastFrameNanos;
     private boolean summaryShown;
@@ -113,28 +105,20 @@ public final class SimulationWindow extends JFrame {
         }
         this.controller = controller;
         this.mapPanel = new HospitalMapPanel(controller.getLayout(), renderer);
+        this.mapFrame = new MapFrame(mapPanel, planText(controller));
+        this.topBar = new SimulationTopBar(controller.getSetup().caseConfig().scenario().getDisplayName() + " · "
+                + controller.getStrategyName() + " · Semilla " + controller.getSetup().caseConfig().seed());
         this.timer = new Timer(FRAME_MILLIS, event -> onFrame());
-        mapPanel.setSelectionListener(code -> onSelectionChanged());
-        cardPanel.onFollow(mapPanel::setFollowing);
-        cardPanel.onClose(() -> {
-            mapPanel.select(null);
-            onSelectionChanged();
-        });
+        wireActions();
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        setLayout(new BorderLayout());
-        add(buildToolBar(), BorderLayout.NORTH);
-        JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, mapPanel, buildLogPanel());
-        center.setResizeWeight(0.8);
-        add(center, BorderLayout.CENTER);
-        add(buildSideScroll(), BorderLayout.EAST);
-        add(progressBar, BorderLayout.SOUTH);
-        progressBar.setStringPainted(true);
+        setContentPane(buildContent());
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent event) {
                 timer.stop();
             }
         });
+        topBar.setSpeed(controller.getSpeed());
         refresh();
         pack();
         Rectangle usable = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
@@ -143,124 +127,116 @@ public final class SimulationWindow extends JFrame {
         timer.start();
     }
 
-    private JToolBar buildToolBar() {
-        JToolBar bar = new JToolBar();
-        bar.setFloatable(false);
-        for (int speed : SimulationClock.SPEEDS) {
-            speedBox.addItem("×" + speed);
+    /**
+     * Texto del tamaño del plano para su marco, por ejemplo «estándar · 20 × 16 m · clic en un paciente».
+     *
+     * @param controller controlador de la simulación
+     * @return el texto
+     */
+    static String planText(SimulationController controller) {
+        HospitalLayout layout = controller.getLayout();
+        String size = HospitalPreset.matching(controller.getSetup().hospital())
+                .map(preset -> preset.getDisplayName().toLowerCase(Locale.ROOT)).orElse("personalizado");
+        return size + " · " + layout.getCols() + " × " + layout.getRows() + " m · clic en un paciente";
+    }
+
+    // ---------- armado ----------
+
+    private JPanel buildContent() {
+        JPanel content = new JPanel(new BorderLayout(0, GAP));
+        content.setBackground(HomeTheme.BACKGROUND);
+        content.setBorder(BorderFactory.createEmptyBorder(12, 14, 10, 14));
+        content.add(column(topBar, kpiRow()), BorderLayout.NORTH);
+        JPanel middle = new JPanel(new BorderLayout(GAP, 0));
+        middle.setOpaque(false);
+        middle.add(mapFrame, BorderLayout.CENTER);
+        middle.add(buildSideScroll(), BorderLayout.EAST);
+        content.add(middle, BorderLayout.CENTER);
+        content.add(column(logPanel, progressRow()), BorderLayout.SOUTH);
+        return content;
+    }
+
+    private JComponent kpiRow() {
+        JPanel row = new JPanel(new GridLayout(1, 6, GAP, 0));
+        row.setOpaque(false);
+        for (KpiTile tile : List.of(arrived, waiting, treating, inIcu, discharged, deceased)) {
+            row.add(tile);
         }
-        speedBox.setSelectedIndex(SimulationClock.SPEEDS.indexOf(controller.getSpeed()));
-        speedBox.setMaximumSize(speedBox.getPreferredSize());
-        speedBox.setToolTipText("×1 es tiempo real: un segundo en pantalla es un segundo en el hospital.");
-        speedBox.addActionListener(event ->
-                controller.setSpeed(SimulationClock.SPEEDS.get(speedBox.getSelectedIndex())));
-        playButton.addActionListener(event -> togglePlay());
-        stepButton.addActionListener(event -> {
-            controller.stepOnce();
-            refresh();
-        });
-        skipButton.addActionListener(event -> {
-            controller.skipToNextEvent();
-            lastFrameNanos = System.nanoTime();
-            refresh();
-        });
-        resetButton.addActionListener(event -> restart());
-        captureButton.addActionListener(event -> saveCapture());
-        bar.add(playButton);
-        bar.add(stepButton);
-        bar.add(skipButton);
-        bar.add(resetButton);
-        bar.addSeparator();
-        bar.add(new JLabel("Velocidad: "));
-        bar.add(speedBox);
-        bar.addSeparator();
-        bar.add(captureButton);
-        bar.add(Box.createHorizontalGlue());
-        clockLabel.setFont(clockLabel.getFont().deriveFont(Font.BOLD, 14f));
-        bar.add(clockLabel);
-        bar.add(Box.createHorizontalStrut(8));
-        return bar;
+        return row;
     }
 
     /** Columna derecha con su propia barra de desplazamiento, para que no estire la ventana hacia abajo. */
     private JScrollPane buildSideScroll() {
-        JPanel side = buildSidePanel();
+        JPanel side = new JPanel();
+        side.setOpaque(false);
+        side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
+        for (JComponent card : List.<JComponent>of(cardPanel, resourcesPanel, new TriageLegend())) {
+            card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            card.setMaximumSize(new Dimension(PatientCardPanel.WIDTH, Integer.MAX_VALUE));
+            side.add(card);
+            side.add(Box.createVerticalStrut(GAP));
+        }
         JScrollPane scroll = new JScrollPane(side, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(16);
-        scroll.setPreferredSize(new Dimension(side.getPreferredSize().width
-                + scroll.getVerticalScrollBar().getPreferredSize().width, SIDE_PREFERRED_HEIGHT));
+        DarkScrollBarUI.apply(scroll);
+        scroll.setPreferredSize(new Dimension(PatientCardPanel.WIDTH + DarkScrollBarUI.THICKNESS + 4,
+                SIDE_PREFERRED_HEIGHT));
         return scroll;
     }
 
-    private JPanel buildSidePanel() {
-        JPanel side = new JPanel();
-        side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
-        side.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        JLabel info = new JLabel("<html><b>" + controller.getSetup().caseConfig().scenario().getDisplayName()
-                + "</b><br>" + controller.getStrategyName() + "<br>Semilla "
-                + controller.getSetup().caseConfig().seed() + "</html>");
-        side.add(info);
-        side.add(Box.createVerticalStrut(8));
-        cardPanel.setAlignmentX(LEFT_ALIGNMENT);
-        side.add(cardPanel);
-        side.add(Box.createVerticalStrut(8));
-        side.add(counterSection("Pacientes", "Llegados", "En espera", "En tratamiento", "En UCI",
-                "Alta", "Remitidos", "Fallecidos", "Sin atender"));
-        side.add(Box.createVerticalStrut(8));
-        side.add(counterSection("Recursos libres", "Camas", "Camas UCI", "Quirófanos", "Médicos",
-                "Enfermeros", "Sangre (unidades)", "Morgue (ocupada)"));
-        side.add(Box.createVerticalStrut(8));
-        side.add(buildLegend());
-        side.add(Box.createVerticalGlue());
-        return side;
+    private JComponent progressRow() {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        JLabel label = new JLabel("Progreso del caso");
+        label.setFont(HomeTheme.font(Font.PLAIN, 12f));
+        label.setForeground(HomeTheme.MUTED);
+        progressText.setFont(HomeTheme.font(Font.PLAIN, 12f));
+        progressText.setForeground(HomeTheme.MUTED);
+        row.add(label, BorderLayout.WEST);
+        row.add(progressBar, BorderLayout.CENTER);
+        row.add(progressText, BorderLayout.EAST);
+        return row;
     }
 
-    private JPanel counterSection(String title, String... names) {
-        JPanel panel = new JPanel(new GridLayout(names.length, 2, 8, 2));
-        panel.setBorder(BorderFactory.createTitledBorder(title));
-        for (String name : names) {
-            JLabel value = new JLabel("0", JLabel.RIGHT);
-            value.setFont(value.getFont().deriveFont(Font.BOLD));
-            counterLabels.put(name, value);
-            panel.add(new JLabel(name));
-            panel.add(value);
-        }
-        return panel;
+    private static JPanel column(JComponent top, JComponent bottom) {
+        JPanel column = new JPanel(new BorderLayout(0, GAP));
+        column.setOpaque(false);
+        column.add(top, BorderLayout.NORTH);
+        column.add(bottom, BorderLayout.CENTER);
+        return column;
     }
 
-    private JPanel buildLegend() {
-        JPanel legend = new JPanel(new GridLayout(TriageLevel.values().length, 1, 0, 2));
-        legend.setBorder(BorderFactory.createTitledBorder("Triage"));
-        for (TriageLevel level : TriageLevel.values()) {
-            JLabel label = new JLabel("■ " + level.getDisplayName());
-            label.setForeground(Palette.triage(level));
-            legend.add(label);
-        }
-        return legend;
+    private void wireActions() {
+        topBar.playButton().addActionListener(event -> togglePlay());
+        topBar.skipButton().addActionListener(event -> {
+            controller.skipToNextEvent();
+            lastFrameNanos = System.nanoTime();
+            refresh();
+        });
+        topBar.restartButton().addActionListener(event -> restart());
+        topBar.captureButton().addActionListener(event -> saveCapture());
+        topBar.onSpeed(controller::setSpeed);
+        mapPanel.setSelectionListener(code -> onSelectionChanged());
+        logPanel.onPatientClicked(code -> {
+            mapPanel.select(code);
+            onSelectionChanged();
+        });
+        logPanel.onFilterChanged(this::showLog);
+        cardPanel.onFollow(following -> {
+            mapPanel.setFollowing(following);
+            mapFrame.showFollowing(following ? mapPanel.getSelected().orElse(null) : null);
+        });
+        cardPanel.onClose(() -> {
+            mapPanel.select(null);
+            onSelectionChanged();
+        });
     }
 
-    private JPanel buildLogPanel() {
-        log.setEditable(false);
-        log.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane scroll = new JScrollPane(log);
-        scroll.setPreferredSize(new Dimension(600, 130));
-        categoryBox.setToolTipText("Muestra solo un grupo de eventos.");
-        categoryBox.addActionListener(event -> showLog());
-        onlySelectedBox.setToolTipText("Muestra solo la historia del paciente cuya ficha se ve.");
-        onlySelectedBox.setEnabled(false);
-        onlySelectedBox.addActionListener(event -> showLog());
-        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        filters.add(new JLabel("Mostrar:"));
-        filters.add(categoryBox);
-        filters.add(onlySelectedBox);
-        JPanel panel = new JPanel(new BorderLayout(0, 2));
-        panel.setBorder(BorderFactory.createTitledBorder("Registro de eventos"));
-        panel.add(filters, BorderLayout.NORTH);
-        panel.add(scroll, BorderLayout.CENTER);
-        return panel;
-    }
+    // ---------- acciones ----------
 
     private void togglePlay() {
         if (controller.isRunning()) {
@@ -277,7 +253,7 @@ public final class SimulationWindow extends JFrame {
         mapPanel.showLayout(controller.getLayout());
         mapPanel.select(null);
         eventLog.clear();
-        log.setText("");
+        logPanel.showEntries(List.of());
         onSelectionChanged();
         summaryShown = false;
         refresh();
@@ -302,88 +278,57 @@ public final class SimulationWindow extends JFrame {
         mapPanel.showStaff(controller.staffMarkers());
         mapPanel.showPatients(controller.markers(), controller.overflow());
         LiveCounters counters = controller.counters();
-        set("Llegados", counters.arrived() + " / " + counters.totalPatients());
-        set("En espera", counters.waiting());
-        set("En tratamiento", counters.inTreatment());
-        set("En UCI", counters.inIcu());
-        set("Alta", counters.discharged());
-        set("Remitidos", counters.referred());
-        set("Fallecidos", counters.deceased());
-        set("Sin atender", counters.unattended());
-        set("Camas", counters.freeBeds() + " / " + counters.totalBeds());
-        set("Camas UCI", counters.freeIcuBeds() + " / " + counters.totalIcuBeds());
-        set("Quirófanos", counters.freeOperatingRooms() + " / " + counters.totalOperatingRooms());
-        set("Médicos", counters.freeDoctors() + " / " + counters.totalDoctors());
-        set("Enfermeros", counters.freeNurses() + " / " + counters.totalNurses());
-        set("Sangre (unidades)", counters.bloodUnits());
-        set("Morgue (ocupada)", counters.morgueOccupancy() + " / " + counters.morgueCapacity());
-        counterLabels.get("Fallecidos").setForeground(counters.deceased() > 0 ? new Color(0xC6, 0x28, 0x28)
-                : getForeground());
-        clockLabel.setText(SimulationClock.format(controller.getMinute(), controller.getSecond())
-                + "   (minuto " + counters.minute() + ")");
-        progressBar.setValue(counters.progressPercent());
-        progressBar.setString(counters.finished() + " de " + counters.totalPatients()
+        arrived.setValue(counters.arrived(), counters.totalPatients());
+        waiting.setValue(counters.waiting());
+        treating.setValue(counters.inTreatment());
+        inIcu.setValue(counters.inIcu());
+        discharged.setValue(counters.discharged());
+        deceased.setValue(counters.deceased());
+        resourcesPanel.show(counters);
+        topBar.showTime(controller.getMinute(), controller.getSecond());
+        progressBar.setFraction(counters.progressPercent() / 100.0);
+        progressText.setText(counters.finished() + " de " + counters.totalPatients()
                 + " pacientes terminaron su caso (" + counters.progressPercent() + " %)");
         appendEvents();
         updateCard();
         updateButtons();
     }
 
-    private void set(String name, Object value) {
-        counterLabels.get(name).setText(String.valueOf(value));
-    }
-
-    /** Anota los eventos nuevos en el registro y escribe los que cumplen el filtro. */
+    /** Anota los eventos nuevos en el registro y muestra los que cumplen el filtro. */
     private void appendEvents() {
-        StringBuilder text = new StringBuilder();
         String now = SimulationClock.formatTimeOfDay(controller.getMinute(), controller.getSecond());
         EventFilter filter = currentFilter();
+        List<EventLog.Entry> shown = new ArrayList<>();
         for (SimulationEvent event : controller.drainNewEvents()) {
             EventLog.Entry entry = eventLog.add(now, event);
             if (filter.accepts(event)) {
-                text.append(entry.line()).append(System.lineSeparator());
+                shown.add(entry);
             }
         }
-        if (text.isEmpty()) {
-            return;
-        }
-        log.append(text.toString());
-        int extra = log.getLineCount() - MAX_LOG_LINES;
-        if (extra > 0) {
-            try {
-                log.replaceRange("", 0, log.getLineEndOffset(extra - 1));
-            } catch (BadLocationException error) {
-                log.setText("");
-            }
-        }
-        log.setCaretPosition(log.getDocument().getLength());
+        logPanel.appendEntries(shown);
     }
 
-    /** Filtro que eligió el usuario: el grupo de eventos y, si lo pidió, solo el paciente seleccionado. */
+    /** Filtro que eligió el usuario en el registro. */
     private EventFilter currentFilter() {
-        EventCategory category = (EventCategory) categoryBox.getSelectedItem();
-        String patient = onlySelectedBox.isSelected() ? mapPanel.getSelected().orElse(null) : null;
-        return new EventFilter(category == null ? EventCategory.ALL : category, patient);
+        return logPanel.filter(mapPanel.getSelected().orElse(null));
     }
 
-    /** Vuelve a escribir el registro con los eventos anteriores que cumplen el filtro actual. */
+    /** Vuelve a mostrar en el registro los eventos anteriores que cumplen el filtro actual. */
     private void showLog() {
-        StringBuilder text = new StringBuilder();
-        for (EventLog.Entry entry : eventLog.entries(currentFilter(), MAX_LOG_LINES)) {
-            text.append(entry.line()).append(System.lineSeparator());
-        }
-        log.setText(text.toString());
-        log.setCaretPosition(log.getDocument().getLength());
+        logPanel.showEntries(eventLog.entries(currentFilter(), EventLogPanel.MAX_ROWS));
     }
 
-    /** Cuando cambia el paciente seleccionado: su ficha, la cámara y el registro si se filtra por paciente. */
+    /** Cuando cambia el paciente seleccionado: su ficha, la cámara y el registro. */
     private void onSelectionChanged() {
         Optional<String> selected = mapPanel.getSelected();
-        onlySelectedBox.setEnabled(selected.isPresent());
+        logPanel.setOnlySelectedEnabled(selected.isPresent());
+        logPanel.setSelectedPatient(selected.orElse(null));
+        mapPanel.setFollowing(false);
+        mapFrame.showFollowing(null);
         if (selected.isEmpty()) {
-            onlySelectedBox.setSelected(false);
-            mapPanel.setFollowing(false);
             cardPanel.clear();
+        } else {
+            cardPanel.setFollowing(false);
         }
         updateCard();
         showLog();
@@ -399,18 +344,18 @@ public final class SimulationWindow extends JFrame {
         if (card.isPresent()) {
             cardPanel.showCard(card.get(), eventLog.entries(new EventFilter(EventCategory.ALL, selected.get()),
                     PatientCardPanel.TRAIL_SIZE));
-        } else if (cardPanel.isShowingCard() || mapPanel.isFollowing()) {
+        } else if (cardPanel.isShowingCard() || mapPanel.isFollowing() || !cardPanel.isHighlighted()) {
             mapPanel.setFollowing(false);
+            mapFrame.showFollowing(null);
             cardPanel.showGone(selected.get());
         }
     }
 
     private void updateButtons() {
         boolean finished = controller.isFinished();
-        playButton.setText(controller.isRunning() ? "Pausar" : "Iniciar");
-        playButton.setEnabled(!finished);
-        stepButton.setEnabled(!finished && !controller.isRunning());
-        skipButton.setEnabled(!finished);
+        topBar.setRunning(controller.isRunning());
+        topBar.playButton().setEnabled(!finished);
+        topBar.skipButton().setEnabled(!finished);
     }
 
     private void showSummary() {
@@ -437,7 +382,7 @@ public final class SimulationWindow extends JFrame {
         chooser.setSelectedFile(new File("simulacion-minuto-" + controller.getMinute() + ".png"));
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             File file = chooser.getSelectedFile();
-            if (!file.getName().toLowerCase().endsWith(".png")) {
+            if (!file.getName().toLowerCase(Locale.ROOT).endsWith(".png")) {
                 file = new File(file.getParentFile(), file.getName() + ".png");
             }
             try {

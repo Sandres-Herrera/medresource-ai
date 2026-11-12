@@ -98,6 +98,7 @@ public final class EventLogPanel extends ThemedCard {
         scroll.setOpaque(false);
         scroll.getViewport().setOpaque(false);
         scroll.getVerticalScrollBar().setUnitIncrement(ROW_HEIGHT);
+        DarkScrollBarUI.apply(scroll);
         add(header, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
         pills.get(category).setSelected(true);
