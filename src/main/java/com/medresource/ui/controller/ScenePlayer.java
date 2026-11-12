@@ -10,7 +10,6 @@ import com.medresource.model.Position;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.StaffMember;
 import com.medresource.model.StaffSeat;
-import com.medresource.model.Symptom;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.ui.render.IdleMotion;
@@ -241,10 +240,10 @@ public final class ScenePlayer {
         }
         Patient patient = patients.get(patientCode);
         boolean dead = isDead(phase.get());
-        List<String> symptoms = patient.getSymptoms().stream().map(Symptom::getDisplayName).toList();
         return Optional.of(new PatientCard(patient.getCode(), patient.getAge(), patient.getSex(),
-                patient.getBloodType(), patient.getDisease().getName(), symptoms, patient.getTriageLevel(),
-                phase.get().getDisplayName(), placeName(position.get()), !itinerary.hasArrived(),
+                patient.getBloodType(), patient.getDisease().getName(), patient.getSymptoms(),
+                patient.getTriageLevel(), phase.get().getDisplayName(), placeName(position.get()),
+                !itinerary.hasArrived(),
                 dead ? 0.0 : healthOf(patient),
                 phase.get() == SceneState.Phase.TREATING ? progressOf(patientCode) : PatientMarker.NO_PROGRESS,
                 patient.getArrivalMinute(), Math.max(0, getMinute() - patient.getArrivalMinute()),

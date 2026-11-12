@@ -3,10 +3,13 @@ package com.medresource.ui.controller;
 import com.medresource.model.BloodType;
 import com.medresource.model.Patient;
 import com.medresource.model.Sex;
+import com.medresource.model.Symptom;
 import com.medresource.model.TriageLevel;
 import com.medresource.ui.render.PatientMarker;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Ficha de un paciente tal como se ve en un instante de la simulación: quién es, qué tiene, dónde está, qué está
@@ -20,7 +23,7 @@ import java.util.List;
  * @param sex        sexo
  * @param bloodType  tipo de sangre
  * @param disease    nombre de la enfermedad
- * @param symptoms   síntomas, con su nombre para mostrar
+ * @param symptoms   síntomas del paciente; cada uno sabe su nombre, su nivel de triage y si impide caminar
  * @param triage     nivel de triage; nulo si todavía no lo clasifican
  * @param activity   lo que está haciendo, por ejemplo «En tratamiento»
  * @param place      dónde está o hacia dónde va, por ejemplo «Hospitalización · H1-C2»
@@ -32,7 +35,7 @@ import java.util.List;
  * @param minutesInHospital minutos que lleva en el hospital
  * @param caregivers médicos y enfermeros que lo atienden en ese instante, por ejemplo «D03 · Medicina interna»
  */
-public record PatientCard(String code, int age, Sex sex, BloodType bloodType, String disease, List<String> symptoms,
+public record PatientCard(String code, int age, Sex sex, BloodType bloodType, String disease, List<Symptom> symptoms,
                           TriageLevel triage, String activity, String place, boolean walking, double health,
                           double progress, int arrivalMinute, int minutesInHospital, List<String> caregivers) {
 
@@ -60,6 +63,20 @@ public record PatientCard(String code, int age, Sex sex, BloodType bloodType, St
         }
         symptoms = List.copyOf(symptoms);
         caregivers = List.copyOf(caregivers);
+    }
+
+    /**
+     * Nivel de triage del síntoma más grave: es el que define el triage del paciente.
+     *
+     * @return el nivel más urgente de sus síntomas, o vacío si no tiene síntomas
+     */
+    public Optional<TriageLevel> worstSymptomLevel() {
+        return symptoms.stream().map(Symptom::getTriageLevel).min(Comparator.comparingInt(TriageLevel::getLevel));
+    }
+
+    /** Indica si alguno de sus síntomas le impide caminar, así que se lo lleva en camilla. */
+    public boolean cannotWalk() {
+        return symptoms.stream().anyMatch(Symptom::preventsWalking);
     }
 
     /** Edad y sexo en una línea, por ejemplo «34 años · Masculino». */

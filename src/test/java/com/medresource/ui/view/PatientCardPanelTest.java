@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import com.medresource.model.BloodType;
 import com.medresource.model.Sex;
+import com.medresource.model.Symptom;
 import com.medresource.model.TriageLevel;
 import com.medresource.ui.controller.PatientCard;
 import com.medresource.ui.render.Palette;
@@ -23,7 +24,7 @@ class PatientCardPanelTest {
     private final PatientCardPanel panel = new PatientCardPanel();
 
     private static PatientCard treated() {
-        return new PatientCard("P007", 34, Sex.MALE, BloodType.O_NEGATIVE, "Dengue", List.of("Fiebre alta", "Fatiga"),
+        return new PatientCard("P007", 34, Sex.MALE, BloodType.O_NEGATIVE, "Dengue", List.of(Symptom.HIGH_FEVER, Symptom.FATIGUE),
                 TriageLevel.III, "En tratamiento", "Hospitalización · H1-C2", false, 64.4, 0.5, 75, 30,
                 List.of("D03 · Medicina interna", "E05 · Enfermería"));
     }

@@ -2,6 +2,7 @@ package com.medresource.ui.controller;
 
 import com.medresource.model.BloodType;
 import com.medresource.model.Sex;
+import com.medresource.model.Symptom;
 import com.medresource.model.TriageLevel;
 import com.medresource.ui.render.PatientMarker;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PatientCardTest {
 
     private static PatientCard card(int age, double health, double progress) {
-        return new PatientCard("P007", age, Sex.MALE, BloodType.O_POSITIVE, "Dengue", List.of("Fiebre alta"),
+        return new PatientCard("P007", age, Sex.MALE, BloodType.O_POSITIVE, "Dengue", List.of(Symptom.HIGH_FEVER),
                 TriageLevel.III, "En tratamiento", "Hospitalización · H1-C2", false, health, progress, 12, 30,
                 List.of("D03 · Medicina interna"));
     }
@@ -57,7 +58,7 @@ class PatientCardTest {
         caregivers.clear();
 
         assertEquals(List.of("E01 · Enfermería"), card.caregivers());
-        assertThrows(UnsupportedOperationException.class, () -> card.symptoms().add("Tos"));
+        assertThrows(UnsupportedOperationException.class, () -> card.symptoms().add(Symptom.COUGH));
     }
 
     @Test
@@ -71,5 +72,33 @@ class PatientCardTest {
         assertThrows(IllegalArgumentException.class, () -> new PatientCard("P001", 20, Sex.FEMALE, null,
                 "Gripa", List.of(), null, "Esperando", "Sala de espera", false, 90, PatientMarker.NO_PROGRESS, 0, 0,
                 List.of()));
+    }
+
+    @Test
+    void theWorstSymptomDefinesTheTriage() {
+        PatientCard card = new PatientCard("P002", 40, Sex.MALE, BloodType.O_POSITIVE, "Fractura expuesta",
+                List.of(Symptom.LIMB_DEFORMITY, Symptom.EXPOSED_BONE, Symptom.FEVER), TriageLevel.II, "En tratamiento",
+                "Quirófanos · Q1", false, 60, 0.2, 5, 10, List.of());
+
+        assertEquals(TriageLevel.II, card.worstSymptomLevel().orElseThrow());
+        assertTrue(card(34, 80, 0.5).worstSymptomLevel().isPresent());
+    }
+
+    @Test
+    void knowsWhenThePatientCannotWalk() {
+        PatientCard unconscious = new PatientCard("P003", 60, Sex.FEMALE, BloodType.A_POSITIVE, "Desmayo",
+                List.of(Symptom.UNCONSCIOUS), TriageLevel.I, "Pase directo", "Triage", true, 40,
+                PatientMarker.NO_PROGRESS, 0, 1, List.of());
+
+        assertTrue(unconscious.cannotWalk());
+        assertFalse(card(34, 80, 0.5).cannotWalk());
+    }
+
+    @Test
+    void withoutSymptomsThereIsNoWorstLevel() {
+        PatientCard card = new PatientCard("P004", 20, Sex.FEMALE, BloodType.A_NEGATIVE, "Gripa", List.of(), null,
+                "Esperando", "Sala de espera", false, 90, PatientMarker.NO_PROGRESS, 0, 3, List.of());
+
+        assertTrue(card.worstSymptomLevel().isEmpty());
     }
 }

@@ -1,5 +1,6 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.Symptom;
 import com.medresource.ui.controller.PatientCard;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.render.Palette;
@@ -107,7 +108,8 @@ public final class PatientCardPanel extends JPanel {
         set("Edad y sexo", card.ageAndSex());
         set("Sangre", card.bloodType().getLabel());
         set("Enfermedad", card.disease());
-        set("Síntomas", card.symptoms().isEmpty() ? "Ninguno" : String.join(", ", card.symptoms()));
+        set("Síntomas", card.symptoms().isEmpty() ? "Ninguno"
+                : String.join(", ", card.symptoms().stream().map(Symptom::getDisplayName).toList()));
         set("Triage", card.triage() == null ? "Sin clasificar" : card.triage().getDisplayName());
         values.get("Triage").setForeground(card.triage() == null ? getForeground() : Palette.triage(card.triage()));
         set("Ahora", card.activity());
