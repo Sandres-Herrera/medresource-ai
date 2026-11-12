@@ -11,12 +11,14 @@ import com.medresource.ui.controller.PatientCard;
 import com.medresource.ui.render.PatientMarker;
 import org.junit.jupiter.api.Test;
 
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -135,6 +137,50 @@ class PatientCardPanelTest {
         panel.followButton().doClick();
 
         assertEquals(List.of(true, false), heard);
+    }
+
+    private static PatientCard later() {
+        return new PatientCard("P003", 53, Sex.MALE, BloodType.A_POSITIVE, "Síndrome febril (dengue)",
+                List.of(Symptom.FATIGUE, Symptom.HIGH_FEVER, Symptom.FEVER), TriageLevel.III, "En tratamiento",
+                "Hospitalización · H1-C3", false, 93.1, 0.41, 20, 26,
+                List.of("D10 · Medicina interna", "E03 · Enfermería"));
+    }
+
+    private static void mouse(Clickable button, int id) {
+        button.setSize(120, 34);
+        button.dispatchEvent(new MouseEvent(button, id, 0L, 0, 10, 10, 1, false, MouseEvent.BUTTON1));
+    }
+
+    @Test
+    void theFollowButtonWorksWhileTheCardChangesBetweenPressAndRelease() {
+        List<Boolean> heard = new ArrayList<>();
+        panel.onFollow(heard::add);
+        panel.showCard(treated(), trail(1));
+        HomeButton pressed = panel.followButton();
+
+        mouse(pressed, MouseEvent.MOUSE_PRESSED);
+        panel.showCard(later(), trail(2));
+        assertSame(pressed, panel.followButton());
+        mouse(pressed, MouseEvent.MOUSE_RELEASED);
+
+        assertEquals(List.of(true), heard);
+        assertTrue(panel.isFollowing());
+        assertEquals("Dejar de seguir", panel.followButton().getAccessibleContext().getAccessibleName());
+    }
+
+    @Test
+    void theButtonsAreTheSameOnesWhileTheSamePatientIsShown() {
+        panel.showCard(treated(), trail(1));
+        HomeButton follow = panel.followButton();
+
+        panel.showCard(later(), trail(3));
+        panel.setFollowing(true);
+        panel.setFollowing(false);
+        panel.showCard(treated(), trail(4));
+
+        assertSame(follow, panel.followButton());
+        assertEquals("Paciente P003", panel.titleText());
+        assertEquals("25 min", panel.valueOf("En el hospital"));
     }
 
     @Test
