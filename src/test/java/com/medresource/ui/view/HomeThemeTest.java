@@ -3,6 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.EventType;
 import com.medresource.model.Scenario;
 import com.medresource.model.TriageLevel;
+import com.medresource.ui.render.Palette;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;
@@ -112,6 +113,18 @@ class HomeThemeTest {
         assertEquals(TriageLevel.values().length, colors.size());
         assertEquals(HomeTheme.RED, HomeTheme.triageColor(TriageLevel.I));
         assertEquals(HomeTheme.PENDING, HomeTheme.triageColor(null));
+    }
+
+    @Test
+    void aPatientOnThePlanHasAboutTheSameColorAsItsCard() {
+        for (TriageLevel level : TriageLevel.values()) {
+            Color plan = Palette.triage(level);
+            Color card = HomeTheme.triageColor(level);
+            int red = plan.getRed() - card.getRed();
+            int green = plan.getGreen() - card.getGreen();
+            int blue = plan.getBlue() - card.getBlue();
+            assertTrue(Math.sqrt(red * red + green * green + blue * blue) < 60, level.name());
+        }
     }
 
     @Test

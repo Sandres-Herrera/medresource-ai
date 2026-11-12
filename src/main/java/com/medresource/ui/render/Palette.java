@@ -116,7 +116,9 @@ public final class Palette {
     }
 
     /**
-     * Color de aviso de un nivel de triage.
+     * Color de aviso de un nivel de triage. Son colores vivos, casi los mismos de la ficha del paciente
+     * (HomeTheme.triageColor), para que el paciente y su ficha se vean del mismo color. El verde del nivel IV es
+     * un poco más oscuro que el de la ficha para no parecerse al uniforme de los enfermeros.
      *
      * @param level nivel de triage
      * @return rojo para el nivel I, naranja, amarillo, verde y azul para el nivel V
@@ -127,11 +129,11 @@ public final class Palette {
             throw new IllegalArgumentException("El nivel de triage es obligatorio.");
         }
         return switch (level) {
-            case I -> new Color(0xD3, 0x2F, 0x2F);
-            case II -> new Color(0xF5, 0x7C, 0x00);
-            case III -> new Color(0xFB, 0xC0, 0x2D);
-            case IV -> new Color(0x38, 0x8E, 0x3C);
-            case V -> new Color(0x19, 0x76, 0xD2);
+            case I -> new Color(0xE5, 0x48, 0x4D);
+            case II -> new Color(0xF9, 0x73, 0x16);
+            case III -> new Color(0xF5, 0xC5, 0x42);
+            case IV -> new Color(0x2E, 0xA0, 0x43);
+            case V -> new Color(0x4F, 0x8C, 0xFF);
         };
     }
 
