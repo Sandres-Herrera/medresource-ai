@@ -60,6 +60,30 @@ public record Camera(double zoom, double offsetX, double offsetY) {
     }
 
     /**
+     * Calcula la cámara que llena toda la pantalla con el mundo, sin dejar fondo a ningún lado: usa el aumento del
+     * lado que más lo pide, así que en el otro sentido una parte del mundo queda fuera de la pantalla. Lo que se ve
+     * queda centrado en el punto pedido, sin pasarse de los bordes del mundo.
+     *
+     * @param worldWidth  ancho del mundo en píxeles
+     * @param worldHeight alto del mundo en píxeles
+     * @param viewWidth   ancho de la pantalla en píxeles
+     * @param viewHeight  alto de la pantalla en píxeles
+     * @param centerX     coordenada x del mundo que se quiere en el centro de la pantalla
+     * @param centerY     coordenada y del mundo que se quiere en el centro de la pantalla
+     * @return cámara que llena la pantalla, con el aumento dentro de los límites
+     * @throws IllegalArgumentException si el mundo o la pantalla no tienen tamaño
+     */
+    public static Camera cover(double worldWidth, double worldHeight, double viewWidth, double viewHeight,
+                               double centerX, double centerY) {
+        if (worldWidth <= 0 || worldHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) {
+            throw new IllegalArgumentException("El mundo y la pantalla deben tener ancho y alto.");
+        }
+        double zoom = Math.max(viewWidth / worldWidth, viewHeight / worldHeight);
+        zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+        return follow(centerX, centerY, worldWidth, worldHeight, viewWidth, viewHeight, zoom);
+    }
+
+    /**
      * Calcula la cámara que sigue un punto del mundo con un aumento dado: el punto queda en el centro de la
      * pantalla, salvo cerca de los bordes del mundo, donde la cámara se detiene para no mostrar lo que hay
      * fuera del plano. Si con ese aumento el mundo cabe entero en un sentido, en ese sentido queda centrado.

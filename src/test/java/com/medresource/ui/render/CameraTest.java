@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas de la cámara de la vista.
@@ -94,6 +95,38 @@ class CameraTest {
         assertThrows(IllegalArgumentException.class, () -> Camera.fit(10, 10, 20, 100, 10));
         assertThrows(IllegalArgumentException.class, () -> Camera.fit(10, 10, 100, 20, 10));
         assertThrows(IllegalArgumentException.class, () -> Camera.fit(10, 10, 100, 100, -1));
+    }
+
+    @Test
+    void coverFillsTheScreenWithTheSideThatNeedsMoreZoom() {
+        Camera camera = Camera.cover(1000, 500, 500, 500, 500, 250);
+
+        assertEquals(1.0, camera.zoom(), 0.0);
+        assertEquals(-250, camera.offsetX(), 0.0);
+        assertEquals(0, camera.offsetY(), 0.0);
+    }
+
+    @Test
+    void coverLeavesNoBackgroundAtAnySide() {
+        Camera camera = Camera.cover(1000, 500, 800, 300, 500, 250);
+
+        assertTrue(camera.toScreen(0, 0).getX() <= 0);
+        assertTrue(camera.toScreen(0, 0).getY() <= 0);
+        assertTrue(camera.toScreen(1000, 500).getX() >= 800);
+        assertTrue(camera.toScreen(1000, 500).getY() >= 300);
+    }
+
+    @Test
+    void coverStopsAtTheEdgesOfTheWorld() {
+        assertEquals(0, Camera.cover(1000, 500, 500, 500, 0, 250).offsetX(), 0.0);
+        assertEquals(-500, Camera.cover(1000, 500, 500, 500, 1000, 250).offsetX(), 0.0);
+    }
+
+    @Test
+    void coverDoesNotPassTheZoomLimitsAndRejectsAnEmptyWorld() {
+        assertEquals(Camera.MAX_ZOOM, Camera.cover(10, 10, 1000, 1000, 5, 5).zoom(), 0.0);
+        assertThrows(IllegalArgumentException.class, () -> Camera.cover(0, 10, 100, 100, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> Camera.cover(10, 10, 100, 0, 0, 0));
     }
 
     @Test
