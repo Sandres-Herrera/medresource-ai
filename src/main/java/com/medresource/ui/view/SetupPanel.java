@@ -24,16 +24,13 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.LayoutManager;
-import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -471,69 +468,23 @@ public final class SetupPanel extends JPanel {
         return column;
     }
 
-    /** Tarjeta de una sección: fondo de tarjeta, borde fino, icono y título arriba y el contenido debajo. */
-    private static final class Section extends JPanel {
+    /** Tarjeta de una sección: icono y título arriba y el contenido debajo. */
+    private static final class Section extends ThemedCard {
 
         private static final long serialVersionUID = 1L;
-        private static final int ARC = 14;
 
         private final JPanel content;
 
         Section(HomeIcon icon, String title, LayoutManager contentLayout) {
-            super(new BorderLayout(0, 12));
-            setOpaque(false);
-            setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
-            JPanel heading = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-            heading.setOpaque(false);
-            heading.add(new IconLabel(icon, 18, HomeTheme.ACCENT));
-            heading.add(label(title, Font.BOLD, 14f, HomeTheme.TEXT));
+            super(new BorderLayout(0, 12), 14);
             content = new JPanel(contentLayout);
             content.setOpaque(false);
-            add(heading, BorderLayout.NORTH);
+            add(heading(icon, title, HomeTheme.ACCENT), BorderLayout.NORTH);
             add(content, BorderLayout.CENTER);
         }
 
         JPanel content() {
             return content;
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            Graphics2D surface = (Graphics2D) graphics.create();
-            surface.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            RoundRectangle2D box = new RoundRectangle2D.Double(0.5, 0.5, getWidth() - 1.0, getHeight() - 1.0, ARC,
-                    ARC);
-            surface.setColor(HomeTheme.CARD);
-            surface.fill(box);
-            surface.setColor(HomeTheme.CARD_BORDER);
-            surface.draw(box);
-            surface.dispose();
-        }
-    }
-
-    /** Un icono solo, sin acción, del tamaño y color dados. */
-    private static final class IconLabel extends JComponent {
-
-        private static final long serialVersionUID = 1L;
-
-        private final HomeIcon icon;
-        private final int size;
-        private final Color color;
-
-        IconLabel(HomeIcon icon, int size, Color color) {
-            this.icon = icon;
-            this.size = size;
-            this.color = color;
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            return new Dimension(size, size);
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            icon.paint((Graphics2D) graphics, 0, 0, size, color);
         }
     }
 }
