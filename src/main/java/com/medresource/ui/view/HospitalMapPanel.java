@@ -36,8 +36,8 @@ import java.util.function.Consumer;
  * <p>Al hacer clic sobre un paciente, el panel lo selecciona (lo marca con un anillo) y avisa a quien escucha con
  * {@link #setSelectionListener}; al hacer clic donde no hay nadie, quita la selección. Con
  * {@link #setFollowing(boolean)} la cámara sigue al paciente seleccionado más de cerca
- * ({@value #FOLLOW_ZOOM}×, o el aumento que deja ver todo el plano si es mayor), sin mostrar lo que hay fuera
- * del plano.</p>
+ * ({@value #FOLLOW_ZOOM} veces el aumento que deja ver todo el plano en el tamaño del panel), sin mostrar lo
+ * que hay fuera del plano.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -46,8 +46,11 @@ public final class HospitalMapPanel extends JPanel {
     /** Espacio libre alrededor del plano, en píxeles. */
     public static final int MARGIN = 8;
 
-    /** Aumento con el que la cámara sigue al paciente seleccionado. */
-    public static final double FOLLOW_ZOOM = 1.6;
+    /**
+     * Cuántas veces más cerca que el plano completo se ve al paciente seleccionado mientras la cámara lo sigue; así
+     * el acercamiento es el mismo con la ventana grande o pequeña.
+     */
+    public static final double FOLLOW_ZOOM = 2.0;
 
     /** Ancho máximo que pide el panel, para que la ventana de la simulación quepa en una pantalla de 1366 × 768. */
     public static final int MAX_PREFERRED_WIDTH = 1060;
@@ -218,7 +221,7 @@ public final class HospitalMapPanel extends JPanel {
         if (!following || target.isEmpty()) {
             return Optional.of(fit);
         }
-        double zoom = Math.min(Camera.MAX_ZOOM, Math.max(fit.zoom(), FOLLOW_ZOOM));
+        double zoom = Math.min(Camera.MAX_ZOOM, fit.zoom() * FOLLOW_ZOOM);
         PatientMarker marker = target.get();
         return Optional.of(Camera.follow(marker.x() + PatientPainter.OFFSET_X, marker.y(), world.width,
                 world.height, width, height, zoom));

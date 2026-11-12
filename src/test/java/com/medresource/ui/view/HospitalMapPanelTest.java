@@ -293,9 +293,11 @@ class HospitalMapPanelTest {
         panel.setFollowing(true);
 
         Camera camera = panel.cameraFor(400, 300).orElseThrow();
+        Dimension world = renderer.worldSize(standard);
+        double fit = Camera.fit(world.width, world.height, 400, 300, MARGIN).zoom();
 
         assertTrue(panel.isFollowing());
-        assertEquals(HospitalMapPanel.FOLLOW_ZOOM, camera.zoom(), 1e-9);
+        assertEquals(fit * HospitalMapPanel.FOLLOW_ZOOM, camera.zoom(), 1e-9);
         Point2D onScreen = camera.toScreen(seat.getX() + PatientPainter.OFFSET_X, seat.getY());
         assertTrue(onScreen.getX() >= 0 && onScreen.getX() <= 400, "el paciente se ve: " + onScreen);
         assertTrue(onScreen.getY() >= 0 && onScreen.getY() <= 300, "el paciente se ve: " + onScreen);

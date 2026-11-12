@@ -11,13 +11,16 @@ import java.awt.geom.Line2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Botón de la pantalla de inicio y del formulario de una simulación nueva, en uno de tres estilos.
+ * Botón de la pantalla de inicio, del formulario de una simulación nueva y de la ventana de la simulación, en
+ * uno de cuatro estilos.
  *
  * <ul>
  *     <li>{@linkplain Style#PRIMARY Principal}: ancho, relleno con el color de acento, con un icono opcional a la
  *     izquierda del texto. Con el ratón encima se aclara y al presionarlo se oscurece un poco.</li>
  *     <li>{@linkplain Style#COMPACT Compacto}: igual que el principal pero del ancho de su texto y más bajo, para
  *     el pie de un formulario.</li>
+ *     <li>{@linkplain Style#OUTLINE Con borde}: fondo de tarjeta, borde fino y texto blanco, del ancho de su
+ *     texto; para las acciones de una barra de herramientas.</li>
  *     <li>{@linkplain Style#LINK Enlace}: solo el texto, en gris; con el ratón encima se pone blanco y se
  *     subraya.</li>
  * </ul>
@@ -35,6 +38,8 @@ public final class HomeButton extends Clickable {
         PRIMARY,
         /** Relleno con el color de acento, del ancho de su texto: la acción principal de un formulario. */
         COMPACT,
+        /** Fondo de tarjeta con borde fino: una acción de una barra de herramientas. */
+        OUTLINE,
         /** Solo texto, como un enlace: una acción secundaria. */
         LINK
     }
@@ -45,8 +50,11 @@ public final class HomeButton extends Clickable {
     public static final int PRIMARY_WIDTH = ActionCard.WIDTH + 6;
     /** Alto del botón compacto. */
     public static final int COMPACT_HEIGHT = 40;
+    /** Alto del botón con borde. */
+    public static final int OUTLINE_HEIGHT = 34;
 
     private static final int ICON_SIZE = 18;
+    private static final int OUTLINE_ICON = 15;
     private static final int ARC = 14;
 
     private final Style style;
@@ -91,6 +99,10 @@ public final class HomeButton extends Clickable {
             int gap = icon == null ? 0 : ICON_SIZE + 8;
             return new Dimension(metrics.stringWidth(text) + gap + 40, COMPACT_HEIGHT);
         }
+        if (style == Style.OUTLINE) {
+            int gap = icon == null ? 0 : OUTLINE_ICON + 7;
+            return new Dimension(metrics.stringWidth(text) + gap + 24, OUTLINE_HEIGHT);
+        }
         return new Dimension(metrics.stringWidth(text) + 16, metrics.getHeight() + 10);
     }
 
@@ -105,10 +117,10 @@ public final class HomeButton extends Clickable {
         surface.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         surface.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         surface.setFont(font());
-        if (style != Style.LINK) {
-            paintPrimary(surface);
-        } else {
-            paintLink(surface);
+        switch (style) {
+            case PRIMARY, COMPACT -> paintPrimary(surface);
+            case OUTLINE -> paintOutline(surface);
+            case LINK -> paintLink(surface);
         }
         surface.dispose();
     }
@@ -117,6 +129,7 @@ public final class HomeButton extends Clickable {
         return switch (style) {
             case PRIMARY -> HomeTheme.font(Font.BOLD, 15f);
             case COMPACT -> HomeTheme.font(Font.BOLD, 13.5f);
+            case OUTLINE -> HomeTheme.font(Font.PLAIN, 13f);
             case LINK -> HomeTheme.font(Font.PLAIN, 13f);
         };
     }
@@ -139,6 +152,26 @@ public final class HomeButton extends Clickable {
             icon.paint(surface, x, (height - ICON_SIZE) / 2.0, ICON_SIZE, HomeTheme.ACCENT_TEXT);
         }
         surface.setColor(HomeTheme.ACCENT_TEXT);
+        surface.drawString(text, x + gap, (height + metrics.getAscent() - metrics.getDescent()) / 2);
+    }
+
+    private void paintOutline(Graphics2D surface) {
+        int width = getWidth();
+        int height = getHeight();
+        RoundRectangle2D shape = new RoundRectangle2D.Double(0.5, 0.5, width - 1.0, height - 1.0, ARC - 4, ARC - 4);
+        surface.setColor(isPressed() ? HomeTheme.CARD_BORDER : isHover() ? HomeTheme.CARD_HOVER : HomeTheme.CARD);
+        surface.fill(shape);
+        surface.setColor(isFocusOwner() ? HomeTheme.ACCENT : isHover() ? HomeTheme.MUTED.darker()
+                : HomeTheme.CARD_BORDER);
+        surface.draw(shape);
+        FontMetrics metrics = surface.getFontMetrics();
+        int gap = icon == null ? 0 : OUTLINE_ICON + 7;
+        int x = (width - metrics.stringWidth(text) - gap) / 2;
+        Color color = isEnabled() ? HomeTheme.TEXT : HomeTheme.FAINT;
+        if (icon != null) {
+            icon.paint(surface, x, (height - OUTLINE_ICON) / 2.0, OUTLINE_ICON, color);
+        }
+        surface.setColor(color);
         surface.drawString(text, x + gap, (height + metrics.getAscent() - metrics.getDescent()) / 2);
     }
 

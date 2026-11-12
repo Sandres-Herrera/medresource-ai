@@ -1,6 +1,9 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.EventType;
 import com.medresource.model.Scenario;
+import com.medresource.model.TriageLevel;
+import com.medresource.ui.render.Palette;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -17,6 +20,9 @@ import java.util.List;
  *
  * <p>El formulario de una simulación nueva usa el mismo tema: sus secciones son tarjetas, sus campos tienen un
  * fondo más oscuro y cada escenario lleva su color ({@link #scenarioColor(Scenario)}).</p>
+ *
+ * <p>La ventana de la simulación también: el triage, los eventos y la salud tienen colores más vivos que los del
+ * plano ({@link #triageColor}, {@link #eventColor}, {@link #healthColor}) para leerse sobre el fondo oscuro.</p>
  *
  * <p>Las letras usan la primera familia moderna que tenga el equipo (Segoe UI en Windows, Inter o Helvetica
  * Neue en otros sistemas) y, si no hay ninguna, la sans serif de Java.</p>
@@ -67,6 +73,20 @@ public final class HomeTheme {
     public static final Color AMBER = new Color(0xFB, 0xBF, 0x24);
     /** Escenario de emergencias inesperadas: violeta. */
     public static final Color VIOLET = new Color(0xA7, 0x8B, 0xFA);
+    /** Altas y salud buena: verde. */
+    public static final Color GREEN = new Color(0x3F, 0xBF, 0x6F);
+    /** Pacientes en UCI: rosado. */
+    public static final Color ROSE = new Color(0xFB, 0x71, 0x85);
+    /** Avance de un tratamiento y triage V: azul. */
+    public static final Color BLUE = new Color(0x4F, 0x8C, 0xFF);
+    /** Lo que todavía no tiene triage: gris azulado. */
+    public static final Color PENDING = new Color(0x9A, 0xA6, 0xB8);
+    /** Triage I y lo que es grave: rojo vivo. */
+    public static final Color RED = new Color(0xE5, 0x48, 0x4D);
+    /** Triage II: naranja. */
+    public static final Color ORANGE = new Color(0xF9, 0x73, 0x16);
+    /** Triage III y la salud regular: amarillo. */
+    public static final Color YELLOW = new Color(0xF5, 0xC5, 0x42);
 
     /**
      * Color de un escenario en el formulario: verde agua el normal, ámbar la alta demanda, rojo la catástrofe y
@@ -86,6 +106,71 @@ public final class HomeTheme {
             case CATASTROPHE -> DANGER;
             case UNEXPECTED_EMERGENCIES -> VIOLET;
         };
+    }
+
+    /**
+     * Color de un nivel de triage sobre el fondo oscuro: I rojo, II naranja, III amarillo, IV verde y V azul.
+     *
+     * @param level nivel de triage, o nulo si todavía no lo clasifican
+     * @return su color; gris si no hay nivel
+     */
+    public static Color triageColor(TriageLevel level) {
+        if (level == null) {
+            return PENDING;
+        }
+        return switch (level) {
+            case I -> RED;
+            case II -> ORANGE;
+            case III -> YELLOW;
+            case IV -> GREEN;
+            case V -> BLUE;
+        };
+    }
+
+    /**
+     * Color del punto de un evento en el registro y en el recorrido del paciente: azul las llegadas, naranja y
+     * amarillo el triage, violeta el diagnóstico, verde agua los tratamientos, rojo lo grave (primeros auxilios,
+     * UCI, muerte) y verde las altas; los demás, gris.
+     *
+     * @param type tipo de evento
+     * @return su color
+     * @throws IllegalArgumentException si el tipo es nulo
+     */
+    public static Color eventColor(EventType type) {
+        if (type == null) {
+            throw new IllegalArgumentException("El tipo de evento es obligatorio.");
+        }
+        return switch (type) {
+            case ARRIVAL -> BLUE;
+            case TRIAGE_STARTED -> ORANGE;
+            case TRIAGE_ASSIGNED -> YELLOW;
+            case DIAGNOSIS -> VIOLET;
+            case TREATMENT_STARTED, TREATMENT_FINISHED, RECOVERY_STARTED -> ACCENT;
+            case FIRST_AID, ICU_ADMISSION, DEATH -> RED;
+            case DISCHARGE -> GREEN;
+            default -> MUTED;
+        };
+    }
+
+    /**
+     * Color de la salud sobre el fondo oscuro, con los mismos cortes del plano ({@link Palette#health(double)}):
+     * verde, amarillo, naranja o rojo.
+     *
+     * @param health salud, de 0 a 100
+     * @return su color
+     * @throws IllegalArgumentException si la salud no está entre 0 y 100
+     */
+    public static Color healthColor(double health) {
+        if (!(health >= 0.0 && health <= 100.0)) {
+            throw new IllegalArgumentException("La salud debe estar entre 0 y 100.");
+        }
+        if (health >= Palette.GOOD_HEALTH) {
+            return GREEN;
+        }
+        if (health >= Palette.FAIR_HEALTH) {
+            return YELLOW;
+        }
+        return health >= Palette.POOR_HEALTH ? ORANGE : RED;
     }
 
     /** Familias de letra preferidas, en orden. */
