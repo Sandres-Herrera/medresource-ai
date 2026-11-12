@@ -54,7 +54,7 @@ public final class HospitalMapPanel extends JPanel {
      * Cuántas veces más cerca que el plano sin seguir a nadie se ve al paciente seleccionado mientras la cámara lo
      * sigue; así el acercamiento es el mismo con la ventana grande o pequeña.
      */
-    public static final double FOLLOW_ZOOM = 2.0;
+    public static final double FOLLOW_ZOOM = 3.0;
 
     /** Cuántos píxeles hay que mover el ratón presionado para que cuente como arrastre y no como clic. */
     public static final int DRAG_THRESHOLD = 4;
