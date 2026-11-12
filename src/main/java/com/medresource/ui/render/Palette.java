@@ -45,8 +45,13 @@ public final class Palette {
     public static final Color PATIENT_HEAD = new Color(0xFF, 0xCC, 0x99);
     /** Cuerpo y cabeza de un paciente fallecido. */
     public static final Color DECEASED = new Color(0x75, 0x75, 0x75);
-    /** Borde fino de los pacientes. */
-    public static final Color PATIENT_OUTLINE = new Color(0x00, 0x00, 0x00, 140);
+    /**
+     * Contorno de las figuras (pacientes, médicos, enfermeros y camillero): gris carbón casi opaco, para que cada
+     * figura se vea bien sobre cualquier color de sala.
+     */
+    public static final Color PATIENT_OUTLINE = new Color(0x26, 0x2B, 0x33, 230);
+    /** Grosor del contorno de las figuras, en píxeles del mundo. */
+    public static final float OUTLINE_WIDTH = 1.3f;
     /** Insignia con la cantidad de pacientes que no caben en la sala de espera. */
     public static final Color BADGE = new Color(0x21, 0x21, 0x21);
     /** Marca de la entrada de pacientes. */

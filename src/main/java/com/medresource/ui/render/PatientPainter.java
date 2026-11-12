@@ -73,7 +73,8 @@ public final class PatientPainter {
             throw new IllegalArgumentException("La superficie de dibujo y los pacientes son obligatorios.");
         }
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setStroke(new BasicStroke(1f));
+        graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
         for (PatientMarker marker : markers) {
             paintPatient(graphics, marker);
         }
@@ -127,7 +128,7 @@ public final class PatientPainter {
         graphics.setColor(Palette.SELECTION);
         graphics.draw(new Ellipse2D.Double(cx - SELECTION_RADIUS, cy - SELECTION_RADIUS, 2 * SELECTION_RADIUS,
                 2 * SELECTION_RADIUS));
-        graphics.setStroke(new BasicStroke(1f));
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
     }
 
     private void paintPatient(Graphics2D graphics, PatientMarker marker) {
