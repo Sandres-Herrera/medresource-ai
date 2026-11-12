@@ -1,6 +1,8 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.EventType;
 import com.medresource.model.Scenario;
+import com.medresource.model.TriageLevel;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;
@@ -96,5 +98,39 @@ class HomeThemeTest {
         assertTrue(luminance(HomeTheme.FIELD) < luminance(HomeTheme.CARD));
         assertTrue(contrast(HomeTheme.TEXT, HomeTheme.FIELD) >= 7);
         assertTrue(contrast(HomeTheme.TEXT, HomeTheme.SELECTED) >= 7);
+    }
+
+    @Test
+    void eachTriageLevelHasItsBrightColorAndWithoutTriageItIsGray() {
+        Set<Color> colors = new HashSet<>();
+        for (TriageLevel level : TriageLevel.values()) {
+            Color color = HomeTheme.triageColor(level);
+            colors.add(color);
+            assertTrue(contrast(color, HomeTheme.CARD) >= 4, level.name());
+        }
+
+        assertEquals(TriageLevel.values().length, colors.size());
+        assertEquals(HomeTheme.RED, HomeTheme.triageColor(TriageLevel.I));
+        assertEquals(HomeTheme.PENDING, HomeTheme.triageColor(null));
+    }
+
+    @Test
+    void eachEventHasAColorThatCanBeReadOnTheLog() {
+        for (EventType type : EventType.values()) {
+            assertTrue(contrast(HomeTheme.eventColor(type), HomeTheme.CARD) >= 3, type.name());
+        }
+        assertEquals(HomeTheme.BLUE, HomeTheme.eventColor(EventType.ARRIVAL));
+        assertEquals(HomeTheme.RED, HomeTheme.eventColor(EventType.DEATH));
+        assertEquals(HomeTheme.GREEN, HomeTheme.eventColor(EventType.DISCHARGE));
+        assertThrows(IllegalArgumentException.class, () -> HomeTheme.eventColor(null));
+    }
+
+    @Test
+    void theHealthUsesTheCutsOfThePlan() {
+        assertEquals(HomeTheme.GREEN, HomeTheme.healthColor(70));
+        assertEquals(HomeTheme.YELLOW, HomeTheme.healthColor(69.9));
+        assertEquals(HomeTheme.ORANGE, HomeTheme.healthColor(20));
+        assertEquals(HomeTheme.RED, HomeTheme.healthColor(19.9));
+        assertThrows(IllegalArgumentException.class, () -> HomeTheme.healthColor(101));
     }
 }
