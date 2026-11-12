@@ -314,6 +314,15 @@ public final class HospitalMapPanel extends JPanel {
         repaint();
     }
 
+    /** Vuelve al aumento normal y al centro del plano, como si nunca se hubiera usado la rueda ni arrastrado. */
+    public void resetZoom() {
+        zoomLevel = 1;
+        followLevel = 1;
+        centerX = Double.NaN;
+        centerY = Double.NaN;
+        repaint();
+    }
+
     /** Cuántas veces más cerca que lo normal se ve el plano por la rueda del ratón; 1 es lo normal. */
     public double getZoomLevel() {
         return zoomLevel;

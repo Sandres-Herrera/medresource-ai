@@ -18,7 +18,7 @@ import java.awt.event.WindowEvent;
  * Ventana sin bordes que muestra el plano del hospital a pantalla completa, con la {@link FullscreenBar} arriba.
  *
  * <p>Ocupa toda la pantalla en la que está la ventana de la simulación. El plano es el mismo panel de la ventana
- * (con su selección, su cámara y su zoom): se pasa aquí al abrirla y quien la abrió lo devuelve a su marco al
+ * (con su selección y su cámara): se pasa aquí al abrirla y quien la abrió lo devuelve a su marco al
  * cerrarla. Se cierra con el botón de salir de la barra, con Esc o al cerrar la ventana; en cualquiera de los tres
  * casos se avisa una sola vez a quien escucha ({@link #onClose}).</p>
  */

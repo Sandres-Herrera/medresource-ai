@@ -513,6 +513,34 @@ class HospitalMapPanelTest {
     }
 
     @Test
+    void resettingTheZoomShowsTheNormalViewAgain() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        Camera normal = panel.cameraFor(WIDE, LOW).orElseThrow();
+        panel.zoomAt(200, 100, 4);
+        panel.panBy(30, 30);
+
+        panel.resetZoom();
+
+        assertEquals(1, panel.getZoomLevel(), 1e-9);
+        assertEquals(normal, panel.cameraFor(WIDE, LOW).orElseThrow());
+    }
+
+    @Test
+    void withoutCoveringAndWithoutZoomTheWholePlanIsSeen() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        panel.zoomAt(200, 100, 2);
+
+        panel.setCovering(false);
+        panel.resetZoom();
+
+        Dimension world = renderer.worldSize(standard);
+        assertEquals(Camera.fit(world.width, world.height, WIDE, LOW, MARGIN),
+                panel.cameraFor(WIDE, LOW).orElseThrow());
+    }
+
+    @Test
     void rejectsAZoomFactorThatIsNotPositive() {
         assertThrows(IllegalArgumentException.class, () -> panel.zoomAt(0, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> panel.zoomAt(0, 0, Double.NaN));

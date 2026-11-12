@@ -57,8 +57,9 @@ import java.util.Optional;
  * cada cuadro, sus filas del registro se resaltan y la cámara lo puede seguir. Cabe en una pantalla de
  * 1366 × 768 ({@link ScreenFit}): el plano llena todo su recuadro, lo que no cabe se ve arrastrándolo, y la
  * columna derecha tiene su propia barra. La rueda del ratón acerca el plano, y el botón de arriba a la derecha de su
- * marco lo abre a pantalla completa ({@link MapFullscreen}) con los controles de la simulación; al salir, el plano
- * vuelve a su marco con la misma selección y el mismo zoom.</p>
+ * marco lo abre a pantalla completa ({@link MapFullscreen}) con los controles de la simulación. A pantalla completa
+ * se ve todo el hospital de una vez, sin arrastrar, y la rueda lo acerca; al salir, el plano vuelve a su marco,
+ * llenándolo otra vez, con la misma selección.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -278,10 +279,14 @@ public final class SimulationWindow extends JFrame {
         bar.setSpeed(controller.getSpeed());
         bar.showFollowing(mapPanel.isFollowing() ? mapPanel.getSelected().orElse(null) : null);
         fullscreenBar = bar;
+        mapPanel.setCovering(false);
+        mapPanel.resetZoom();
         fullscreen = new MapFullscreen(this, bar, mapPanel);
         fullscreen.onClose(() -> {
             fullscreen = null;
             fullscreenBar = null;
+            mapPanel.setCovering(true);
+            mapPanel.resetZoom();
             mapFrame.restoreMap();
         });
         refresh();
