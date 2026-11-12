@@ -55,7 +55,8 @@ import java.util.Optional;
  *
  * <p>Al hacer clic en un paciente del plano, o en una fila del registro, se selecciona: su ficha se actualiza en
  * cada cuadro, sus filas del registro se resaltan y la cámara lo puede seguir. Cabe en una pantalla de
- * 1366 × 768 ({@link ScreenFit}): el plano se achica y la columna derecha tiene su propia barra.</p>
+ * 1366 × 768 ({@link ScreenFit}): el plano llena todo su recuadro, lo que no cabe se ve arrastrándolo, y la
+ * columna derecha tiene su propia barra.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -105,6 +106,7 @@ public final class SimulationWindow extends JFrame {
         }
         this.controller = controller;
         this.mapPanel = new HospitalMapPanel(controller.getLayout(), renderer);
+        mapPanel.setCovering(true);
         this.mapFrame = new MapFrame(mapPanel, planText(controller));
         this.topBar = new SimulationTopBar(controller.getSetup().caseConfig().scenario().getDisplayName() + " · "
                 + controller.getStrategyName() + " · Semilla " + controller.getSetup().caseConfig().seed());
@@ -128,7 +130,8 @@ public final class SimulationWindow extends JFrame {
     }
 
     /**
-     * Texto del tamaño del plano para su marco, por ejemplo «estándar · 20 × 16 m · clic en un paciente».
+     * Texto del tamaño del plano para su marco, por ejemplo «estándar · 20 × 16 m · clic en un paciente ·
+     * arrastra para moverlo».
      *
      * @param controller controlador de la simulación
      * @return el texto
@@ -137,7 +140,7 @@ public final class SimulationWindow extends JFrame {
         HospitalLayout layout = controller.getLayout();
         String size = HospitalPreset.matching(controller.getSetup().hospital())
                 .map(preset -> preset.getDisplayName().toLowerCase(Locale.ROOT)).orElse("personalizado");
-        return size + " · " + layout.getCols() + " × " + layout.getRows() + " m · clic en un paciente";
+        return size + " · " + layout.getCols() + " × " + layout.getRows() + " m · clic en un paciente · arrastra para moverlo";
     }
 
     // ---------- armado ----------

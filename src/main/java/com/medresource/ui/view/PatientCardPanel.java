@@ -12,6 +12,7 @@ import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -41,8 +42,10 @@ import java.util.function.Consumer;
  * últimos eventos de su recorrido y los botones «Seguir con la cámara» y «Cerrar». Sin paciente, dice cómo
  * elegir uno.</p>
  *
- * <p>Se vuelve a armar solo cuando cambia algo de lo que se ve, aunque la ventana le pase la ficha en cada
- * cuadro. Quien la usa decide qué hacer al seguir o cerrar ({@link #onFollow}, {@link #onClose}).</p>
+ * <p>Solo el contenido del medio se vuelve a armar, y solo cuando cambia algo de lo que se ve, aunque la ventana le
+ * pase la ficha en cada cuadro. El encabezado y los botones son siempre los mismos: así un clic funciona aunque la
+ * simulación esté corriendo y la ficha cambie entre que se presiona y se suelta el botón. Quien la usa decide qué
+ * hacer al seguir o cerrar ({@link #onFollow}, {@link #onClose}).</p>
  */
 public final class PatientCardPanel extends ThemedCard {
 
@@ -57,6 +60,8 @@ public final class PatientCardPanel extends ThemedCard {
 
     private static final int CONTENT_WIDTH = WIDTH - 28;
     private static final String[] ROMAN = {"I", "II", "III", "IV", "V"};
+    private static final String FOLLOW = "seguir";
+    private static final String UNFOLLOW = "dejar";
 
     private final transient Map<String, String> values = new LinkedHashMap<>();
     private final List<String> chips = new ArrayList<>();
@@ -69,11 +74,25 @@ public final class PatientCardPanel extends ThemedCard {
     private boolean showingCard;
     private boolean following;
     private boolean walkingWarning;
-    private HomeButton followButton;
+    private final CodeBadge badge = new CodeBadge();
+    private final JLabel titleLabel = label("", Font.BOLD, 15f, HomeTheme.TEXT);
+    private final JLabel subtitleLabel = label("", Font.PLAIN, 12.5f, HomeTheme.MUTED);
+    private final HomeButton followButton = new HomeButton(HomeButton.Style.COMPACT, "Seguir con la cámara",
+            HomeIcon.TARGET);
+    private final HomeButton unfollowButton = new HomeButton(HomeButton.Style.OUTLINE, "Dejar de seguir",
+            HomeIcon.TARGET);
+    private final CardLayout followLook = new CardLayout();
+    private final JPanel followHolder = new JPanel(followLook);
+    private final JComponent header = buildHeader();
+    private final JComponent actions = buildActions();
+    private final JPanel body = column();
 
     /** Crea la ficha vacía, con el texto que dice cómo elegir un paciente. */
     public PatientCardPanel() {
         super(new BorderLayout(), 14);
+        add(header, BorderLayout.NORTH);
+        add(body, BorderLayout.CENTER);
+        add(actions, BorderLayout.SOUTH);
         clear();
     }
 
@@ -123,6 +142,10 @@ public final class PatientCardPanel extends ThemedCard {
             return;
         }
         shownKey = key;
+        showHeader(card.code(), HomeTheme.triageColor(card.triage()),
+                card.ageAndSex() + " · " + card.bloodType().getLabel());
+        actions.setVisible(true);
+        showFollowLook();
         rebuild(buildCard(card, last));
     }
 
@@ -136,11 +159,14 @@ public final class PatientCardPanel extends ThemedCard {
         following = false;
         setHighlighted(true);
         shownKey = "gone:" + patientCode;
-        title = "Paciente " + patientCode;
         hint = "Ya salió del hospital.";
-        JPanel content = column();
-        content.add(header(patientCode, HomeTheme.MUTED, hint));
-        rebuild(content);
+        showHeader(patientCode, HomeTheme.MUTED, hint);
+        actions.setVisible(false);
+        values.clear();
+        chips.clear();
+        trail.clear();
+        walkingWarning = false;
+        rebuild(column());
     }
 
     /** Vuelve a la ficha vacía, con el texto que dice cómo elegir un paciente. */
@@ -151,6 +177,8 @@ public final class PatientCardPanel extends ThemedCard {
         shownKey = "";
         title = "Ficha del paciente";
         hint = HINT;
+        header.setVisible(false);
+        actions.setVisible(false);
         rebuild(buildEmpty());
     }
 
@@ -171,6 +199,7 @@ public final class PatientCardPanel extends ThemedCard {
         if (this.following != following) {
             this.following = following;
             shownKey = "";
+            showFollowLook();
         }
     }
 
@@ -221,18 +250,33 @@ public final class PatientCardPanel extends ThemedCard {
         return walkingWarning;
     }
 
-    /** Botón de seguir con la cámara, o nulo si no se ve. */
+    /** Botón de seguir con la cámara o de dejar de seguir, el que se ve, o nulo si no se ve ninguno. */
     HomeButton followButton() {
-        return followButton;
+        if (!showingCard) {
+            return null;
+        }
+        return following ? unfollowButton : followButton;
     }
 
     // ---------- armado ----------
 
     private void rebuild(JComponent content) {
-        removeAll();
-        add(content, BorderLayout.CENTER);
+        body.removeAll();
+        body.add(content);
         revalidate();
         repaint();
+    }
+
+    private void showHeader(String code, Color color, String subtitle) {
+        title = "Paciente " + code;
+        badge.show(code, color);
+        titleLabel.setText(title);
+        subtitleLabel.setText(subtitle);
+        header.setVisible(true);
+    }
+
+    private void showFollowLook() {
+        followLook.show(followHolder, following ? UNFOLLOW : FOLLOW);
     }
 
     private JComponent buildEmpty() {
@@ -240,7 +284,6 @@ public final class PatientCardPanel extends ThemedCard {
         chips.clear();
         trail.clear();
         walkingWarning = false;
-        followButton = null;
         JPanel content = column();
         content.setBorder(BorderFactory.createEmptyBorder(22, 0, 22, 0));
         JComponent badge = new CircleIcon(HomeIcon.CURSOR);
@@ -260,10 +303,8 @@ public final class PatientCardPanel extends ThemedCard {
         trail.clear();
         TriageLevel triage = card.triage();
         Color color = HomeTheme.triageColor(triage);
-        title = "Paciente " + card.code();
         hint = "";
         JPanel content = column();
-        content.add(header(card.code(), color, card.ageAndSex() + " · " + card.bloodType().getLabel()));
         content.add(Box.createVerticalStrut(10));
         String triageText = triage == null ? "Sin clasificar" : triage.getDisplayName().replace(" — ", " · ");
         content.add(chip(triage == null ? new Chip(triageText, HomeTheme.MUTED, MeterBar.TRACK, null)
@@ -298,8 +339,6 @@ public final class PatientCardPanel extends ThemedCard {
         }
         content.add(section("Recorrido", ""));
         addTrail(content, last);
-        content.add(Box.createVerticalStrut(12));
-        content.add(buttons());
         return content;
     }
 
@@ -340,40 +379,49 @@ public final class PatientCardPanel extends ThemedCard {
         }
     }
 
-    private JComponent buttons() {
+    /** Botones de abajo, que se crean una sola vez: seguir o dejar de seguir, y cerrar. */
+    private JComponent buildActions() {
         JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setOpaque(false);
-        followButton = following
-                ? new HomeButton(HomeButton.Style.OUTLINE, "Dejar de seguir", HomeIcon.TARGET)
-                : new HomeButton(HomeButton.Style.COMPACT, "Seguir con la cámara", HomeIcon.TARGET);
-        followButton.addActionListener(event -> {
-            following = !following;
-            shownKey = "";
-            followAction.accept(following);
-        });
+        row.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
+        followHolder.setOpaque(false);
+        followHolder.add(followButton, FOLLOW);
+        followHolder.add(unfollowButton, UNFOLLOW);
+        followButton.addActionListener(event -> toggleFollowing());
+        unfollowButton.addActionListener(event -> toggleFollowing());
         HomeButton close = new HomeButton(HomeButton.Style.OUTLINE, "Cerrar", null);
         close.addActionListener(event -> closeAction.run());
-        row.add(followButton, BorderLayout.CENTER);
+        row.add(followHolder, BorderLayout.CENTER);
         row.add(close, BorderLayout.EAST);
-        return left(row);
+        return row;
     }
 
-    private JComponent header(String code, Color color, String subtitle) {
-        JPanel header = new JPanel(new BorderLayout(10, 0));
-        header.setOpaque(false);
-        header.add(new CodeBadge(code, color), BorderLayout.WEST);
+    private void toggleFollowing() {
+        following = !following;
+        shownKey = "";
+        showFollowLook();
+        followAction.accept(following);
+    }
+
+    /** Encabezado, que se crea una sola vez: placa del código, nombre, datos y la equis para cerrar. */
+    private JComponent buildHeader() {
+        JPanel top = new JPanel(new BorderLayout(10, 0));
+        top.setOpaque(false);
+        top.add(badge, BorderLayout.WEST);
         JPanel names = column();
-        names.add(left(label(title, Font.BOLD, 15f, HomeTheme.TEXT)));
-        names.add(left(label(subtitle, Font.PLAIN, 12.5f, HomeTheme.MUTED)));
-        header.add(names, BorderLayout.CENTER);
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        names.add(titleLabel);
+        names.add(subtitleLabel);
+        top.add(names, BorderLayout.CENTER);
         IconButton close = new IconButton(HomeIcon.CLOSE, "Cerrar ficha", 28);
         close.setOutlined(true);
         close.addActionListener(event -> closeAction.run());
         JPanel corner = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         corner.setOpaque(false);
         corner.add(close);
-        header.add(corner, BorderLayout.EAST);
-        return left(header);
+        top.add(corner, BorderLayout.EAST);
+        return top;
     }
 
     private JComponent chip(Chip chip) {
@@ -465,12 +513,15 @@ public final class PatientCardPanel extends ThemedCard {
         private static final long serialVersionUID = 1L;
         private static final int SIZE = 44;
 
-        private final String code;
-        private final Color color;
+        private String code = "";
+        private Color color = HomeTheme.MUTED;
 
-        CodeBadge(String code, Color color) {
-            this.code = code;
-            this.color = color;
+        void show(String code, Color color) {
+            if (!code.equals(this.code) || !color.equals(this.color)) {
+                this.code = code;
+                this.color = color;
+                repaint();
+            }
         }
 
         @Override
