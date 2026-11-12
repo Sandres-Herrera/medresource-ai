@@ -17,8 +17,6 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.geom.RoundRectangle2D;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.function.IntConsumer;
 
 /**
@@ -41,11 +39,10 @@ public final class SimulationTopBar extends JPanel {
     private final HomeButton skip = new HomeButton(HomeButton.Style.OUTLINE, "Siguiente evento", HomeIcon.SKIP);
     private final IconButton restart = new IconButton(HomeIcon.RESTART, "Volver a empezar", BUTTON_SIZE);
     private final IconButton capture = new IconButton(HomeIcon.CAMERA, "Guardar captura del plano", BUTTON_SIZE);
-    private final Map<Integer, Pill> speeds = new LinkedHashMap<>();
+    private final SpeedSegment speeds = new SpeedSegment();
     private final JLabel meta = new JLabel();
     private final JLabel clock = new JLabel("00:00:00");
     private final JLabel day = new JLabel("Día 1 · minuto 0");
-    private transient IntConsumer speedAction = speed -> { };
     private boolean running;
 
     /**
@@ -94,41 +91,10 @@ public final class SimulationTopBar extends JPanel {
         controls.add(play);
         controls.add(skip);
         controls.add(restart);
-        controls.add(speedSegment());
+        controls.add(speeds);
         controls.add(capture);
         controls.add(clockColumn());
         return center(controls);
-    }
-
-    private JComponent speedSegment() {
-        JPanel segment = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0)) {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            protected void paintComponent(Graphics graphics) {
-                Graphics2D surface = (Graphics2D) graphics.create();
-                surface.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                RoundRectangle2D box = new RoundRectangle2D.Double(0.5, 0.5, getWidth() - 1.0, getHeight() - 1.0,
-                        10, 10);
-                surface.setColor(HomeTheme.CARD);
-                surface.fill(box);
-                surface.setColor(HomeTheme.CARD_BORDER);
-                surface.draw(box);
-                surface.dispose();
-            }
-        };
-        segment.setOpaque(false);
-        segment.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
-        for (int speed : SimulationClock.SPEEDS) {
-            Pill pill = new Pill("×" + speed);
-            pill.addActionListener(event -> {
-                setSpeed(speed);
-                speedAction.accept(speed);
-            });
-            speeds.put(speed, pill);
-            segment.add(pill);
-        }
-        return segment;
     }
 
     private JComponent clockColumn() {
@@ -161,10 +127,7 @@ public final class SimulationTopBar extends JPanel {
      * @throws IllegalArgumentException si es nula
      */
     public void onSpeed(IntConsumer action) {
-        if (action == null) {
-            throw new IllegalArgumentException("La acción de la velocidad es obligatoria.");
-        }
-        this.speedAction = action;
+        speeds.onSpeed(action);
     }
 
     /**
@@ -174,10 +137,7 @@ public final class SimulationTopBar extends JPanel {
      * @throws IllegalArgumentException si no es una de ellas
      */
     public void setSpeed(int speed) {
-        if (!speeds.containsKey(speed)) {
-            throw new IllegalArgumentException("La velocidad debe ser una de " + SimulationClock.SPEEDS + ".");
-        }
-        speeds.forEach((each, pill) -> pill.setSelected(each == speed));
+        speeds.setSpeed(speed);
     }
 
     /**
@@ -231,7 +191,7 @@ public final class SimulationTopBar extends JPanel {
      * @return su pastilla, o nula si no existe
      */
     public Pill speedPill(int speed) {
-        return speeds.get(speed);
+        return speeds.pill(speed);
     }
 
     /** Texto del reloj, por ejemplo «00:20:12». */

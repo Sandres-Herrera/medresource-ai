@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -429,6 +430,92 @@ class HospitalMapPanelTest {
 
         assertEquals(Math.min(Camera.MAX_ZOOM, coverZoom(WIDE, LOW) * HospitalMapPanel.FOLLOW_ZOOM), camera.zoom(),
                 1e-9);
+    }
+
+    // ---------- zoom con la rueda ----------
+
+    @Test
+    void theWheelZoomsInKeepingThePointUnderThePointer() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        Point2D before = panel.cameraFor(WIDE, LOW).orElseThrow().toWorld(300, 120);
+
+        panel.zoomAt(300, 120, 2);
+
+        Camera camera = panel.cameraFor(WIDE, LOW).orElseThrow();
+        Point2D after = camera.toWorld(300, 120);
+        assertEquals(2, panel.getZoomLevel(), 1e-9);
+        assertEquals(coverZoom(WIDE, LOW) * 2, camera.zoom(), 1e-9);
+        assertEquals(before.getX(), after.getX(), 1e-6);
+        assertEquals(before.getY(), after.getY(), 1e-6);
+    }
+
+    @Test
+    void turningTheWheelUpZoomsIn() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+
+        panel.dispatchEvent(new MouseWheelEvent(panel, MouseEvent.MOUSE_WHEEL, 0L, 0, 500, 150, 0, false,
+                MouseWheelEvent.WHEEL_UNIT_SCROLL, 3, -1));
+
+        assertEquals(HospitalMapPanel.WHEEL_STEP, panel.getZoomLevel(), 1e-9);
+    }
+
+    @Test
+    void theZoomStaysBetweenNormalAndItsLimit() {
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+
+        panel.zoomAt(500, 150, 100);
+        assertEquals(HospitalMapPanel.MAX_ZOOM_LEVEL, panel.getZoomLevel(), 1e-9);
+
+        panel.zoomAt(500, 150, 0.0001);
+        assertEquals(1, panel.getZoomLevel(), 1e-9);
+        assertEquals(coverZoom(WIDE, LOW), panel.cameraFor(WIDE, LOW).orElseThrow().zoom(), 1e-9);
+    }
+
+    @Test
+    void theWholePlanCanBeZoomedAndDraggedAndGoesBackWhenZoomedOut() {
+        panel.setSize(WIDE, LOW);
+        Camera whole = panel.cameraFor(WIDE, LOW).orElseThrow();
+
+        panel.zoomAt(500, 150, 3);
+        Camera zoomed = panel.cameraFor(WIDE, LOW).orElseThrow();
+        panel.panBy(40, 0);
+
+        assertEquals(whole.zoom() * 3, zoomed.zoom(), 1e-9);
+        assertEquals(zoomed.offsetX() + 40, panel.cameraFor(WIDE, LOW).orElseThrow().offsetX(), 1e-6);
+
+        panel.zoomAt(500, 150, 1 / 3.0);
+
+        assertEquals(whole, panel.cameraFor(WIDE, LOW).orElseThrow());
+    }
+
+    @Test
+    void whileFollowingTheWheelChangesHowCloseAndFollowingAgainStartsOver() {
+        showOnePatientOnTheFirstSeat();
+        panel.setCovering(true);
+        panel.setSize(WIDE, LOW);
+        panel.select("P001");
+        panel.setFollowing(true);
+
+        panel.zoomAt(500, 150, 100);
+
+        assertEquals(coverZoom(WIDE, LOW) * HospitalMapPanel.MAX_ZOOM_LEVEL,
+                panel.cameraFor(WIDE, LOW).orElseThrow().zoom(), 1e-9);
+        assertEquals(1, panel.getZoomLevel(), 1e-9);
+
+        panel.setFollowing(false);
+        panel.setFollowing(true);
+
+        assertEquals(coverZoom(WIDE, LOW) * HospitalMapPanel.FOLLOW_ZOOM,
+                panel.cameraFor(WIDE, LOW).orElseThrow().zoom(), 1e-9);
+    }
+
+    @Test
+    void rejectsAZoomFactorThatIsNotPositive() {
+        assertThrows(IllegalArgumentException.class, () -> panel.zoomAt(0, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> panel.zoomAt(0, 0, Double.NaN));
     }
 
     @Test
