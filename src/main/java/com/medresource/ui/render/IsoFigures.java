@@ -179,7 +179,7 @@ public final class IsoFigures {
             double gx = projection.gridX(marker.x());
             double gy = projection.gridY(marker.y());
             items.add(new IsoItem(projection.depth(gx, gy), IsoItem.PERSON,
-                    graphics -> standing(graphics, gx, gy, 0, porter())));
+                    graphics -> standing(graphics, gx, gy, 0, porter(), marker.moving())));
         }
         return items;
     }
@@ -216,7 +216,8 @@ public final class IsoFigures {
             case SEATED -> IsoBrush.person(graphics, projection, gx, gy - 0.02, IsoFurniture.SEAT_TOP, marker.bob(),
                     new IsoBrush.Person(body, null, marker.sex(), scale, true, hairOf(marker.code())));
             case STANDING -> standing(graphics, gx, gy, marker.bob(),
-                    new IsoBrush.Person(body, null, marker.sex(), scale, false, hairOf(marker.code())));
+                    new IsoBrush.Person(body, null, marker.sex(), scale, false, hairOf(marker.code())),
+                    marker.moving());
         };
         if (!marker.deceased()) {
             IsoBrush.bar(graphics, top.getX(), top.getY() - 6, IsoBrush.BAR_WIDTH,
@@ -280,14 +281,17 @@ public final class IsoFigures {
             top = new Point2D.Double(head.getX(), head.getY() - radius * 1.6);
         }
         if (marker.isCarried()) {
-            standing(graphics, gx + PUSHER_OFFSET, gy, 0, porter());
+            standing(graphics, gx + PUSHER_OFFSET, gy, 0, porter(), marker.moving());
         }
         return top;
     }
 
-    private Point2D standing(Graphics2D graphics, double gx, double gy, double lift, IsoBrush.Person person) {
+    /** Persona de pie; si va caminando, con las piernas y los brazos al ritmo del paso. */
+    private Point2D standing(Graphics2D graphics, double gx, double gy, double lift, IsoBrush.Person person,
+                             boolean walking) {
         IsoBrush.shadow(graphics, projection, gx, gy, IsoBrush.BODY_RADIUS * 1.45 * person.scale());
-        return IsoBrush.person(graphics, projection, gx, gy, 0, lift, person);
+        return IsoBrush.person(graphics, projection, gx, gy, 0, lift, person,
+                walking ? IsoBrush.stride(gx, gy) : Double.NaN);
     }
 
     private void paintStaff(Graphics2D graphics, StaffMarker marker, double gx, double gy) {
@@ -297,7 +301,7 @@ public final class IsoFigures {
         if (marker.seated()) {
             IsoBrush.person(graphics, projection, gx, gy, IsoFurniture.SEAT_TOP, marker.bob(), person);
         } else {
-            standing(graphics, gx, gy, marker.bob(), person);
+            standing(graphics, gx, gy, marker.bob(), person, marker.moving());
         }
         if (marker.isDoctor()) {
             Point2D chest = projection.at(gx, gy, (marker.seated() ? IsoFurniture.SEAT_TOP : 0)

@@ -58,6 +58,14 @@ public final class IsoBrush {
     private static final double SLEEVE = 0.86;
     private static final float PERSON_STROKE = 0.9f;
     private static final Color SHOES = new Color(0x1F, 0x24, 0x30);
+    /** Metros que avanza una persona en medio paso: lo que tarda una pierna en pasar de atrás hacia adelante. */
+    public static final double STEP_LENGTH = 0.35;
+    /** Píxeles que se corre el pie hacia adelante o hacia atrás en el paso más largo. */
+    public static final double LEG_SWING = 3.2;
+    /** Píxeles que se corre la mano al balancear el brazo. */
+    public static final double ARM_SWING = 2.6;
+    /** Píxeles que sube el cuerpo cuando las piernas se cruzan al caminar. */
+    public static final double WALK_BOUNCE = 1.3;
     private static final double FACE_EAST = 0.76;
     private static final double FACE_TOP = 0.18;
     private static final double EDGE = 0.8;
@@ -349,6 +357,40 @@ public final class IsoBrush {
      */
     public static Point2D person(Graphics2D graphics, IsoProjection projection, double gx, double gy, double z,
                                  double lift, Person person) {
+        return person(graphics, projection, gx, gy, z, lift, person, Double.NaN);
+    }
+
+    /**
+     * Fase del paso de alguien que camina por un punto: avanza media vuelta cada {@value #STEP_LENGTH} m recorridos a
+     * lo largo de las columnas o de las filas, así que las piernas se mueven al ritmo con que avanza la figura.
+     *
+     * @param gx columna de los pies
+     * @param gy fila de los pies
+     * @return la fase, en radianes
+     */
+    public static double stride(double gx, double gy) {
+        return (gx + gy) / STEP_LENGTH * Math.PI;
+    }
+
+    /**
+     * Persona de pie que puede ir caminando: como {@link #person(Graphics2D, IsoProjection, double, double, double,
+     * double, Person)}, pero con la fase del paso las piernas se abren hacia adelante y hacia atrás, los brazos se
+     * mueven al revés que las piernas y el cuerpo sube un poco cuando las piernas se cruzan.
+     *
+     * @param graphics   superficie de dibujo
+     * @param projection proyección de la vista
+     * @param gx         columna de los pies
+     * @param gy         fila de los pies
+     * @param z          altura de la base del cuerpo
+     * @param lift       cuánto sube o baja la figura en pantalla por el movimiento de reposo, en píxeles
+     * @param person     cómo se ve
+     * @param stride     fase del paso, en radianes ({@link #stride}); {@code NaN} si está quieta
+     * @return punto de la pantalla justo encima de la cabeza, donde van las barras
+     */
+    public static Point2D person(Graphics2D graphics, IsoProjection projection, double gx, double gy, double z,
+                                 double lift, Person person, double stride) {
+        boolean walking = !Double.isNaN(stride) && !person.seated();
+        double swing = walking ? Math.sin(stride) : 0.0;
         double scale = person.scale();
         double unit = IsoProjection.Z_SCALE * scale;
         Color clothes = person.body();
@@ -356,7 +398,8 @@ public final class IsoBrush {
         Color sleeve = IsoPalette.darker(clothes, SLEEVE);
         Point2D base = projection.at(gx, gy, z);
         double cx = base.getX();
-        double feet = base.getY() + lift;
+        double ground = base.getY() + lift;
+        double feet = walking ? ground - Math.abs(Math.cos(stride)) * WALK_BOUNCE * scale : ground;
         double halfWidth = TORSO_HALF_WIDTH * unit;
         graphics.setStroke(new BasicStroke(PERSON_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         double hip;
@@ -365,6 +408,9 @@ public final class IsoBrush {
             box(graphics, projection, gx - 0.09 * scale, gy - 0.02, z, 0.18 * scale, thigh, 0.07 * scale, pants);
             box(graphics, projection, gx - 0.09 * scale, gy + thigh - 0.06, 0, 0.18 * scale, 0.05, z, pants);
             hip = feet - 0.05 * unit;
+        } else if (walking) {
+            hip = feet - LEG_HEIGHT * unit;
+            walkingLegs(graphics, person, cx, hip, ground, halfWidth, unit, swing);
         } else {
             double legs = LEG_HEIGHT * unit;
             hip = feet - legs;
@@ -392,9 +438,10 @@ public final class IsoBrush {
         graphics.draw(new Line2D.Double(cx, shoulders + 3, cx, hip));
         for (int side = -1; side <= 1; side += 2) {
             double sx = cx + side * (halfWidth + 0.6);
+            double hand = -side * swing * ARM_SWING * scale;
             Path2D.Double arm = new Path2D.Double();
             arm.moveTo(sx, shoulders + 2);
-            arm.quadTo(sx + side * 1.4, (shoulders + hip) / 2, sx + side * 0.5, hip - 1);
+            arm.quadTo(sx + side * 1.4 + hand / 2, (shoulders + hip) / 2, sx + side * 0.5 + hand, hip - 1);
             graphics.setStroke(new BasicStroke((float) (0.07 * unit), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             graphics.setColor(IsoPalette.OUTLINE);
             graphics.draw(arm);
@@ -403,7 +450,7 @@ public final class IsoBrush {
             graphics.setColor(sleeve);
             graphics.draw(arm);
             graphics.setColor(Palette.PATIENT_HEAD);
-            graphics.fill(new Ellipse2D.Double(sx + side * 0.5 - 1.7, hip - 2.6, 3.4, 3.4));
+            graphics.fill(new Ellipse2D.Double(sx + side * 0.5 + hand - 1.7, hip - 2.6, 3.4, 3.4));
         }
         graphics.setStroke(new BasicStroke(PERSON_STROKE));
         double head = HEAD_RADIUS * unit;
@@ -412,6 +459,38 @@ public final class IsoBrush {
         graphics.fill(new Rectangle2D.Double(cx - head * 0.35, shoulders - head * 0.4, head * 0.7, head * 0.6));
         head(graphics, cx, headY, head, person.cap(), person.hair());
         return new Point2D.Double(cx, headY - head);
+    }
+
+    /**
+     * Piernas de alguien que camina: cada una va de la cadera al piso con el pie corrido hacia un lado según el paso;
+     * una persona con vestido muestra solo la parte de abajo de las piernas.
+     */
+    private static void walkingLegs(Graphics2D graphics, Person person, double cx, double hip, double ground,
+                                    double halfWidth, double unit, double swing) {
+        Color clothes = person.body();
+        Color pants = IsoPalette.darker(clothes, PANTS);
+        double reach = LEG_SWING * person.scale();
+        boolean dress = person.sex() == Sex.FEMALE;
+        double top = dress ? ground - 0.13 * unit : hip;
+        if (dress) {
+            outlined(graphics, trapezoid(cx, hip, halfWidth * 0.9, top, halfWidth * 1.25),
+                    IsoPalette.lighter(clothes, 0.08));
+        }
+        for (int side = -1; side <= 1; side += 2) {
+            double knee = cx + side * halfWidth * 0.4;
+            double foot = knee + side * swing * reach;
+            double half = halfWidth * 0.3;
+            Path2D.Double leg = new Path2D.Double();
+            leg.moveTo(knee - half, top);
+            leg.lineTo(knee + half, top);
+            leg.lineTo(foot + half, ground);
+            leg.lineTo(foot - half, ground);
+            leg.closePath();
+            outlined(graphics, leg, pants);
+            graphics.setColor(SHOES);
+            graphics.fill(new RoundRectangle2D.Double(foot - halfWidth * 0.42, ground - 1.6, halfWidth * 0.85, 2.6,
+                    1.5, 1.5));
+        }
     }
 
     /**
