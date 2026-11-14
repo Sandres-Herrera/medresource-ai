@@ -52,8 +52,14 @@ class IsoFurnitureTest {
                 desks++;
             }
         }
-        long expected = beds + 2 * icu + 3 * operating + layout.getWaitingSpots().size()
-                + 2L * layout.getTriageSpots().size() + layout.getBloodSpots().size() + layout.getMorgueSpots().size()
+        long besideFree = layout.getResourceCodes().stream().map(code -> layout.positionOf(code).orElseThrow())
+                .filter(spot -> layout.areaAt(spot).orElseThrow().zone() == ZoneType.HOSPITALIZATION)
+                .map(spot -> new Position(spot.col() + 1, spot.row()))
+                .filter(side -> layout.areaAt(side).map(area -> area.zone() == ZoneType.HOSPITALIZATION).orElse(false)
+                        && layout.resourceAt(side).isEmpty())
+                .count();
+        long expected = beds + 3 * besideFree + 2 * icu + 3 * operating + layout.getWaitingSpots().size()
+                + 3L * layout.getTriageSpots().size() + layout.getBloodSpots().size() + layout.getMorgueSpots().size()
                 + desks + tables.size() + layout.getStaffCodes().size() + furniture.propCount();
 
         List<IsoItem> items = furniture.items();
