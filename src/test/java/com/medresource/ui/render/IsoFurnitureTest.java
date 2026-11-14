@@ -15,9 +15,11 @@ import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -127,6 +129,41 @@ class IsoFurnitureTest {
         Point2D side = projection.at(fridge.col() + 0.5, fridge.row() + 0.22 + 0.56, 0.5);
         Color seen = new Color(image.getRGB((int) side.getX(), (int) side.getY()));
         assertNotEquals(Color.BLACK, seen);
+    }
+
+    @Test
+    void theHeartBeatsFasterAsTheHealthGoesDown() {
+        assertEquals(IsoFurniture.CALM_BPM, IsoFurniture.beatsPerMinute(100), 1e-9);
+        assertEquals(IsoFurniture.GRAVE_BPM, IsoFurniture.beatsPerMinute(0), 1e-9);
+        assertTrue(IsoFurniture.beatsPerMinute(30) > IsoFurniture.beatsPerMinute(80));
+    }
+
+    @Test
+    void theTraceHasItsPeakInTheMiddleOfTheBeatAndRestsAtTheEnd() {
+        assertEquals(1.0, IsoFurniture.heartTrace(0.34), 1e-9);
+        assertEquals(0.0, IsoFurniture.heartTrace(0.9), 0.0);
+        assertEquals(IsoFurniture.heartTrace(0.34), IsoFurniture.heartTrace(3.34), 1e-9);
+    }
+
+    @Test
+    void theAlarmBlinksForAGravePatientAndStaysOnForADeadOne() {
+        Position grave = layout.positionOf("UCI-C1").orElseThrow();
+        Position dead = layout.positionOf("UCI-C2").orElseThrow();
+        Position fine = layout.positionOf("UCI-C3").orElseThrow();
+        Map<Position, Double> health = Map.of(grave, 10.0, dead, 0.0, fine, 80.0);
+
+        furniture.showVitals(0.1, health);
+        assertTrue(furniture.alarmOn(grave));
+        assertTrue(furniture.alarmOn(dead));
+        assertFalse(furniture.alarmOn(fine));
+
+        furniture.showVitals(0.4, health);
+        assertFalse(furniture.alarmOn(grave), "a mitad del parpadeo se apaga");
+        assertTrue(furniture.alarmOn(dead));
+        assertTrue(IsoFurniture.isGrave(Palette.POOR_HEALTH - 0.1));
+        assertFalse(IsoFurniture.isGrave(Palette.POOR_HEALTH));
+        assertThrows(IllegalArgumentException.class, () -> furniture.showVitals(Double.NaN, health));
+        assertThrows(IllegalArgumentException.class, () -> furniture.showVitals(0, null));
     }
 
     @Test

@@ -17,6 +17,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -142,6 +143,22 @@ class IsometricRendererTest {
         assertThrows(IllegalArgumentException.class, () -> renderer.setView(Double.NaN, 40));
         assertThrows(IllegalArgumentException.class, () -> renderer.setView(0, 95));
         assertEquals(IsoProjection.DEFAULT_ELEVATION, renderer.getElevation(), 0.0);
+    }
+
+    @Test
+    void theMonitorOfAGravePatientInTheIcuRaisesTheAlarm() {
+        Position bed = layout.positionOf("UCI-C1").orElseThrow();
+        Point2D point = flat.centerOf(bed);
+        PatientMarker grave = new PatientMarker("P001", TriageLevel.I, Sex.MALE, false, false, point.getX(),
+                point.getY(), 8, 0.5);
+        renderer.setClock(0.1);
+
+        paint(List.of(grave), 0);
+
+        assertTrue(renderer.alarmOn(layout, bed));
+        paint(List.of(), 0);
+        assertFalse(renderer.alarmOn(layout, bed), "sin paciente la alarma se apaga");
+        assertThrows(IllegalArgumentException.class, () -> renderer.setClock(Double.NaN));
     }
 
     @Test
