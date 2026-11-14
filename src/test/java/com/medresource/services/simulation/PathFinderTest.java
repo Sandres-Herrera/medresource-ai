@@ -167,7 +167,7 @@ class PathFinderTest {
     @Test
     void fromTheWaitingRoomToAConsultationItGoesDownTheVerticalCorridor() {
         HospitalLayout layout = standardPlan();
-        Area vertical = layout.areasOf(ZoneType.CORRIDOR).stream().filter(area -> area.cols() == 1)
+        Area vertical = layout.areasOf(ZoneType.CORRIDOR).stream().filter(area -> area.cols() == 2)
                 .findFirst().orElseThrow();
         Position desk = layout.consultDeskOf("D01").orElseThrow();
 

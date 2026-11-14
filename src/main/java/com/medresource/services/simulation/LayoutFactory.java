@@ -21,8 +21,8 @@ import java.util.Map;
  * Arma el plano de un hospital: dónde está cada sala, cama, quirófano, médico y enfermero.
  *
  * <p>El plano sigue el recorrido del paciente y se arma en tres franjas, cada una con todas sus áreas de la
- * misma altura, separadas por un pasillo de una casilla de alto a todo lo ancho; un pasillo vertical entre la
- * UCI y el banco de sangre une los dos pasillos:</p>
+ * misma altura, separadas por un pasillo de dos casillas de alto a todo lo ancho; un pasillo vertical de dos
+ * casillas entre la UCI y el banco de sangre une los dos pasillos:</p>
  * <ol>
  *   <li>Arriba, de izquierda a derecha: el triage (con la entrada), la sala de espera y la hospitalización
  *       con todas sus camas.</li>
@@ -46,11 +46,14 @@ import java.util.Map;
  */
 public class LayoutFactory {
 
-    private static final int TRIAGE_COLS = 2;
-    /** Alto de los pasillos entre las franjas: una casilla. */
-    private static final int CORRIDOR_ROWS = 1;
-    /** Ancho del pasillo vertical que une los dos pasillos, entre la UCI y el banco de sangre: una casilla. */
-    private static final int CORRIDOR_COLS = 1;
+    /** Columnas del triage: la de la entrada y la fila, la de los puestos y una libre para pasar. */
+    private static final int TRIAGE_COLS = 3;
+    /** Alto de los pasillos entre las franjas: dos casillas, para que quepan camillas y personas a la vez. */
+    private static final int CORRIDOR_ROWS = 2;
+    /** Ancho del pasillo vertical que une los dos pasillos, entre la UCI y el banco de sangre: dos casillas. */
+    private static final int CORRIDOR_COLS = 2;
+    /** Casillas entre una cama de hospitalización y la siguiente: la cama y un espacio para quien la atiende. */
+    private static final int BED_STEP = 2;
     /** Columnas de la sala de espera. */
     private static final int WAITING_COLS = 6;
     /** Filas de lugares de la sala de espera: {@code 6 × 6 = 36} sillas. */
@@ -91,9 +94,9 @@ public class LayoutFactory {
         int operatingRooms = hospital.getOperatingRooms().size();
         int morgueCapacity = hospital.getMorgue().getCapacity();
         int staffCount = hospital.getDoctors().size() + hospital.getNurses().size();
-        // Un puesto por estación de triage, uno debajo de otro en la segunda columna del área.
+        // Un puesto por estación de triage, uno cada dos filas en la columna del medio del área.
         int triageStations = hospital.getTriageStations().size();
-        int triageMinRows = 1 + triageStations;
+        int triageMinRows = 2 * triageStations;
 
         // Anchos de las franjas: la más ancha manda y la otra reparte lo que le sobra.
         int bedCols = columnsFor(beds.size(), MIN_BED_COLS, MAX_BED_COLS);
@@ -113,7 +116,8 @@ public class LayoutFactory {
         int dischargeCols = planCols - icuCols - CORRIDOR_COLS - BLOOD_COLS - operatingCols - morgueCols;
 
         // Alturas de las franjas: la sala más alta manda y las demás se estiran hasta ella.
-        int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, triageMinRows), 1 + rowsFor(beds.size(), wardCols));
+        int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, triageMinRows),
+                1 + rowsFor(beds.size(), Math.max(1, wardCols / BED_STEP)));
         int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
         int middleTop = topHeight + CORRIDOR_ROWS;
@@ -135,7 +139,7 @@ public class LayoutFactory {
         Area ward = new Area(ZoneType.HOSPITALIZATION, "Hospitalización (" + beds.size() + " camas)",
                 TRIAGE_COLS + WAITING_COLS, 0, wardCols, topHeight);
         areas.add(ward);
-        placeBeds(spots, ward, beds);
+        placeSpacedBeds(spots, ward, beds);
 
         areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", 0, topHeight, planCols, CORRIDOR_ROWS));
 
@@ -174,7 +178,7 @@ public class LayoutFactory {
 
         List<Position> triageSpots = new ArrayList<>();
         for (int index = 0; index < triageStations; index++) {
-            triageSpots.add(triage.slot(1 + 2 * index));
+            triageSpots.add(new Position(triage.col() + 1, triage.row() + 1 + 2 * index));
         }
         List<Position> waitingSpots = new ArrayList<>();
         for (int index = 0; index < WAITING_COLS * WAITING_SLOT_ROWS; index++) {
@@ -236,6 +240,19 @@ public class LayoutFactory {
                     col + (index % perRow) * OPERATING_COLS, rowTop, roomCols, roomHeight);
             areas.add(room);
             spots.put(hospital.getOperatingRooms().get(index).getCode(), room.slot(0));
+        }
+    }
+
+    /**
+     * Pone las camas de hospitalización con una casilla libre entre cada una, a lo ancho de la sala y fila por fila
+     * debajo del título: así el personal tiene espacio para pararse junto a cada paciente.
+     */
+    private void placeSpacedBeds(Map<String, Position> spots, Area area, List<Bed> beds) {
+        int perRow = Math.max(1, area.cols() / BED_STEP);
+        int offset = (area.cols() - (perRow - 1) * BED_STEP - 1) / 2;
+        for (int index = 0; index < beds.size(); index++) {
+            spots.put(beds.get(index).getCode(), new Position(area.col() + offset + index % perRow * BED_STEP,
+                    area.row() + 1 + index / perRow));
         }
     }
 
