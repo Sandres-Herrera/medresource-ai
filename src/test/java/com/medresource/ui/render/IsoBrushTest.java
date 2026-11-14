@@ -71,6 +71,47 @@ class IsoBrushTest {
     }
 
     @Test
+    void seenFromBehindABoxShowsTheSidesThatWereHidden() {
+        IsoProjection back = projection.withView(180, IsoProjection.DEFAULT_ELEVATION);
+        BufferedImage picture = new BufferedImage(back.size().width, back.size().height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D surface = picture.createGraphics();
+        Color left = new Color(200, 40, 40);
+        Color right = new Color(40, 40, 200);
+
+        IsoBrush.box(surface, back, 1, 1, 0, 1, 1, 1, Color.WHITE, left, right);
+
+        Point2D front = back.at(1.5, 1, 0.5);
+        Point2D side = back.at(1, 1.5, 0.5);
+        assertEquals(left.getRGB(), picture.getRGB((int) Math.round(front.getX()), (int) Math.round(front.getY())));
+        assertEquals(right.getRGB(), picture.getRGB((int) Math.round(side.getX()), (int) Math.round(side.getY())));
+        surface.dispose();
+    }
+
+    @Test
+    void aSideThatLooksStraightDownMixesBothColors() {
+        Color mixed = IsoBrush.mix(Color.BLACK, Color.WHITE, 0.5);
+
+        assertEquals(new Color(128, 128, 128), mixed);
+        assertEquals(Color.RED, IsoBrush.mix(Color.RED, Color.BLUE, 0));
+        assertEquals(Color.BLUE, IsoBrush.mix(Color.RED, Color.BLUE, 1));
+    }
+
+    @Test
+    void seenFromAboveOnlyTheTopOfABoxIsDrawn() {
+        IsoProjection above = projection.withView(0, IsoProjection.MAX_ELEVATION);
+        BufferedImage picture = new BufferedImage(above.size().width, above.size().height,
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D surface = picture.createGraphics();
+
+        IsoBrush.box(surface, above, 1, 1, 0, 1, 1, 1, Color.WHITE, Color.RED, Color.BLUE);
+
+        Point2D center = above.at(1.5, 1.5, 1);
+        assertEquals(Color.WHITE.getRGB(), picture.getRGB((int) Math.round(center.getX()),
+                (int) Math.round(center.getY())));
+        surface.dispose();
+    }
+
+    @Test
     void theGlassLetsWhatIsBehindItBeSeen() {
         graphics.setColor(Color.RED);
         graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
