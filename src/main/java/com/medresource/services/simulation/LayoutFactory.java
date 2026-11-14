@@ -52,7 +52,10 @@ public class LayoutFactory {
     private static final int CORRIDOR_ROWS = 2;
     /** Ancho del pasillo vertical que une los dos pasillos, entre la UCI y el banco de sangre: dos casillas. */
     private static final int CORRIDOR_COLS = 2;
-    /** Casillas entre una cama de hospitalización y la siguiente: la cama y un espacio para quien la atiende. */
+    /**
+     * Casillas entre una cama y la siguiente, a lo ancho y a lo alto (hospitalización y UCI): la cama y un espacio
+     * libre, para quien la atiende al lado y para que los pies de una cama no toquen la cabecera de la de abajo.
+     */
     private static final int BED_STEP = 2;
     /** Columnas de la sala de espera. */
     private static final int WAITING_COLS = 6;
@@ -100,7 +103,8 @@ public class LayoutFactory {
 
         // Anchos de las franjas: la más ancha manda y la otra reparte lo que le sobra.
         int bedCols = columnsFor(beds.size(), MIN_BED_COLS, MAX_BED_COLS);
-        int icuCols = columnsFor(icuBeds.size(), MIN_ICU_COLS, MAX_ICU_COLS);
+        int icuPerRow = columnsFor(icuBeds.size(), MIN_ICU_COLS, MAX_ICU_COLS);
+        int icuCols = icuPerRow * BED_STEP;
         // Bloque de quirófanos casi cuadrado, pero de dos filas como máximo para que todos toquen un pasillo.
         int operatingPerRow = (int) Math.ceil(Math.sqrt(operatingRooms));
         if ((operatingRooms + operatingPerRow - 1) / operatingPerRow > MAX_OPERATING_BLOCK_ROWS) {
@@ -117,8 +121,9 @@ public class LayoutFactory {
 
         // Alturas de las franjas: la sala más alta manda y las demás se estiran hasta ella.
         int topHeight = Math.max(Math.max(1 + WAITING_SLOT_ROWS, triageMinRows),
-                1 + rowsFor(beds.size(), Math.max(1, wardCols / BED_STEP)));
-        int middleHeight = Math.max(Math.max(1 + rowsFor(icuBeds.size(), icuCols), operatingBlockRows * OPERATING_ROWS),
+                1 + spacedRows(rowsFor(beds.size(), Math.max(1, wardCols / BED_STEP))));
+        int middleHeight = Math.max(Math.max(1 + spacedRows(rowsFor(icuBeds.size(), icuPerRow)),
+                operatingBlockRows * OPERATING_ROWS),
                 Math.max(Math.max(1 + rowsFor(morgueCapacity, morgueCols), BLOOD_ROWS), DISCHARGE_ROWS));
         int middleTop = topHeight + CORRIDOR_ROWS;
         int staffTop = middleTop + middleHeight + CORRIDOR_ROWS;
@@ -147,7 +152,7 @@ public class LayoutFactory {
         int col = 0;
         Area icu = new Area(ZoneType.ICU, "UCI (" + icuBeds.size() + " camas)", col, middleTop, icuCols, middleHeight);
         areas.add(icu);
-        placeBeds(spots, icu, icuBeds);
+        placeSpacedBeds(spots, icu, icuBeds);
         col += icuCols;
         areas.add(new Area(ZoneType.CORRIDOR, "Pasillo", col, middleTop, CORRIDOR_COLS, middleHeight));
         col += CORRIDOR_COLS;
@@ -244,22 +249,16 @@ public class LayoutFactory {
     }
 
     /**
-     * Pone las camas de hospitalización con una casilla libre entre cada una, a lo ancho de la sala y fila por fila
-     * debajo del título: así el personal tiene espacio para pararse junto a cada paciente.
+     * Pone las camas con una casilla libre entre cada una a lo ancho y una fila libre entre cada fila de camas,
+     * debajo del título: así el personal tiene espacio para pararse junto a cada paciente y los pies de una cama no
+     * tocan la cabecera de la de abajo.
      */
     private void placeSpacedBeds(Map<String, Position> spots, Area area, List<Bed> beds) {
         int perRow = Math.max(1, area.cols() / BED_STEP);
         int offset = (area.cols() - (perRow - 1) * BED_STEP - 1) / 2;
         for (int index = 0; index < beds.size(); index++) {
             spots.put(beds.get(index).getCode(), new Position(area.col() + offset + index % perRow * BED_STEP,
-                    area.row() + 1 + index / perRow));
-        }
-    }
-
-    /** Pone cada cama en un lugar del área, en el orden en que el hospital las tiene. */
-    private void placeBeds(Map<String, Position> spots, Area area, List<Bed> beds) {
-        for (int index = 0; index < beds.size(); index++) {
-            spots.put(beds.get(index).getCode(), area.slot(index));
+                    area.row() + 1 + index / perRow * BED_STEP));
         }
     }
 
@@ -280,6 +279,11 @@ public class LayoutFactory {
     private static int columnsFor(int count, int min, int max) {
         int wanted = (int) Math.ceil(Math.sqrt(count * ASPECT));
         return Math.max(min, Math.min(max, wanted));
+    }
+
+    /** Filas que ocupan unas filas de camas con una fila libre entre cada dos. */
+    private static int spacedRows(int bedRows) {
+        return Math.max(1, bedRows * BED_STEP - 1);
     }
 
     private static int rowsFor(int count, int cols) {

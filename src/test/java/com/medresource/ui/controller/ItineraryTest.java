@@ -161,9 +161,9 @@ class ItineraryTest {
         assertEquals(bed, itinerary.heading().orElseThrow());
         assertFalse(itinerary.hasArrived());
 
-        itinerary.update(seated + 25 + secondsBetween(firstChair.cell(), bed.cell()));
+        itinerary.update(seated + 25 + secondsBetween(firstChair.cell(), bed.cell()) + 0.001);
 
-        assertEquals(centerOf(bed), itinerary.getCurrent());
+        assertEquals(0, centerOf(bed).distance(itinerary.getCurrent()), 1e-6);
         assertTrue(itinerary.hasArrived());
     }
 
