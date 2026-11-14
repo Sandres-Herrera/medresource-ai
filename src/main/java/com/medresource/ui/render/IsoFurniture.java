@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -42,6 +43,12 @@ import java.util.function.Consumer;
  * atiende al paciente (a la izquierda del centro de la casilla, como en la vista 2D). Las medidas de las camas, de la
  * mesa de operaciones y de la mesa de la morgue son públicas porque {@link IsoFigures} acuesta a los pacientes
  * encima.</p>
+ *
+ * <p>Los monitores de signos vitales de la UCI y del quirófano están vivos ({@link #showVitals}): con un paciente en su
+ * cama o en su mesa, el trazo del electrocardiograma corre por la pantalla a un ritmo que sube a medida que baja su
+ * salud, y la luz de alarma de encima parpadea en rojo cuando está grave (salud por debajo de
+ * {@value Palette#POOR_HEALTH}); un fallecido deja la línea plana y la alarma encendida. Sin paciente, la pantalla
+ * queda en reposo, con una línea tenue.</p>
  */
 public final class IsoFurniture {
 
@@ -67,6 +74,22 @@ public final class IsoFurniture {
     public static final int CORRIDOR_PROP_STEP = 3;
     /** Casillas de la fila del título que quedan libres debajo del letrero de la sala. */
     public static final int SIGN_CELLS = IsoStructure.SIGN_SEGMENTS;
+    /** Latidos por minuto que muestra el monitor de un paciente sano. */
+    public static final double CALM_BPM = 72.0;
+    /** Latidos por minuto que muestra el monitor de un paciente a punto de morir. */
+    public static final double GRAVE_BPM = 150.0;
+    /** Latidos que caben a lo ancho de la pantalla del monitor. */
+    public static final double BEATS_ON_SCREEN = 2.5;
+    /** Veces por segundo que parpadea la luz de alarma. */
+    public static final double ALARM_BLINKS = 2.0;
+    /** Puntos con que se dibuja el trazo del electrocardiograma. */
+    private static final int TRACE_POINTS = 48;
+    private static final Color TRACE_ALARM = new Color(0xF8, 0x71, 0x71);
+    private static final Color ALARM_ON = new Color(0xFF, 0x3B, 0x3B);
+    private static final Color ALARM_GLOW = new Color(0xFF, 0x3B, 0x3B, 70);
+    private static final Color ALARM_OFF = new Color(0x3F, 0x4A, 0x5A);
+    private static final Color STANDBY_LINE = new Color(0x34, 0xD3, 0x99, 70);
+
     /** Altura del asiento de las sillas. */
     public static final double SEAT_TOP = 0.24;
     /** Lado de las sillas, en metros. */
@@ -94,6 +117,8 @@ public final class IsoFurniture {
     private final IsoProjection projection;
     private final SceneRenderer flat;
     private final IsoTheme theme;
+    private double seconds;
+    private Map<Position, Double> vitals = Map.of();
 
     /**
      * Prepara los muebles de un plano con el tema claro.
@@ -125,6 +150,89 @@ public final class IsoFurniture {
         this.projection = projection;
         this.flat = flat;
         this.theme = theme;
+    }
+
+    /**
+     * Dice a los monitores qué mostrar en este cuadro: el momento, que mueve el trazo, y la salud del paciente que hay
+     * en cada cama o mesa de operaciones.
+     *
+     * @param seconds momento, en segundos (reales o simulados: solo da el ritmo del dibujo)
+     * @param health  salud del paciente de cada casilla con cama o mesa (0 si falleció); las que no están, sin paciente
+     * @throws IllegalArgumentException si falta el mapa o el momento no es un número
+     */
+    public void showVitals(double seconds, Map<Position, Double> health) {
+        if (health == null || !Double.isFinite(seconds)) {
+            throw new IllegalArgumentException("El momento y la salud de los pacientes son obligatorios.");
+        }
+        this.seconds = seconds;
+        this.vitals = Map.copyOf(health);
+    }
+
+    /**
+     * Latidos por minuto que muestra el monitor de un paciente con esa salud: {@value #CALM_BPM} sano y hasta
+     * {@value #GRAVE_BPM} cuando casi no le queda.
+     *
+     * @param health salud, de 0 a 100
+     * @return latidos por minuto
+     */
+    public static double beatsPerMinute(double health) {
+        double share = Math.max(0.0, Math.min(1.0, health / 100.0));
+        return GRAVE_BPM - (GRAVE_BPM - CALM_BPM) * share;
+    }
+
+    /**
+     * Indica si un paciente con esa salud está grave: su barra se ve roja y la alarma de su monitor se enciende.
+     *
+     * @param health salud, de 0 a 100
+     * @return {@code true} si está por debajo de {@value Palette#POOR_HEALTH}
+     */
+    public static boolean isGrave(double health) {
+        return health < Palette.POOR_HEALTH;
+    }
+
+    /**
+     * Indica si la luz de alarma del monitor de una casilla se ve encendida en este cuadro: parpadea
+     * {@value #ALARM_BLINKS} veces por segundo si el paciente está grave, y queda encendida si falleció.
+     *
+     * @param spot casilla de la cama o de la mesa
+     * @return {@code true} si se ve encendida
+     */
+    public boolean alarmOn(Position spot) {
+        Double health = vitals.get(spot);
+        if (health == null || !isGrave(health)) {
+            return false;
+        }
+        return health <= 0 || (seconds * ALARM_BLINKS) % 1.0 < 0.6;
+    }
+
+    /**
+     * Altura del trazo del electrocardiograma en un punto de su ciclo, de -0,3 a 1: la onda P, el complejo QRS con su
+     * pico y la onda T.
+     *
+     * @param cycle parte del latido, de 0 a 1 (las vueltas de más se descartan)
+     * @return la altura, con la línea de base en 0
+     */
+    static double heartTrace(double cycle) {
+        double c = cycle - Math.floor(cycle);
+        if (c >= 0.10 && c < 0.20) {
+            return 0.12 * Math.sin((c - 0.10) / 0.10 * Math.PI);
+        }
+        if (c >= 0.28 && c < 0.31) {
+            return -0.25 * (c - 0.28) / 0.03;
+        }
+        if (c >= 0.31 && c < 0.34) {
+            return -0.25 + 1.25 * (c - 0.31) / 0.03;
+        }
+        if (c >= 0.34 && c < 0.38) {
+            return 1.0 - 1.3 * (c - 0.34) / 0.04;
+        }
+        if (c >= 0.38 && c < 0.41) {
+            return -0.3 + 0.3 * (c - 0.38) / 0.03;
+        }
+        if (c >= 0.52 && c < 0.70) {
+            return 0.25 * Math.sin((c - 0.52) / 0.18 * Math.PI);
+        }
+        return 0.0;
     }
 
     /** Tema de colores de los muebles. */
@@ -637,12 +745,24 @@ public final class IsoFurniture {
         double y = spot.row() + MONITOR_Y;
         IsoBrush.box(graphics, projection, x - 0.09, y - 0.09, 0, 0.18, 0.18, 0.03, color(Part.METAL));
         IsoBrush.box(graphics, projection, x - 0.02, y - 0.02, 0.03, 0.04, 0.04, 0.62, color(Part.METAL));
-        screen(graphics, x, y, 0.66);
+        screen(graphics, x, y, 0.66, spot);
     }
 
-    /** Pantalla con el trazo verde de los latidos, en su cara de las filas mayores; de espaldas solo se ve la caja. */
-    private void screen(Graphics2D graphics, double x, double y, double z) {
+    /**
+     * Pantalla con el trazo de los latidos, en su cara de las filas mayores (de espaldas solo se ve la caja), y encima
+     * la luz de alarma. Con un paciente en la casilla, el trazo corre según su salud; sin paciente, queda en reposo.
+     */
+    private void screen(Graphics2D graphics, double x, double y, double z, Position spot) {
         IsoBrush.box(graphics, projection, x - 0.15, y - 0.05, z, 0.3, 0.1, 0.22, color(Part.DEVICE));
+        Double health = vitals.get(spot);
+        boolean alarm = alarmOn(spot);
+        IsoBrush.box(graphics, projection, x - 0.03, y - 0.03, z + 0.22, 0.06, 0.06, 0.04,
+                alarm ? ALARM_ON : ALARM_OFF);
+        if (alarm) {
+            Point2D lamp = projection.at(x, y, z + 0.27);
+            graphics.setColor(ALARM_GLOW);
+            graphics.fill(new Ellipse2D.Double(lamp.getX() - 9, lamp.getY() - 6, 18, 12));
+        }
         if (!projection.faces(0, 1)) {
             return;
         }
@@ -651,9 +771,12 @@ public final class IsoFurniture {
         graphics.fill(IsoBrush.polygon(projection, new double[][] {{x - 0.13, face, z + 0.03},
                 {x + 0.13, face, z + 0.03}, {x + 0.13, face, z + 0.19}, {x - 0.13, face, z + 0.19}}));
         Path2D.Double beat = new Path2D.Double();
-        double[][] points = {{-0.11, 0.11}, {-0.04, 0.11}, {-0.02, 0.17}, {0.01, 0.05}, {0.04, 0.11}, {0.11, 0.11}};
-        for (int index = 0; index < points.length; index++) {
-            Point2D at = projection.at(x + points[index][0], face, z + points[index][1]);
+        double beatsPerSecond = health == null || health <= 0 ? 0 : beatsPerMinute(health) / 60.0;
+        for (int index = 0; index <= TRACE_POINTS; index++) {
+            double along = index / (double) TRACE_POINTS;
+            double cycle = seconds * beatsPerSecond - (1 - along) * BEATS_ON_SCREEN;
+            double height = beatsPerSecond == 0 ? 0 : heartTrace(cycle);
+            Point2D at = projection.at(x - 0.11 + 0.22 * along, face, z + 0.09 + 0.065 * height);
             if (index == 0) {
                 beat.moveTo(at.getX(), at.getY());
             } else {
@@ -661,7 +784,7 @@ public final class IsoFurniture {
             }
         }
         graphics.setStroke(new BasicStroke(1f));
-        graphics.setColor(IsoPalette.MONITOR_LINE);
+        graphics.setColor(health == null ? STANDBY_LINE : isGrave(health) ? TRACE_ALARM : IsoPalette.MONITOR_LINE);
         graphics.draw(beat);
     }
 
@@ -676,7 +799,7 @@ public final class IsoFurniture {
     private void anesthesia(Graphics2D graphics, Position spot) {
         IsoBrush.box(graphics, projection, spot.col() + 0.08, spot.row() + 0.08, 0, 0.24, 0.2, 0.55,
                 color(Part.DEVICE));
-        screen(graphics, spot.col() + 0.2, spot.row() + 0.18, 0.55);
+        screen(graphics, spot.col() + 0.2, spot.row() + 0.18, 0.55, spot);
     }
 
     /** Lámpara colgada sobre la mesa, con un halo de luz en el piso. */

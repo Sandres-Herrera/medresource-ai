@@ -13,7 +13,9 @@ import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -34,7 +36,9 @@ import java.util.Optional;
  * elevación, de la diagonal de siempre hasta verlo desde arriba. Cambiar el ángulo vuelve a armar el edificio en el
  * cuadro siguiente; las personas no cambian de lugar.</p>
  *
- * <p>En cada cuadro las puertas se abren para quien se acerca a ellas, sea paciente, médico, enfermero o camillero.</p>
+ * <p>En cada cuadro las puertas se abren para quien se acerca a ellas, sea paciente, médico, enfermero o camillero, y
+ * los monitores de la UCI y del quirófano muestran los latidos del paciente acostado en su cama o en su mesa. El
+ * trazo corre con el reloj de la animación ({@link #setClock}), que no es el de la simulación.</p>
  */
 public final class IsometricRenderer implements SceneRenderer {
 
@@ -48,6 +52,8 @@ public final class IsometricRenderer implements SceneRenderer {
     private HospitalLayout cachedLayout;
     private IsoProjection projection;
     private IsoStructure structure;
+    private IsoFurniture furniture;
+    private double clock;
     private IsoFigures figures;
     private List<IsoItem> fixedItems = List.of();
 
@@ -164,6 +170,7 @@ public final class IsometricRenderer implements SceneRenderer {
         }
         prepare(layout);
         openDoors(patients, staff, porters);
+        showVitals(patients);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
@@ -175,6 +182,44 @@ public final class IsometricRenderer implements SceneRenderer {
             item.paint(graphics);
         }
         paintOverflow(graphics, layout, overflow);
+    }
+
+    /**
+     * Cambia el momento de la animación: mueve el trazo de los monitores y el parpadeo de las alarmas.
+     *
+     * @param seconds segundos desde cualquier origen; el panel le pasa el reloj real
+     * @throws IllegalArgumentException si no es un número
+     */
+    public void setClock(double seconds) {
+        if (!Double.isFinite(seconds)) {
+            throw new IllegalArgumentException("El momento de la animación debe ser un número.");
+        }
+        this.clock = seconds;
+    }
+
+    /**
+     * Indica si la luz de alarma del monitor de una cama o mesa se ve encendida en el último cuadro dibujado.
+     *
+     * @param layout plano del hospital
+     * @param spot   casilla de la cama o de la mesa
+     * @return {@code true} si se ve encendida
+     */
+    public boolean alarmOn(HospitalLayout layout, Position spot) {
+        prepare(layout);
+        return furniture.alarmOn(spot);
+    }
+
+    /** Pasa a los monitores la salud de cada paciente acostado en una cama o en una mesa de operaciones. */
+    private void showVitals(List<PatientMarker> patients) {
+        Map<Position, Double> health = new HashMap<>();
+        for (PatientMarker marker : patients) {
+            IsoFigures.Pose pose = figures.poseOf(marker);
+            if (pose == IsoFigures.Pose.IN_BED || pose == IsoFigures.Pose.ON_TABLE) {
+                health.put(new Position((int) Math.floor(projection.gridX(marker.x())),
+                        (int) Math.floor(projection.gridY(marker.y()))), marker.deceased() ? 0.0 : marker.health());
+            }
+        }
+        furniture.showVitals(clock, health);
     }
 
     /** Abre las puertas a las que se acerca alguien: pacientes, personal o camilleros. */
@@ -255,7 +300,7 @@ public final class IsometricRenderer implements SceneRenderer {
         if (layout != cachedLayout) {
             projection = IsoProjection.of(layout, flat).withView(yaw, elevation);
             structure = new IsoStructure(layout, projection, theme);
-            IsoFurniture furniture = new IsoFurniture(layout, projection, flat, theme);
+            furniture = new IsoFurniture(layout, projection, flat, theme);
             figures = new IsoFigures(projection, furniture);
             List<IsoItem> items = new ArrayList<>(structure.items());
             items.addAll(furniture.items());

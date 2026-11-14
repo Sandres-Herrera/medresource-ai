@@ -54,7 +54,7 @@ import java.util.function.Consumer;
  * <p>Con {@link #setIsometric(boolean)} el mismo plano se ve en 2.5D ({@link IsometricRenderer}): las personas
  * siguen en los mismos puntos del plano y solo cambia cómo se dibujan, así que el cambio es instantáneo. La cámara,
  * la rueda, el arrastre, el clic y el seguimiento funcionan igual en las dos vistas. Encima del plano también dibuja
- * a los camilleros que le den con {@link #showPorters}.</p>
+ * a los camilleros que le den con {@link #showPorters}. Los monitores de la UCI se mueven con el reloj real.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -497,6 +497,7 @@ public final class HospitalMapPanel extends JPanel {
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         camera.get().applyTo(graphics);
         if (isometric) {
+            isometricRenderer.setClock(System.nanoTime() / 1e9);
             isometricRenderer.paint(graphics, layout, markers, staffMarkers, porters, selected, overflow);
             return;
         }
