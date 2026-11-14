@@ -240,7 +240,8 @@ public final class ScenePlayer {
             boolean seated = at.equals(renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow()));
             markers.add(new StaffMarker(member.getCode(),
                     member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
-                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving())));
+                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving()),
+                    walker.isMoving()));
         }
         return markers;
     }
@@ -254,7 +255,7 @@ public final class ScenePlayer {
     public List<PorterMarker> porterMarkers() {
         List<PorterMarker> markers = new ArrayList<>();
         escorts.forEach((patient, escort) -> markers.add(new PorterMarker(patient, escort.getPosition().getX(),
-                escort.getPosition().getY())));
+                escort.getPosition().getY(), escort.isMoving())));
         return markers;
     }
 
