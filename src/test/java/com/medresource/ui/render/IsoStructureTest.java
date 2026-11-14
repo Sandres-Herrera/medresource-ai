@@ -14,6 +14,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,6 +83,53 @@ class IsoStructureTest {
             Point2D center = view.at(layout.getCols() / 2.0, layout.getRows() / 2.0, 0);
             assertTrue(image.getRGB((int) center.getX(), (int) center.getY()) != 0, "giro " + yaw);
         }
+    }
+
+    @Test
+    void aDoorOpensWhenSomeoneComesNearAndClosesWhenNobodyIsThere() {
+        Door door = layout.getDoors().get(0);
+        IsoStructure.Edge edge = IsoStructure.edgeBetween(door.inside(), door.outside());
+        double cx = edge.horizontal() ? edge.col() + 0.5 : edge.col();
+        double cy = edge.horizontal() ? edge.row() : edge.row() + 0.5;
+        assertTrue(structure.hasDoor(edge.horizontal(), edge.col(), edge.row()));
+
+        structure.openDoorsNear(List.of(new Point2D.Double(cx + 0.3, cy)));
+        assertEquals(1.0, structure.doorOpenness(edge.horizontal(), edge.col(), edge.row()), 1e-9);
+
+        double halfway = (IsoStructure.DOOR_REACH + IsoStructure.DOOR_OPEN_DISTANCE) / 2;
+        structure.openDoorsNear(List.of(new Point2D.Double(cx + halfway, cy)));
+        assertEquals(0.5, structure.doorOpenness(edge.horizontal(), edge.col(), edge.row()), 1e-9);
+
+        structure.openDoorsNear(List.of());
+        assertEquals(0.0, structure.doorOpenness(edge.horizontal(), edge.col(), edge.row()), 0.0);
+        assertThrows(IllegalArgumentException.class, () -> structure.openDoorsNear(null));
+    }
+
+    @Test
+    void anOpenDoorLetsTheFloorBeSeenBetweenItsLeaves() {
+        Door door = layout.getDoors().get(0);
+        IsoStructure.Edge edge = IsoStructure.edgeBetween(door.inside(), door.outside());
+        double cx = edge.horizontal() ? edge.col() + 0.5 : edge.col();
+        double cy = edge.horizontal() ? edge.row() : edge.row() + 0.5;
+        Point2D middle = projection.at(cx, cy, 0.4);
+
+        int closed = doorPixel(List.of(), middle);
+        int open = doorPixel(List.of(new Point2D.Double(cx, cy)), middle);
+
+        assertTrue(closed != open, "la hoja tapa el centro solo con la puerta cerrada");
+    }
+
+    private int doorPixel(List<Point2D> people, Point2D at) {
+        BufferedImage image = new BufferedImage(projection.size().width, projection.size().height,
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+        structure.openDoorsNear(people);
+        structure.paintGround(graphics);
+        List<IsoItem> items = new ArrayList<>(structure.items());
+        items.sort(IsoItem.BACK_TO_FRONT);
+        items.forEach(item -> item.paint(graphics));
+        graphics.dispose();
+        return image.getRGB((int) Math.round(at.getX()), (int) Math.round(at.getY()));
     }
 
     @Test
