@@ -166,6 +166,15 @@ class Renderer2DTest {
     }
 
     @Test
+    void eachTriageStationHasItsTriageNurseInLilac() {
+        for (Position spot : layout.getTriageSpots()) {
+            int x = spot.col() * CELL_W + Renderer2D.TRIAGE_NURSE_X;
+            int y = spot.row() * CELL_H + CELL_H / 2 + 4;
+            assertEquals(Palette.TRIAGE_NURSE.getRGB(), image.getRGB(x, y));
+        }
+    }
+
+    @Test
     void drawsARedCardWithTheLabelForEachBloodType() {
         for (Position spot : layout.getBloodSpots()) {
             assertEquals(Palette.BLOOD_UNIT.getRGB(), cardCornerOf(spot));
