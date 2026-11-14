@@ -155,7 +155,8 @@ public final class IsoFurniture {
                 case OPERATING_ROOM -> {
                     add(items, spot, graphics -> operatingTable(graphics, spot));
                     add(items, spot.col() + 0.2, spot.row() + 0.2, graphics -> anesthesia(graphics, spot));
-                    items.add(new IsoItem(spot.col() + spot.row() + 1.2, IsoItem.PERSON + 1,
+                    items.add(new IsoItem(Math.max(projection.depth(spot.col() + 0.6, spot.row() + 0.6),
+                            projection.depth(spot.col() + 0.5, spot.row() + 0.5) + 0.2), IsoItem.PERSON + 1,
                             graphics -> lamp(graphics, spot)));
                 }
                 default -> {
@@ -421,6 +422,9 @@ public final class IsoFurniture {
             case GLASS_CABINET -> {
                 IsoBrush.box(graphics, projection, x, y, 0, 0.7, 0.34, 0.95, color(Part.COUNTER_TOP),
                         color(Part.CABINET), IsoPalette.darker(color(Part.CABINET), 0.8));
+                if (!projection.faces(0, 1)) {
+                    return;
+                }
                 double face = y + 0.344;
                 graphics.setColor(CABINET_GLASS);
                 graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.05, face, 0.08},
@@ -442,7 +446,7 @@ public final class IsoFurniture {
             }
             case CRASH_CART -> {
                 IsoBrush.box(graphics, projection, x + 0.1, y, 0.06, 0.5, 0.4, 0.72, ALARM_RED);
-                for (int drawer = 0; drawer < 4; drawer++) {
+                for (int drawer = 0; drawer < 4 && projection.faces(0, 1); drawer++) {
                     double z = 0.14 + drawer * 0.15;
                     graphics.setColor(IsoPalette.darker(ALARM_RED, 0.75));
                     graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.14, y + 0.404, z},
@@ -453,6 +457,9 @@ public final class IsoFurniture {
             }
             case VENDING -> {
                 IsoBrush.box(graphics, projection, x, y, 0, 0.6, 0.45, 1.1, ALARM_RED);
+                if (!projection.faces(0, 1)) {
+                    return;
+                }
                 double face = y + 0.454;
                 graphics.setColor(color(Part.DEVICE));
                 graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.05, face, 0.3},
@@ -500,6 +507,9 @@ public final class IsoFurniture {
             }
             case LOCKERS -> {
                 IsoBrush.box(graphics, projection, x, y, 0, 0.7, 0.4, 1.0, LOCKER);
+                if (!projection.faces(0, 1)) {
+                    return;
+                }
                 double face = y + 0.404;
                 graphics.setStroke(new BasicStroke(0.8f));
                 graphics.setColor(IsoPalette.darker(LOCKER, 0.65));
@@ -577,7 +587,7 @@ public final class IsoFurniture {
     }
 
     private void add(List<IsoItem> items, double gx, double gy, Consumer<Graphics2D> painter) {
-        items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, painter));
+        items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, painter));
     }
 
     /** Mesas de la sala del personal con una silla en cada puesto que tiene dueño. */
@@ -630,9 +640,12 @@ public final class IsoFurniture {
         screen(graphics, x, y, 0.66);
     }
 
-    /** Pantalla con el trazo verde de los latidos, mirando hacia quien mira. */
+    /** Pantalla con el trazo verde de los latidos, en su cara de las filas mayores; de espaldas solo se ve la caja. */
     private void screen(Graphics2D graphics, double x, double y, double z) {
         IsoBrush.box(graphics, projection, x - 0.15, y - 0.05, z, 0.3, 0.1, 0.22, color(Part.DEVICE));
+        if (!projection.faces(0, 1)) {
+            return;
+        }
         double face = y + 0.051;
         graphics.setColor(new Color(0x06, 0x23, 0x1C));
         graphics.fill(IsoBrush.polygon(projection, new double[][] {{x - 0.13, face, z + 0.03},
@@ -674,7 +687,7 @@ public final class IsoFurniture {
         Point2D hang = projection.at(gx, gy, 1.45);
         Point2D center = projection.at(gx, gy, 1.15);
         double rx = IsoBrush.screenRadius(0.3);
-        double ry = rx / 2;
+        double ry = rx * projection.groundRatio();
         graphics.setColor(new Color(0xFF, 0xF7, 0xD6, 26));
         graphics.fill(new Ellipse2D.Double(floor.getX() - rx * 1.3, floor.getY() - ry * 1.3, rx * 2.6, ry * 2.6));
         graphics.setStroke(new BasicStroke(1.8f));
@@ -718,6 +731,9 @@ public final class IsoFurniture {
         for (double left : new double[] {x + 0.12, x + 0.46}) {
             IsoBrush.box(graphics, projection, left + 0.1, y + 0.05, 0.42, 0.04, 0.04, 0.06, color(Part.DEVICE));
             IsoBrush.box(graphics, projection, left, y + 0.03, 0.48, 0.26, 0.03, 0.17, color(Part.DEVICE));
+            if (!projection.faces(0, 1)) {
+                continue;
+            }
             graphics.setColor(SCREEN);
             graphics.fill(IsoBrush.polygon(projection, new double[][] {{left + 0.02, y + 0.062, 0.5},
                 {left + 0.24, y + 0.062, 0.5}, {left + 0.24, y + 0.062, 0.63}, {left + 0.02, y + 0.062, 0.63}}));
@@ -751,17 +767,19 @@ public final class IsoFurniture {
         double d = 0.56;
         double h = 0.9;
         IsoBrush.box(graphics, projection, x, y, 0, w, d, h, color(Part.FRIDGE));
-        double face = y + d + 0.004;
-        graphics.setColor(IsoPalette.FRIDGE_GLASS);
-        graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.05, face, 0.06}, {x + w - 0.05, face, 0.06},
-                {x + w - 0.05, face, h - 0.06}, {x + 0.05, face, h - 0.06}}));
-        graphics.setColor(IsoPalette.BLOOD_BAG);
-        for (int shelf = 0; shelf < 3; shelf++) {
-            double z = 0.12 + shelf * 0.24;
-            for (int bag = 0; bag < 3; bag++) {
-                double left = x + 0.09 + bag * 0.155;
-                graphics.fill(IsoBrush.polygon(projection, new double[][] {{left, face, z}, {left + 0.12, face, z},
-                        {left + 0.12, face, z + 0.15}, {left, face, z + 0.15}}));
+        if (projection.faces(0, 1)) {
+            double face = y + d + 0.004;
+            graphics.setColor(IsoPalette.FRIDGE_GLASS);
+            graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.05, face, 0.06},
+                {x + w - 0.05, face, 0.06}, {x + w - 0.05, face, h - 0.06}, {x + 0.05, face, h - 0.06}}));
+            graphics.setColor(IsoPalette.BLOOD_BAG);
+            for (int shelf = 0; shelf < 3; shelf++) {
+                double z = 0.12 + shelf * 0.24;
+                for (int bag = 0; bag < 3; bag++) {
+                    double left = x + 0.09 + bag * 0.155;
+                    graphics.fill(IsoBrush.polygon(projection, new double[][] {{left, face, z},
+                        {left + 0.12, face, z}, {left + 0.12, face, z + 0.15}, {left, face, z + 0.15}}));
+                }
             }
         }
         Point2D top = projection.at(x + w / 2, y + d / 2, h);

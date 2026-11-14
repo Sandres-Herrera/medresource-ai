@@ -39,9 +39,13 @@ import java.util.regex.Pattern;
  * y el exterior), salvo entre dos pasillos y donde hay una {@linkplain Door puerta}. Cada muro se arma con tramos de
  * un metro centrados en la línea del borde y un poste en cada esquina, así que las esquinas cierran limpias con
  * cualquier tamaño de hospital y ningún borde sobresale de su sala. Los muros de la fachada que da hacia quien mira
- * (abajo a la izquierda y abajo a la derecha) son bajos, para que se vea el interior. Los que dan a un pasillo son
- * ventanales: antepecho, vidrio con parteluz y cabezal. Los demás llevan enchape de baldosa en la mitad de abajo de
- * su cara visible.</p>
+ * (en la vista de siempre, abajo a la izquierda y abajo a la derecha; si la cámara gira, los que queden de ese lado)
+ * son bajos, para que se vea el interior. Los que dan a un pasillo son ventanales: antepecho, vidrio con parteluz y
+ * cabezal. Los demás llevan enchape de baldosa en la mitad de abajo de su cara visible.</p>
+ *
+ * <p>Todo se arma con la {@link IsoProjection} que recibe, con su ángulo: la profundidad de cada elemento, qué fachada
+ * es baja y qué caras se ven. Lo que va pintado en una sola cara (los letreros, la pantalla de turnos, las franjas de
+ * la ambulancia) solo se dibuja cuando esa cara mira hacia quien mira.</p>
  *
  * <p>Cada sala lleva su letrero pintado en la cara de adentro de su muro del fondo, sobre la fila del título: el
  * número si es una de varias salas iguales (por ejemplo «2» en el quirófano 2) o si no un pictograma, y el nombre.
@@ -174,8 +178,7 @@ public final class IsoStructure {
             for (int col = 0; col < layout.getCols(); col++) {
                 Edge edge = new Edge(true, col, row);
                 if (separates(areaCovering(col, row - 1), areaCovering(col, row), edge)) {
-                    boolean front = areaCovering(col, row).isEmpty();
-                    walls.put(edge, front ? LOW_WALL_HEIGHT : WALL_HEIGHT);
+                    walls.put(edge, isFrontFacade(true, col, row) ? LOW_WALL_HEIGHT : WALL_HEIGHT);
                 }
             }
         }
@@ -183,11 +186,26 @@ public final class IsoStructure {
             for (int row = 0; row < layout.getRows(); row++) {
                 Edge edge = new Edge(false, col, row);
                 if (separates(areaCovering(col - 1, row), areaCovering(col, row), edge)) {
-                    boolean front = areaCovering(col, row).isEmpty();
-                    walls.put(edge, front ? LOW_WALL_HEIGHT : WALL_HEIGHT);
+                    walls.put(edge, isFrontFacade(false, col, row) ? LOW_WALL_HEIGHT : WALL_HEIGHT);
                 }
             }
         }
+    }
+
+    /**
+     * Indica si un borde es de la fachada que da hacia quien mira: separa un área del exterior y el exterior queda del
+     * lado de la cámara. Esos muros (y sus puertas) son bajos, para que se vea el interior.
+     */
+    private boolean isFrontFacade(boolean horizontal, int col, int row) {
+        Optional<Area> before = horizontal ? areaCovering(col, row - 1) : areaCovering(col - 1, row);
+        Optional<Area> after = areaCovering(col, row);
+        if (after.isEmpty() && before.isPresent()) {
+            return horizontal ? projection.faces(0, 1) : projection.faces(1, 0);
+        }
+        if (before.isEmpty() && after.isPresent()) {
+            return horizontal ? projection.faces(0, -1) : projection.faces(-1, 0);
+        }
+        return false;
     }
 
     /** Indica si en el borde entre dos casillas vecinas, de las áreas dadas, hay un muro. */
@@ -350,12 +368,18 @@ public final class IsoStructure {
         double x1 = layout.getCols() + margin;
         double y1 = layout.getRows() + margin;
         double depth = -0.4;
-        graphics.setColor(theme.color(Part.SOIL_LEFT));
-        graphics.fill(IsoBrush.polygon(projection, new double[][] {{x0, y1, 0}, {x1, y1, 0}, {x1, y1, depth},
-                {x0, y1, depth}}));
-        graphics.setColor(theme.color(Part.SOIL_RIGHT));
-        graphics.fill(IsoBrush.polygon(projection, new double[][] {{x1, y0, 0}, {x1, y1, 0}, {x1, y1, depth},
-                {x1, y0, depth}}));
+        double[][][] sides = {
+            {{0, 1}, {x0, y1, 0}, {x1, y1, 0}, {x1, y1, depth}, {x0, y1, depth}},
+            {{1, 0}, {x1, y0, 0}, {x1, y1, 0}, {x1, y1, depth}, {x1, y0, depth}},
+            {{0, -1}, {x0, y0, 0}, {x1, y0, 0}, {x1, y0, depth}, {x0, y0, depth}},
+            {{-1, 0}, {x0, y0, 0}, {x0, y1, 0}, {x0, y1, depth}, {x0, y0, depth}}};
+        for (double[][] side : sides) {
+            if (projection.faces(side[0][0], side[0][1])) {
+                graphics.setColor(IsoBrush.mix(theme.color(Part.SOIL_LEFT), theme.color(Part.SOIL_RIGHT),
+                        projection.rightness(side[0][0], side[0][1])));
+                graphics.fill(IsoBrush.polygon(projection, new double[][] {side[1], side[2], side[3], side[4]}));
+            }
+        }
         graphics.setColor(theme.color(Part.GRASS));
         graphics.fill(IsoBrush.quad(projection, x0, y0, x1, y1, 0));
         Random random = new Random(3);
@@ -540,10 +564,10 @@ public final class IsoStructure {
         }
     }
 
-    private static void glow(Graphics2D graphics, Point2D at, double radius, Color[] stops) {
+    private void glow(Graphics2D graphics, Point2D at, double radius, Color[] stops) {
         Graphics2D flat = (Graphics2D) graphics.create();
         flat.translate(at.getX(), at.getY());
-        flat.scale(1, 0.5);
+        flat.scale(1, projection.groundRatio());
         flat.setPaint(new RadialGradientPaint(0f, 0f, (float) radius, new float[] {0f, 1f}, stops));
         flat.fill(new Ellipse2D.Double(-radius, -radius, 2 * radius, 2 * radius));
         flat.dispose();
@@ -554,11 +578,11 @@ public final class IsoStructure {
                            boolean alongRows) {
         Point2D at = projection.at(gx, gy, 0);
         double unit = 1 / TEXT_UNIT;
-        double ax = IsoProjection.TILE_W / 2.0 * unit;
-        double ay = IsoProjection.TILE_H / 2.0 * unit;
+        Point2D cols = projection.step(unit, 0);
+        Point2D rows = projection.step(0, unit);
         AffineTransform transform = alongRows
-                ? new AffineTransform(ax, -ay, ax, ay, at.getX(), at.getY())
-                : new AffineTransform(ax, ay, -ax, ay, at.getX(), at.getY());
+                ? new AffineTransform(-rows.getX(), -rows.getY(), cols.getX(), cols.getY(), at.getX(), at.getY())
+                : new AffineTransform(cols.getX(), cols.getY(), rows.getX(), rows.getY(), at.getX(), at.getY());
         Graphics2D text2 = (Graphics2D) graphics.create();
         text2.transform(transform);
         text2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, Math.round(size)));
@@ -585,7 +609,7 @@ public final class IsoStructure {
             double w = edge.horizontal() ? 1 - t : t;
             double d = edge.horizontal() ? t : 1 - t;
             boolean window = isWindow(edge.horizontal(), edge.col(), edge.row());
-            items.add(new IsoItem(x + w / 2 + y + d / 2, IsoItem.WALL,
+            items.add(new IsoItem(projection.depth(x + w / 2, y + d / 2), IsoItem.WALL,
                     graphics -> wall(graphics, edge, x, y, w, d, height, window)));
             List<Position> ends = edge.horizontal()
                     ? List.of(new Position(edge.col(), edge.row()), new Position(edge.col() + 1, edge.row()))
@@ -597,22 +621,23 @@ public final class IsoStructure {
         posts.forEach((vertex, height) -> {
             double x = vertex.col() - t / 2;
             double y = vertex.row() - t / 2;
-            items.add(new IsoItem(vertex.col() + vertex.row(), IsoItem.WALL,
+            items.add(new IsoItem(projection.depth(vertex.col(), vertex.row()), IsoItem.WALL,
                     graphics -> solid(graphics, x, y, t, t, height)));
         });
         for (Edge door : doors) {
-            items.add(new IsoItem(door.col() + door.row() + 0.5 + 0.01, IsoItem.WALL,
-                    graphics -> door(graphics, door)));
+            double depth = door.horizontal() ? projection.depth(door.col() + 0.5, door.row())
+                    : projection.depth(door.col(), door.row() + 0.5);
+            items.add(new IsoItem(depth + 0.01, IsoItem.WALL, graphics -> door(graphics, door)));
         }
         for (Sign sign : signs) {
-            items.add(new IsoItem(sign.col() + sign.segments() + sign.row() + 0.6, IsoItem.WALL,
+            items.add(new IsoItem(wallFaceDepth(sign.col(), sign.col() + sign.segments(), sign.row()), IsoItem.WALL,
                     graphics -> sign(graphics, sign)));
         }
         for (Area area : layout.areasOf(ZoneType.WAITING_ROOM)) {
             int col = area.right() - 1;
             Edge edge = new Edge(true, col, area.row());
             if (walls.containsKey(edge) && !signEdges.contains(edge)) {
-                items.add(new IsoItem(col + 1 + area.row() + 0.6, IsoItem.WALL,
+                items.add(new IsoItem(wallFaceDepth(col, col + 1, area.row()), IsoItem.WALL,
                         graphics -> turnScreen(graphics, col, area.row())));
             }
         }
@@ -620,8 +645,30 @@ public final class IsoStructure {
         return items;
     }
 
-    /** Pantalla de turnos colgada en el muro del fondo de la sala de espera. */
+    /**
+     * Profundidad de algo pintado en la cara de adentro de un muro del fondo, entre dos columnas: la del extremo más
+     * cercano a quien mira, un poco hacia adentro de la sala, para que se dibuje después del muro.
+     */
+    private double wallFaceDepth(double fromCol, double toCol, int row) {
+        return Math.max(projection.depth(fromCol, row + 0.6), projection.depth(toCol, row + 0.6));
+    }
+
+    /**
+     * Transformación que lleva el texto al plano de la cara de adentro de un muro del fondo, desde un punto de esa
+     * cara: el texto corre a lo largo de las columnas y baja con la altura.
+     */
+    private AffineTransform onBackWall(Point2D origin) {
+        double unit = 1 / TEXT_UNIT;
+        Point2D along = projection.step(unit, 0);
+        return new AffineTransform(along.getX(), along.getY(), 0, projection.heightScale() * unit, origin.getX(),
+                origin.getY());
+    }
+
+    /** Pantalla de turnos colgada en el muro del fondo de la sala de espera; solo se ve de frente. */
     private void turnScreen(Graphics2D graphics, int col, int row) {
+        if (!projection.faces(0, 1)) {
+            return;
+        }
         double plane = row + WALL_THICKNESS / 2 + 0.004;
         double x0 = col + 0.14;
         double x1 = col + 0.86;
@@ -632,10 +679,8 @@ public final class IsoStructure {
         graphics.fill(IsoBrush.polygon(projection, new double[][] {{x0 + 0.03, plane + 0.002, 0.53},
             {x1 - 0.03, plane + 0.002, 0.53}, {x1 - 0.03, plane + 0.002, 0.87}, {x0 + 0.03, plane + 0.002, 0.87}}));
         Point2D origin = projection.at(x0 + 0.07, plane + 0.004, 0.64);
-        double unit = 1 / TEXT_UNIT;
         Graphics2D screen = (Graphics2D) graphics.create();
-        screen.transform(new AffineTransform(IsoProjection.TILE_W / 2.0 * unit, IsoProjection.TILE_H / 2.0 * unit, 0,
-                IsoProjection.Z_SCALE * unit, origin.getX(), origin.getY()));
+        screen.transform(onBackWall(origin));
         screen.setColor(Color.WHITE);
         screen.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 7));
         screen.drawString("TURNO", 0f, -6f);
@@ -682,20 +727,23 @@ public final class IsoStructure {
         IsoBrush.box(graphics, projection, x, y, glassTop, w, d, h - glassTop, top, left, right);
     }
 
-    /** Enchape de baldosa en la mitad de abajo de la cara visible de un muro. */
+    /** Enchape de baldosa en la mitad de abajo de la cara visible de un muro: la que mira hacia quien mira. */
     private void wainscot(Graphics2D graphics, Edge edge, double x, double y, double w, double d) {
+        double normal = edge.horizontal() ? (projection.faces(0, 1) ? 1 : -1) : (projection.faces(1, 0) ? 1 : -1);
+        double plane = edge.horizontal() ? (normal > 0 ? y + d + 0.003 : y - 0.003)
+                : (normal > 0 ? x + w + 0.003 : x - 0.003);
         Path2D face = edge.horizontal()
-                ? IsoBrush.polygon(projection, new double[][] {{x, y + d + 0.003, BASEBOARD_HEIGHT},
-                        {x + w, y + d + 0.003, BASEBOARD_HEIGHT}, {x + w, y + d + 0.003, WAINSCOT_HEIGHT},
-                        {x, y + d + 0.003, WAINSCOT_HEIGHT}})
-                : IsoBrush.polygon(projection, new double[][] {{x + w + 0.003, y, BASEBOARD_HEIGHT},
-                        {x + w + 0.003, y + d, BASEBOARD_HEIGHT}, {x + w + 0.003, y + d, WAINSCOT_HEIGHT},
-                        {x + w + 0.003, y, WAINSCOT_HEIGHT}});
+                ? IsoBrush.polygon(projection, new double[][] {{x, plane, BASEBOARD_HEIGHT},
+                        {x + w, plane, BASEBOARD_HEIGHT}, {x + w, plane, WAINSCOT_HEIGHT},
+                        {x, plane, WAINSCOT_HEIGHT}})
+                : IsoBrush.polygon(projection, new double[][] {{plane, y, BASEBOARD_HEIGHT},
+                        {plane, y + d, BASEBOARD_HEIGHT}, {plane, y + d, WAINSCOT_HEIGHT},
+                        {plane, y, WAINSCOT_HEIGHT}});
         Color tile = theme.color(Part.WALL_TILE);
-        graphics.setColor(edge.horizontal() ? tile : IsoPalette.darker(tile, 0.9));
+        graphics.setColor(IsoBrush.mix(tile, IsoPalette.darker(tile, 0.9), edge.horizontal()
+                ? projection.rightness(0, normal) : projection.rightness(normal, 0)));
         graphics.fill(face);
         Path2D.Double lines = new Path2D.Double();
-        double plane = edge.horizontal() ? y + d + 0.003 : x + w + 0.003;
         for (double z = BASEBOARD_HEIGHT + 0.1; z <= WAINSCOT_HEIGHT + 1e-9; z += 0.1) {
             Point2D from = edge.horizontal() ? projection.at(x, plane, z) : projection.at(plane, y, z);
             Point2D to = edge.horizontal() ? projection.at(x + w, plane, z) : projection.at(plane, y + d, z);
@@ -718,8 +766,7 @@ public final class IsoStructure {
     /** Puerta corrediza de vidrio: el dintel arriba y dos hojas entreabiertas junto a los marcos. */
     private void door(Graphics2D graphics, Edge door) {
         double t = WALL_THICKNESS;
-        boolean front = door.horizontal() ? areaCovering(door.col(), door.row()).isEmpty()
-                : areaCovering(door.col(), door.row()).isEmpty();
+        boolean front = isFrontFacade(door.horizontal(), door.col(), door.row());
         double h = front ? LOW_WALL_HEIGHT : WALL_HEIGHT;
         Color glass = theme.color(Part.DOOR_GLASS);
         Color frame = theme.color(Part.DOOR_FRAME);
@@ -747,16 +794,17 @@ public final class IsoStructure {
 
     /**
      * Letrero pintado en la cara de adentro del muro del fondo de una sala: el número grande o el pictograma, y el
-     * nombre al lado.
+     * nombre al lado. Solo se ve cuando esa cara mira hacia quien mira.
      */
     private void sign(Graphics2D graphics, Sign sign) {
+        if (!projection.faces(0, 1)) {
+            return;
+        }
         double plane = sign.row() + WALL_THICKNESS / 2 + 0.004;
         double x0 = sign.col() + 0.18;
         Point2D origin = projection.at(x0, plane, 0.36);
-        double unit = 1 / TEXT_UNIT;
         Graphics2D wall = (Graphics2D) graphics.create();
-        wall.transform(new AffineTransform(IsoProjection.TILE_W / 2.0 * unit, IsoProjection.TILE_H / 2.0 * unit, 0,
-                IsoProjection.Z_SCALE * unit, origin.getX(), origin.getY()));
+        wall.transform(onBackWall(origin));
         wall.setColor(theme.color(Part.SIGN));
         double room = sign.segments() * TEXT_UNIT - 10;
         double nameX;
@@ -830,43 +878,45 @@ public final class IsoStructure {
             double gx = x;
             double gy = -margin + 0.7;
             if (entranceFromLeft || gx < road0 || gx > road1) {
-                items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, graphics -> tree(graphics, gx, gy, 0.8)));
+                items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, graphics -> tree(graphics, gx, gy, 0.8)));
             }
         }
         for (double y = 1.5; y < rows; y += 4.5) {
             double gx = -margin + 0.7;
             double gy = y;
             if (!entranceFromLeft || gy < road0 || gy > road1) {
-                items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, graphics -> tree(graphics, gx, gy, 0.8)));
+                items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, graphics -> tree(graphics, gx, gy, 0.8)));
             }
         }
         for (double x = 2; x < cols; x += 5) {
             double gx = x;
             double gy = rows + margin - 0.7;
-            items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, graphics -> bush(graphics, gx, gy)));
+            items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, graphics -> bush(graphics, gx, gy)));
         }
         for (double y = 2; y < rows; y += 5) {
             double gx = cols + margin - 0.7;
             double gy = y;
-            items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, graphics -> bush(graphics, gx, gy)));
+            items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, graphics -> bush(graphics, gx, gy)));
         }
         double lampA = entranceFromLeft ? entrance.row() - 1.2 : entrance.col() - 1.2;
         double lampB = entranceFromLeft ? entrance.row() + 2.2 : entrance.col() + 2.2;
         for (double along : new double[] {lampA, lampB}) {
             double gx = entranceFromLeft ? -SIDEWALK - 0.25 : along;
             double gy = entranceFromLeft ? along : -SIDEWALK - 0.25;
-            items.add(new IsoItem(gx + gy, IsoItem.FURNITURE, graphics -> streetLamp(graphics, gx, gy)));
+            items.add(new IsoItem(projection.depth(gx, gy), IsoItem.FURNITURE, graphics -> streetLamp(graphics, gx, gy)));
         }
         double ax = entranceFromLeft ? -margin + 0.15 : entrance.col() - 0.75;
         double ay = entranceFromLeft ? entrance.row() - 0.75 : -margin + 0.15;
-        items.add(new IsoItem(ax + ay + 1.2, IsoItem.FURNITURE, graphics -> ambulance(graphics, ax, ay)));
+        items.add(new IsoItem(projection.depth(ax + 0.6, ay + 0.6), IsoItem.FURNITURE,
+                graphics -> ambulance(graphics, ax, ay)));
         exit.ifPresent(door -> {
             double tx = cols + margin - 1.35;
             double ty = door.row() - 1.15;
-            items.add(new IsoItem(tx + ty + 1.2, IsoItem.FURNITURE, graphics -> taxi(graphics, tx, ty)));
+            items.add(new IsoItem(projection.depth(tx + 0.375, ty + 0.825), IsoItem.FURNITURE,
+                    graphics -> taxi(graphics, tx, ty)));
             double lx = cols + SIDEWALK + 0.2;
             double ly = door.row() + 1.5;
-            items.add(new IsoItem(lx + ly, IsoItem.FURNITURE, graphics -> streetLamp(graphics, lx, ly)));
+            items.add(new IsoItem(projection.depth(lx, ly), IsoItem.FURNITURE, graphics -> streetLamp(graphics, lx, ly)));
         });
     }
 
@@ -950,24 +1000,33 @@ public final class IsoStructure {
         if (alongCols) {
             IsoBrush.box(graphics, projection, gx + length, gy + 0.05, 0.12, cab, d - 0.1, 0.6,
                     IsoPalette.lighter(AMBULANCE, 0.5), AMBULANCE, IsoPalette.darker(AMBULANCE, 0.86));
-            graphics.setColor(WINDSHIELD);
-            graphics.fill(IsoBrush.polygon(projection, new double[][] {{gx + length + cab + 0.002, gy + 0.15, 0.45},
-                    {gx + length + cab + 0.002, gy + d - 0.15, 0.45}, {gx + length + cab + 0.002, gy + d - 0.15, 0.68},
-                    {gx + length + cab + 0.002, gy + 0.15, 0.68}}));
-            graphics.setColor(AMBULANCE_RED);
-            graphics.fill(IsoBrush.polygon(projection, new double[][] {{gx, gy + d + 0.002, 0.42},
+            if (projection.faces(1, 0)) {
+                graphics.setColor(WINDSHIELD);
+                graphics.fill(IsoBrush.polygon(projection, new double[][] {
+                    {gx + length + cab + 0.002, gy + 0.15, 0.45}, {gx + length + cab + 0.002, gy + d - 0.15, 0.45},
+                    {gx + length + cab + 0.002, gy + d - 0.15, 0.68}, {gx + length + cab + 0.002, gy + 0.15, 0.68}}));
+            }
+            if (projection.faces(0, 1)) {
+                graphics.setColor(AMBULANCE_RED);
+                graphics.fill(IsoBrush.polygon(projection, new double[][] {{gx, gy + d + 0.002, 0.42},
                     {gx + length, gy + d + 0.002, 0.42}, {gx + length, gy + d + 0.002, 0.54},
                     {gx, gy + d + 0.002, 0.54}}));
+            }
         } else {
             IsoBrush.box(graphics, projection, gx + 0.05, gy + length, 0.12, w - 0.1, cab, 0.6,
                     IsoPalette.lighter(AMBULANCE, 0.5), AMBULANCE, IsoPalette.darker(AMBULANCE, 0.86));
-            graphics.setColor(AMBULANCE_RED);
-            graphics.fill(IsoBrush.polygon(projection, new double[][] {{gx + w + 0.002, gy, 0.42},
+            if (projection.faces(1, 0)) {
+                graphics.setColor(AMBULANCE_RED);
+                graphics.fill(IsoBrush.polygon(projection, new double[][] {{gx + w + 0.002, gy, 0.42},
                     {gx + w + 0.002, gy + length, 0.42}, {gx + w + 0.002, gy + length, 0.54},
                     {gx + w + 0.002, gy, 0.54}}));
+            }
         }
         IsoBrush.box(graphics, projection, gx + 0.25, gy + 0.3, 1.02, 0.22, 0.3, 0.08, SIREN_BLUE);
         IsoBrush.box(graphics, projection, gx + w - 0.5, gy + 0.3, 1.02, 0.22, 0.3, 0.08, AMBULANCE_RED);
+        if (!(alongCols ? projection.faces(0, 1) : projection.faces(1, 0))) {
+            return;
+        }
         Point2D cross = alongCols ? projection.at(gx + length / 2, gy + d + 0.003, 0.78)
                 : projection.at(gx + w + 0.003, gy + length / 2, 0.78);
         graphics.setColor(AMBULANCE_RED);

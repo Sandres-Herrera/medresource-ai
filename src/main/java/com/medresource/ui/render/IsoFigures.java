@@ -172,12 +172,14 @@ public final class IsoFigures {
         for (StaffMarker marker : staff) {
             double gx = projection.gridX(marker.x());
             double gy = projection.gridY(marker.y());
-            items.add(new IsoItem(gx + gy, IsoItem.PERSON, graphics -> paintStaff(graphics, marker, gx, gy)));
+            items.add(new IsoItem(projection.depth(gx, gy), IsoItem.PERSON,
+                    graphics -> paintStaff(graphics, marker, gx, gy)));
         }
         for (PorterMarker marker : porters) {
             double gx = projection.gridX(marker.x());
             double gy = projection.gridY(marker.y());
-            items.add(new IsoItem(gx + gy, IsoItem.PERSON, graphics -> standing(graphics, gx, gy, 0, porter())));
+            items.add(new IsoItem(projection.depth(gx, gy), IsoItem.PERSON,
+                    graphics -> standing(graphics, gx, gy, 0, porter())));
         }
         return items;
     }
@@ -187,8 +189,8 @@ public final class IsoFigures {
         double gx = projection.gridX(marker.x());
         double gy = projection.gridY(marker.y());
         double depth = switch (pose) {
-            case IN_BED, ON_TABLE, ON_SLAB, SEATED -> Math.floor(gx) + Math.floor(gy) + 1;
-            default -> gx + gy;
+            case IN_BED, ON_TABLE, ON_SLAB, SEATED -> projection.depth(Math.floor(gx) + 0.5, Math.floor(gy) + 0.5);
+            default -> projection.depth(gx, gy);
         };
         return new IsoItem(depth, IsoItem.PERSON, graphics -> paintPatient(graphics, marker, pose, gx, gy, selected));
     }
