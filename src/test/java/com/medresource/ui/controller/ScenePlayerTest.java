@@ -7,6 +7,7 @@ import com.medresource.model.DiseaseCatalog;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
+import com.medresource.model.Door;
 import com.medresource.model.Patient;
 import com.medresource.model.PatientProfile;
 import com.medresource.model.Position;
@@ -25,6 +26,7 @@ import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
 import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.SceneState;
 import com.medresource.ui.render.SceneState.Phase;
@@ -468,6 +470,71 @@ class ScenePlayerTest {
         Point2D desk = renderer.centerOf(layout.consultDeskOf(doctor).orElseThrow());
         assertEquals(layout.consultDeskOf(doctor).orElseThrow(), player.getState().positionOf("P001").orElseThrow());
         assertEquals(new Point2D.Double(desk.getX() - 32, desk.getY()), staffAt(player, doctor));
+    }
+
+    // ---------- camilleros ----------
+
+    @Test
+    void nobodyIsFetchedBeforeAPatientWaits() {
+        ScenePlayer player = standard();
+
+        player.advanceTo(30);
+
+        assertTrue(player.porterMarkers().isEmpty());
+    }
+
+    @Test
+    void aPorterFetchesTheWaitingPatientWhileTheStaffWaitsForHimInHisCarePlace() {
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        SimulationEngine engine = engineOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 60);
+        ScenePlayer player = new ScenePlayer(engine, layout, renderer);
+        PorterMarker porter = null;
+        while (porter == null) {
+            assertTrue(player.getTime() < 3 * 3600, "ningún paciente salió de la sala de espera");
+            player.advanceTo(player.getTime() + 1);
+            porter = player.porterMarkers().stream().findFirst().orElse(null);
+        }
+        PorterMarker first = porter;
+        String code = first.patientCode();
+        Position chair = cellOf(markerOf(player, code));
+        Set<Point2D> doors = new HashSet<>();
+        for (Door door : layout.getDoors()) {
+            doors.add(renderer.centerOf(door.outside()));
+        }
+
+        assertEquals(ZoneType.WAITING_ROOM, layout.areaAt(chair).orElseThrow().zone(),
+                "el paciente sigue sentado cuando sale el camillero");
+        assertTrue(EnumSet.of(Phase.TREATING, Phase.FIRST_AID)
+                .contains(player.getState().phaseOf(code).orElseThrow()));
+        assertTrue(doors.stream().anyMatch(door -> door.distance(first.x(), first.y()) < 2 * Walker.WALKING_SPEED
+                * Renderer2D.CELL_H), "el camillero sale de una puerta");
+        Position place = player.getState().positionOf(code).orElseThrow();
+        Point2D center = renderer.centerOf(place);
+        Point2D chairCenter = renderer.centerOf(chair);
+        boolean someoneWaited = false;
+        while (cellOf(markerOf(player, code)).equals(chair)) {
+            for (StaffMarker member : player.staffMarkers()) {
+                assertFalse(member.y() == chairCenter.getY() && Math.abs(member.x() - chairCenter.getX()) <= 32,
+                        member.code() + " no va a buscar al paciente a la sala de espera");
+                someoneWaited |= member.y() == center.getY() && Math.abs(member.x() - center.getX()) <= 32;
+            }
+            player.advanceTo(player.getTime() + 1);
+        }
+        assertTrue(someoneWaited, "el personal lo esperaba en su lugar de atención");
+
+        player.advanceTo(player.getTime() + 2 * LONGEST_WALK);
+
+        assertTrue(player.porterMarkers().stream().noneMatch(each -> each.patientCode().equals(code)),
+                "el camillero lo dejó y se fue");
+    }
+
+    private static PatientMarker markerOf(ScenePlayer player, String code) {
+        return player.markers().stream().filter(marker -> marker.code().equals(code)).findFirst().orElseThrow();
+    }
+
+    private static Position cellOf(PatientMarker marker) {
+        return new Position((int) Math.floor(marker.x() / Renderer2D.CELL_W),
+                (int) Math.floor(marker.y() / Renderer2D.CELL_H));
     }
 
     // ---------- pacientes críticos y primeros auxilios ----------

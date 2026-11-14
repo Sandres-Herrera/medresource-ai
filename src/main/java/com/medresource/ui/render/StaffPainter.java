@@ -27,6 +27,9 @@ import java.util.List;
  * <p>La figura sube o baja lo que diga el {@linkplain IdleMotion movimiento de reposo} del marcador; el código
  * se queda en su sitio para que se lea bien.</p>
  *
+ * <p>También dibuja a los camilleros que buscan a un paciente en la sala de espera o lo acompañan
+ * ({@link #paintPorters}): uniforme gris azulado y gorro gris, como el camillero que empuja una camilla.</p>
+ *
  * <p>Solo usa puntos del mundo, así sirve igual para la vista 2D y para la 2.5D.</p>
  */
 public final class StaffPainter {
@@ -52,6 +55,32 @@ public final class StaffPainter {
         graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, CODE_SIZE));
         for (StaffMarker marker : markers) {
             paintMember(graphics, marker);
+        }
+    }
+
+    /**
+     * Dibuja a los camilleros, en el orden de la lista: de pie, con su sombra, centrados en su punto.
+     *
+     * @param graphics superficie de dibujo, ya con la cámara aplicada
+     * @param porters  camilleros que se dibujan
+     * @throws IllegalArgumentException si algún argumento es nulo
+     */
+    public void paintPorters(Graphics2D graphics, List<PorterMarker> porters) {
+        if (graphics == null || porters == null) {
+            throw new IllegalArgumentException("La superficie de dibujo y los camilleros son obligatorios.");
+        }
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
+        for (PorterMarker porter : porters) {
+            double cx = porter.x();
+            double cy = porter.y();
+            PatientPainter.paintShadow(graphics, cx, cy, 1.0);
+            fillAndOutline(graphics, bodyShape(Sex.MALE, cx, cy), Palette.PORTER_UNIFORM);
+            fillAndOutline(graphics, new Ellipse2D.Double(cx - HEAD_RADIUS, cy - 9 - HEAD_RADIUS,
+                    2 * HEAD_RADIUS, 2 * HEAD_RADIUS), Palette.PATIENT_HEAD);
+            fillAndOutline(graphics, new RoundRectangle2D.Double(cx - 4, cy - 16, 8, 3, 2, 2),
+                    Palette.STRETCHER_FRAME);
         }
     }
 

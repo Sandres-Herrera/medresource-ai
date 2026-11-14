@@ -149,6 +149,35 @@ class ItineraryTest {
     }
 
     @Test
+    void aStopCanWaitUntilSomeoneComesForThePatient() {
+        itinerary.goTo(firstChair, 0);
+        double seated = secondsBetween(entrance, firstChair.cell());
+        itinerary.update(seated);
+
+        itinerary.goTo(bed, seated + 10, seated + 25);
+        itinerary.update(seated + 20);
+
+        assertEquals(centerOf(firstChair), itinerary.getCurrent(), "sigue en su silla hasta que llegan por él");
+        assertEquals(bed, itinerary.heading().orElseThrow());
+        assertFalse(itinerary.hasArrived());
+
+        itinerary.update(seated + 25 + secondsBetween(firstChair.cell(), bed.cell()));
+
+        assertEquals(centerOf(bed), itinerary.getCurrent());
+        assertTrue(itinerary.hasArrived());
+    }
+
+    @Test
+    void aDepartureBeforeTheOrderLeavesWhenItIsGiven() {
+        itinerary.goTo(station, 30, 10);
+
+        itinerary.update(30 + secondsBetween(entrance, station.cell()) + 0.001);
+
+        assertEquals(centerOf(station), itinerary.getCurrent());
+        assertEquals(30 + secondsBetween(entrance, station.cell()), itinerary.arrivalTime(), 1e-9);
+    }
+
+    @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> new Itinerary(null, planner, renderer));
         assertThrows(IllegalArgumentException.class, () -> new Itinerary(entrance, null, renderer));

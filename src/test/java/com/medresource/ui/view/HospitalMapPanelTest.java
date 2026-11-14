@@ -9,9 +9,12 @@ import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.ui.render.Camera;
+import com.medresource.ui.render.IsoPalette;
+import com.medresource.ui.render.IsometricRenderer;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
+import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.StaffMarker;
 import org.junit.jupiter.api.Test;
@@ -549,6 +552,78 @@ class HospitalMapPanelTest {
     @Test
     void rejectsAMissingListener() {
         assertThrows(IllegalArgumentException.class, () -> panel.setSelectionListener(null));
+    }
+
+    // ---------- vista 2.5D y camilleros ----------
+
+    @Test
+    void startsInTheFlatViewAndChangesTo25dWithItsOwnWorld() {
+        assertFalse(panel.isIsometric());
+
+        panel.setIsometric(true);
+
+        assertTrue(panel.isIsometric());
+        BufferedImage image = panel.toImage(1000, 700);
+        assertEquals(IsoPalette.BACKGROUND.getRGB(), image.getRGB(0, 0));
+        Dimension world = new IsometricRenderer(renderer).worldSize(standard);
+        Camera camera = panel.cameraFor(1000, 700).orElseThrow();
+        assertEquals(Camera.fit(world.width, world.height, 1000, 700, MARGIN), camera);
+    }
+
+    @Test
+    void changingTheViewGoesBackToTheNormalZoomAndKeepsTheSelection() {
+        showOnePatientOnTheFirstSeat();
+        panel.select("P001");
+        panel.setSize(600, 400);
+        panel.zoomAt(300, 200, 2.0);
+
+        panel.setIsometric(true);
+
+        assertEquals(1.0, panel.getZoomLevel(), 0.0);
+        assertEquals("P001", panel.getSelected().orElseThrow());
+    }
+
+    @Test
+    void in25dAClickOnTheBodyOfAPatientSelectsHim() {
+        showOnePatientOnTheFirstSeat();
+        panel.setIsometric(true);
+        panel.setSize(1200, 800);
+        IsometricRenderer isometric = new IsometricRenderer(renderer);
+        Point2D seat = renderer.centerOf(standard.getWaitingSpots().get(0));
+        Point2D body = isometric.focusOf(standard, new PatientMarker("P001", TriageLevel.III, Sex.FEMALE, false,
+                false, seat.getX(), seat.getY()));
+        Point2D onScreen = panel.cameraFor(1200, 800).orElseThrow().toScreen(body.getX(), body.getY());
+
+        assertEquals("P001", panel.patientAt((int) onScreen.getX(), (int) onScreen.getY()).orElseThrow());
+        assertTrue(panel.patientAt(5, 5).isEmpty());
+    }
+
+    @Test
+    void in25dTheCameraFollowsTheSelectedPatient() {
+        showOnePatientOnTheFirstSeat();
+        panel.setIsometric(true);
+        panel.select("P001");
+        panel.setFollowing(true);
+        Dimension world = new IsometricRenderer(renderer).worldSize(standard);
+
+        Camera camera = panel.cameraFor(400, 300).orElseThrow();
+
+        double fit = Camera.fit(world.width, world.height, 400, 300, MARGIN).zoom();
+        assertEquals(fit * HospitalMapPanel.FOLLOW_ZOOM, camera.zoom(), 1e-9);
+    }
+
+    @Test
+    void showsThePortersOnTopOfThePlan() {
+        Point2D cell = renderer.centerOf(standard.getEntrance());
+        int x = MARGIN + (int) cell.getX();
+        int y = MARGIN + (int) cell.getY() + 7;
+        int before = fullSizePicture().getRGB(x, y);
+
+        panel.showPorters(List.of(new PorterMarker("P001", cell.getX(), cell.getY())));
+
+        assertNotEquals(before, fullSizePicture().getRGB(x, y));
+        assertEquals(Palette.PORTER_UNIFORM.getRGB(), fullSizePicture().getRGB(x, y));
+        assertThrows(IllegalArgumentException.class, () -> panel.showPorters(null));
     }
 
     private void click(int x, int y) {

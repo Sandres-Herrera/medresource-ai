@@ -59,7 +59,9 @@ import java.util.Optional;
  * columna derecha tiene su propia barra. La rueda del ratón acerca el plano, y el botón de arriba a la derecha de su
  * marco lo abre a pantalla completa ({@link MapFullscreen}) con los controles de la simulación. A pantalla completa
  * se ve todo el hospital de una vez, sin arrastrar, y la rueda lo acerca; al salir, el plano vuelve a su marco,
- * llenándolo otra vez, con la misma selección.</p>
+ * llenándolo otra vez, con la misma selección. El selector del marco del plano ({@link ViewToggle}) cambia entre la
+ * vista 2D y la 2.5D en cualquier momento, sin detener la simulación; la tarjeta «Quién es quién»
+ * ({@link PeopleLegend}) dice qué función cumple cada persona según su color.</p>
  *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
@@ -67,6 +69,9 @@ import java.util.Optional;
 public final class SimulationWindow extends JFrame {
 
     private static final long serialVersionUID = 1L;
+
+    /** Título de la ventana: la misma para la vista 2D y la 2.5D. */
+    public static final String TITLE = "MedResource AI — Simulación";
 
     private static final int FRAME_MILLIS = 33;
     private static final int GAP = 10;
@@ -105,7 +110,7 @@ public final class SimulationWindow extends JFrame {
      * @throws IllegalArgumentException si alguno es nulo
      */
     public SimulationWindow(SimulationController controller, Renderer2D renderer) {
-        super("MedResource AI — Simulación 2D");
+        super(TITLE);
         if (controller == null || renderer == null) {
             throw new IllegalArgumentException("El controlador y el renderizador son obligatorios.");
         }
@@ -180,7 +185,7 @@ public final class SimulationWindow extends JFrame {
         JPanel side = new JPanel();
         side.setOpaque(false);
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
-        for (JComponent card : List.<JComponent>of(cardPanel, resourcesPanel, new TriageLegend())) {
+        for (JComponent card : List.<JComponent>of(cardPanel, resourcesPanel, new PeopleLegend())) {
             card.setAlignmentX(Component.LEFT_ALIGNMENT);
             card.setMaximumSize(new Dimension(PatientCardPanel.WIDTH, Integer.MAX_VALUE));
             side.add(card);
@@ -340,6 +345,7 @@ public final class SimulationWindow extends JFrame {
 
     private void refresh() {
         mapPanel.showStaff(controller.staffMarkers());
+        mapPanel.showPorters(controller.porterMarkers());
         mapPanel.showPatients(controller.markers(), controller.overflow());
         LiveCounters counters = controller.counters();
         arrived.setValue(counters.arrived(), counters.totalPatients());

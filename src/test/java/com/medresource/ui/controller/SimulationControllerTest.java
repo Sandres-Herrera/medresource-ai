@@ -52,6 +52,7 @@ class SimulationControllerTest {
         assertFalse(controller.isRunning());
         assertEquals(SimulationClock.DEFAULT_SPEED, controller.getSpeed());
         assertTrue(controller.markers().isEmpty());
+        assertTrue(controller.porterMarkers().isEmpty());
     }
 
     @Test

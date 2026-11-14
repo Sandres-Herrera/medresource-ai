@@ -14,6 +14,8 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.Comparator;
@@ -31,7 +33,8 @@ import java.util.TreeSet;
  * <p>Las camas y los quirófanos se dibujan como tarjetas con su código; la sala del personal, como mesas
  * con dos sillas (una por persona); los tipos de sangre del banco de sangre, como tarjetas rojas con su
  * etiqueta; los lugares de la morgue, los puestos de triage y las sillas de la sala de espera, como tarjetas
- * más pequeñas sin texto; cada escritorio de los consultorios, como una tarjeta con el código de su médico.
+ * más pequeñas sin texto (en cada puesto de triage, su enfermera de triage de uniforme lila); cada escritorio
+ * de los consultorios, como una tarjeta con el código de su médico.
  * La entrada lleva una flecha verde y el rótulo "ENTRADA". El color de cada tarjeta depende del área donde
  * está, no de su código.</p>
  *
@@ -54,6 +57,8 @@ public class Renderer2D implements SceneRenderer {
     /** Cuánto se separa cada puesto del personal del centro de su mesa: un cuarto de casilla. */
     private static final double SEAT_OFFSET = CELL_W / 4.0;
     private static final int CHAIR_SIZE = 18;
+    /** Dónde se para la enfermera de triage dentro de la casilla de su puesto, desde el borde izquierdo. */
+    public static final int TRIAGE_NURSE_X = 18;
     /** Grosor de la barra que marca una puerta, en píxeles. */
     public static final int DOOR_THICKNESS = 8;
 
@@ -106,6 +111,7 @@ public class Renderer2D implements SceneRenderer {
         }
         for (Position spot : layout.getTriageSpots()) {
             card(graphics, spot, SMALL_INSET, Palette.TRIAGE_STATION);
+            paintTriageNurse(graphics, spot);
         }
         paintBlood(graphics, layout.getBloodSpots());
         paintEntrance(graphics, layout.getEntrance());
@@ -231,6 +237,28 @@ public class Renderer2D implements SceneRenderer {
             graphics.drawString(desk.getKey(), spot.col() * CELL_W + CARD_INSET + 5,
                     spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
         }
+    }
+
+    /**
+     * Dibuja a la enfermera de triage de un puesto, a la izquierda de su tarjeta: uniforme lila y gorro. No es
+     * personal del motor; siempre está en su puesto.
+     */
+    private void paintTriageNurse(Graphics2D graphics, Position spot) {
+        double cx = spot.col() * CELL_W + TRIAGE_NURSE_X;
+        double cy = spot.row() * CELL_H + CELL_H / 2.0 - 2;
+        PatientPainter.paintShadow(graphics, cx, cy, 1.0);
+        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
+        outlined(graphics, new RoundRectangle2D.Double(cx - 5, cy - 3, 10, 14, 4, 4), Palette.TRIAGE_NURSE);
+        outlined(graphics, new Ellipse2D.Double(cx - 5, cy - 14, 10, 10), Palette.PATIENT_HEAD);
+        outlined(graphics, new RoundRectangle2D.Double(cx - 4, cy - 16, 8, 3, 2, 2),
+                Palette.TRIAGE_NURSE.darker());
+    }
+
+    private static void outlined(Graphics2D graphics, Shape shape, Color color) {
+        graphics.setColor(color);
+        graphics.fill(shape);
+        graphics.setColor(Palette.PATIENT_OUTLINE);
+        graphics.draw(shape);
     }
 
     /** Dibuja una tarjeta roja con el tipo de sangre en cada lugar del banco de sangre. */

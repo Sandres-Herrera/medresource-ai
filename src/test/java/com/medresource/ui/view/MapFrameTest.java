@@ -37,6 +37,20 @@ class MapFrameTest {
     }
 
     @Test
+    void theViewToggleChangesThePlanBetween2dAnd25d() {
+        HospitalMapPanel map = map();
+        MapFrame frame = new MapFrame(map, "estándar · 20 × 16 m");
+
+        frame.viewToggle().isometricPill().doClick();
+
+        assertTrue(map.isIsometric());
+
+        frame.viewToggle().flatPill().doClick();
+
+        assertFalse(map.isIsometric());
+    }
+
+    @Test
     void saysWhoTheCameraIsFollowing() {
         MapFrame frame = new MapFrame(map(), "estándar · 20 × 16 m");
 
