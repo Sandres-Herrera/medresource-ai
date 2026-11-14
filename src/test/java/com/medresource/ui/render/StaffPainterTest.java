@@ -54,6 +54,23 @@ class StaffPainterTest {
         assertEquals(Palette.PATIENT_HEAD.getRGB(), image.getRGB(50, 41));
     }
 
+    @Test
+    void aPorterWearsAGrayBlueUniformAndAGrayCap() {
+        painter.paintPorters(graphics, List.of(new PorterMarker("P001", 50, 50)));
+
+        assertEquals(Palette.PORTER_UNIFORM.getRGB(), image.getRGB(50, 57));
+        assertEquals(Palette.STRETCHER_FRAME.getRGB(), image.getRGB(50, 35));
+        assertEquals(Palette.PATIENT_HEAD.getRGB(), image.getRGB(50, 41));
+    }
+
+    @Test
+    void aPorterNeedsThePatientHeLooksForAndAPlace() {
+        assertThrows(IllegalArgumentException.class, () -> new PorterMarker(" ", 1, 1));
+        assertThrows(IllegalArgumentException.class, () -> new PorterMarker("P001", Double.NaN, 1));
+        assertThrows(IllegalArgumentException.class, () -> painter.paintPorters(graphics, null));
+        assertThrows(IllegalArgumentException.class, () -> painter.paintPorters(null, List.of()));
+    }
+
     private int labelPixels() {
         int label = 0;
         for (int y = 62; y < 75; y++) {
