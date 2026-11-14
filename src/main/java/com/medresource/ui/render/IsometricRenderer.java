@@ -28,7 +28,11 @@ import java.util.Optional;
  *
  * <p>Dibuja de atrás hacia adelante ({@link IsoItem#BACK_TO_FRONT}): primero el piso, después los muros, los
  * muebles, los letreros y las personas en orden de profundidad. El edificio y los muebles de cada plano se arman una
- * sola vez por tema y se reutilizan en cada cuadro.</p>
+ * sola vez por tema y por ángulo de la cámara, y se reutilizan en cada cuadro.</p>
+ *
+ * <p>La cámara puede girar el hospital y levantar la mirada ({@link #setView}): el giro va de 0 a 360 grados y la
+ * elevación, de la diagonal de siempre hasta verlo desde arriba. Cambiar el ángulo vuelve a armar el edificio en el
+ * cuadro siguiente; las personas no cambian de lugar.</p>
  */
 public final class IsometricRenderer implements SceneRenderer {
 
@@ -37,6 +41,8 @@ public final class IsometricRenderer implements SceneRenderer {
 
     private final SceneRenderer flat;
     private IsoTheme theme = IsoTheme.LIGHT;
+    private double yaw;
+    private double elevation = IsoProjection.DEFAULT_ELEVATION;
     private HospitalLayout cachedLayout;
     private IsoProjection projection;
     private IsoStructure structure;
@@ -71,6 +77,33 @@ public final class IsometricRenderer implements SceneRenderer {
             this.theme = theme;
             cachedLayout = null;
         }
+    }
+
+    /**
+     * Cambia el ángulo de la cámara. El edificio se vuelve a armar en el próximo cuadro si el ángulo cambió.
+     *
+     * @param yaw       giro del hospital alrededor de su centro, en grados (se lleva a una vuelta)
+     * @param elevation ángulo de la mirada sobre el piso, en grados, de {@value IsoProjection#DEFAULT_ELEVATION} a
+     *                  {@value IsoProjection#MAX_ELEVATION}
+     * @throws IllegalArgumentException si el giro no es un número o la elevación está fuera de su rango
+     */
+    public void setView(double yaw, double elevation) {
+        IsoProjection check = new IsoProjection(1, 1, 1, 1, yaw, elevation);
+        if (check.yaw() != this.yaw || elevation != this.elevation) {
+            this.yaw = check.yaw();
+            this.elevation = elevation;
+            cachedLayout = null;
+        }
+    }
+
+    /** Giro de la cámara, en grados: 0 en la vista de siempre. */
+    public double getYaw() {
+        return yaw;
+    }
+
+    /** Elevación de la cámara, en grados: {@value IsoProjection#DEFAULT_ELEVATION} en la vista de siempre. */
+    public double getElevation() {
+        return elevation;
     }
 
     /** Tema de colores con que se dibuja: el claro, si nadie lo cambia. */
@@ -201,7 +234,7 @@ public final class IsometricRenderer implements SceneRenderer {
             throw new IllegalArgumentException("El plano es obligatorio.");
         }
         if (layout != cachedLayout) {
-            projection = IsoProjection.of(layout, flat);
+            projection = IsoProjection.of(layout, flat).withView(yaw, elevation);
             structure = new IsoStructure(layout, projection, theme);
             IsoFurniture furniture = new IsoFurniture(layout, projection, flat, theme);
             figures = new IsoFigures(projection, furniture);

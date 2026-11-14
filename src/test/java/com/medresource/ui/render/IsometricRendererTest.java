@@ -115,6 +115,36 @@ class IsometricRendererTest {
     }
 
     @Test
+    void startsWithTheUsualViewAndTurnsTheHospital() {
+        assertEquals(0.0, renderer.getYaw(), 0.0);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, renderer.getElevation(), 0.0);
+        IsoProjection before = renderer.projectionOf(layout);
+
+        renderer.setView(-90, 60);
+
+        assertEquals(270.0, renderer.getYaw(), 1e-9);
+        assertEquals(60.0, renderer.getElevation(), 0.0);
+        assertEquals(before.withView(270, 60), renderer.projectionOf(layout));
+        assertEquals(renderer.projectionOf(layout).size(), renderer.worldSize(layout));
+    }
+
+    @Test
+    void stillPicksThePatientAfterTurningTheHospital() {
+        renderer.setView(135, 50);
+        PatientMarker patient = patientAt("P002", layout.positionOf("H1-C1").orElseThrow());
+        Point2D focus = renderer.focusOf(layout, patient);
+
+        assertEquals("P002", renderer.pick(layout, List.of(patient), focus.getX(), focus.getY()).orElseThrow());
+    }
+
+    @Test
+    void rejectsAViewOutOfRange() {
+        assertThrows(IllegalArgumentException.class, () -> renderer.setView(Double.NaN, 40));
+        assertThrows(IllegalArgumentException.class, () -> renderer.setView(0, 95));
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, renderer.getElevation(), 0.0);
+    }
+
+    @Test
     void rejectsMissingData() {
         Graphics2D graphics = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics();
 
