@@ -13,6 +13,7 @@ import com.medresource.services.simulation.MetricsCalculator;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.StaffMarker;
 
@@ -233,6 +234,11 @@ public final class SimulationController {
 
     public List<StaffMarker> staffMarkers() {
         return player.staffMarkers();
+    }
+
+    /** Camilleros que buscan o acompañan a un paciente en lo que se ve ahora. */
+    public List<PorterMarker> porterMarkers() {
+        return player.porterMarkers();
     }
 
     public HospitalLayout getLayout() {

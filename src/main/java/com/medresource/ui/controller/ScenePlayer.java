@@ -14,6 +14,7 @@ import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.ui.render.IdleMotion;
 import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.SceneState;
 import com.medresource.ui.render.SceneTimeline;
@@ -23,6 +24,7 @@ import com.medresource.ui.render.Walker;
 
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -51,8 +53,16 @@ import java.util.Set;
  * <p>Los médicos y enfermeros también se mueven: libres, están sentados en su puesto de la sala del personal;
  * ocupados, se paran junto al paciente que atienden desde que se ve que su tratamiento empezó (o, si le dan
  * primeros auxilios mientras espera, junto a su silla, su cama o la entrada), y vuelven a su
- * puesto en el minuto en que el motor los libera. Después de simular cada minuto, el reproductor anota a quién
- * atiende cada uno, porque el motor va un minuto adelante de lo que se ve.</p>
+ * puesto en el minuto en que el motor los libera. Si el paciente que van a atender todavía está en la sala de
+ * espera, no van a buscarlo: lo esperan en su lugar de atención (la cama, el quirófano o el consultorio).</p>
+ *
+ * <p>A buscarlo va un {@linkplain PorterEscort camillero}: sale de la puerta de la sala de espera, llega hasta su
+ * silla, lo acompaña a su lado hasta su lugar de atención y se va por la puerta de esa área. El paciente no se
+ * levanta de la silla hasta que el camillero llega. Los camilleros no son personal del motor.</p>
+ *
+ * <p> Después de simular cada minuto, el reproductor anota a quién
+ * atiende cada uno y a qué lugar de atención va cada paciente, porque el motor va un minuto adelante de lo que se
+ * ve.</p>
  *
  * <p>Los enfermeros libres no se quedan todo el tiempo sentados: hacen {@linkplain NursingRounds rondas} entre
  * los pacientes que están en una cama de hospitalización o de UCI, se paran un rato a su lado y vuelven a la sala
@@ -83,6 +93,12 @@ public final class ScenePlayer {
     private static final double SECONDS_PER_MINUTE = 60.0;
     /** Dónde se para cada miembro del personal junto a su paciente, a la izquierda del centro de su lugar. */
     private static final double[] STAFF_OFFSETS_X = {-32.0, -16.0, 0.0};
+    /** Eventos que llevan a un paciente a su lugar de atención. */
+    private static final Set<EventType> TO_CARE_PLACE = EnumSet.of(EventType.TREATMENT_STARTED,
+            EventType.ICU_ADMISSION, EventType.RECOVERY_STARTED, EventType.FIRST_AID);
+    /** Etapas a las que un paciente sale de la sala de espera acompañado por un camillero. */
+    private static final Set<SceneState.Phase> ESCORTED_TO = EnumSet.of(SceneState.Phase.TREATING,
+            SceneState.Phase.FIRST_AID);
 
     private final SimulationEngine engine;
     private final HospitalLayout layout;
@@ -99,6 +115,9 @@ public final class ScenePlayer {
     private final Map<Integer, Map<String, String>> attendedByMinute = new HashMap<>();
     private final Map<Integer, Map<String, Double>> healthByMinute = new HashMap<>();
     private final Map<String, SimulationEngine.TreatmentSpan> treatments = new HashMap<>();
+    private final Map<String, Position> carePlaces = new HashMap<>();
+    private final Map<String, PorterEscort> escorts = new LinkedHashMap<>();
+    private final Map<String, Double> departures = new HashMap<>();
     private int fedEvents;
     private double time;
     private int staffMinute = -1;
@@ -156,6 +175,8 @@ public final class ScenePlayer {
         healthByMinute.keySet().removeIf(minute -> minute < getMinute() - 1);
         itineraries.values().forEach(itinerary -> itinerary.update(time));
         staffWalkers.values().forEach(walker -> walker.update(time));
+        escorts.forEach((patient, escort) -> escort.update(time, itineraries.get(patient)));
+        escorts.values().removeIf(PorterEscort::isGone);
         removeArrivedDepartures();
     }
 
@@ -221,6 +242,19 @@ public final class ScenePlayer {
                     member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
                     at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving())));
         }
+        return markers;
+    }
+
+    /**
+     * Camilleros que hay que dibujar ahora: los que van a buscar a un paciente a la sala de espera, lo acompañan o se
+     * van después de dejarlo.
+     *
+     * @return un {@link PorterMarker} por camillero, en el orden en que salieron
+     */
+    public List<PorterMarker> porterMarkers() {
+        List<PorterMarker> markers = new ArrayList<>();
+        escorts.forEach((patient, escort) -> markers.add(new PorterMarker(patient, escort.getPosition().getX(),
+                escort.getPosition().getY())));
         return markers;
     }
 
@@ -367,9 +401,11 @@ public final class ScenePlayer {
         int minute = engine.getMinute();
         engine.step();
         List<SimulationEvent> events = engine.getEvents();
-        timeline.schedule(minute, events.subList(fedEvents, events.size()));
+        List<SimulationEvent> fresh = List.copyOf(events.subList(fedEvents, events.size()));
+        timeline.schedule(minute, fresh);
         fedEvents = events.size();
         attendedByMinute.put(minute, whoAttendsWhom());
+        fresh.forEach(this::noteCarePlace);
         Map<String, Double> health = new HashMap<>();
         for (Patient patient : patients.values()) {
             boolean present = patient.getArrivalMinute() <= minute
@@ -381,6 +417,17 @@ public final class ScenePlayer {
             }
         }
         healthByMinute.put(minute, health);
+    }
+
+    /**
+     * Anota el lugar de atención al que el motor ya mandó a un paciente, antes de que se vea: ahí lo espera el
+     * personal que lo va a atender.
+     */
+    private void noteCarePlace(SimulationEvent event) {
+        if (TO_CARE_PLACE.contains(event.type()) && event.resourceCode() != null) {
+            layout.treatmentPlaceOf(event.resourceCode())
+                    .ifPresent(place -> carePlaces.put(event.patientCode(), place));
+        }
     }
 
     /** Anota a qué paciente atiende cada médico y enfermero ocupado, después de simular un minuto. */
@@ -422,7 +469,7 @@ public final class ScenePlayer {
             String patient = attended.get(member.getCode());
             if (patient != null) {
                 Optional<Itinerary.Stop> stop = Optional.ofNullable(itineraries.get(patient))
-                        .flatMap(Itinerary::heading);
+                        .flatMap(Itinerary::heading).map(heading -> waitingPlace(patient, heading));
                 standNextTo(member, patient, stop.orElse(null), companions, at);
             } else if (member instanceof Nurse) {
                 OptionalInt visit = NursingRounds.visit(freeNurses++, Math.max(0, staffMinute), inBed.size());
@@ -438,6 +485,18 @@ public final class ScenePlayer {
             }
         }
         rounds.forEach((nurse, stop) -> standNextTo(nurse, visited.get(nurse), stop, companions, at));
+    }
+
+    /**
+     * Dónde espera el personal a un paciente: si el paciente todavía está en la sala de espera y el motor ya lo
+     * mandó a su lugar de atención, en ese lugar (no van a buscarlo); si no, donde está el paciente.
+     */
+    private Itinerary.Stop waitingPlace(String patient, Itinerary.Stop heading) {
+        Position place = carePlaces.get(patient);
+        if (heading.phase() == SceneState.Phase.QUEUED && place != null) {
+            return new Itinerary.Stop(SceneState.Phase.TREATING, place);
+        }
+        return heading;
     }
 
     /**
@@ -475,8 +534,16 @@ public final class ScenePlayer {
     /** Aplica un evento a la escena y pone a caminar, desde ese momento, a quien cambió de lugar. */
     private void apply(TimedEvent timed) {
         SimulationEvent event = timed.event();
+        Optional<SceneState.Phase> before = state.phaseOf(event.patientCode());
+        Optional<Position> from = state.positionOf(event.patientCode());
         state.apply(event);
         released.add(event);
+        if (TO_CARE_PLACE.contains(event.type())) {
+            carePlaces.remove(event.patientCode());
+        }
+        if (before.orElse(null) == SceneState.Phase.QUEUED) {
+            sendPorter(event.patientCode(), from.orElseThrow(), timed.time());
+        }
         if (event.type() == EventType.ARRIVAL) {
             arrived.add(event.patientCode());
         }
@@ -487,8 +554,26 @@ public final class ScenePlayer {
     }
 
     /**
+     * Si un paciente que caminaba sale de la sala de espera hacia su lugar de atención, manda un camillero a buscarlo:
+     * el paciente no sale hasta que el camillero llega a su silla. Quien no puede caminar ya va en camilla.
+     */
+    private void sendPorter(String patientCode, Position chair, double at) {
+        Optional<SceneState.Phase> after = state.phaseOf(patientCode);
+        Patient patient = patients.get(patientCode);
+        boolean leavesTheChair = after.isPresent() && ESCORTED_TO.contains(after.get())
+                && !chair.equals(state.positionOf(patientCode).orElse(chair));
+        if (!leavesTheChair || patient == null || !patient.canWalk() || escorts.containsKey(patientCode)) {
+            return;
+        }
+        PorterEscort.fetch(patientCode, chair, layout, planner, renderer, at).ifPresent(escort -> {
+            escorts.put(patientCode, escort);
+            departures.put(patientCode, escort.readyAt());
+        });
+    }
+
+    /**
      * Agrega a cada paciente de la escena su lugar como siguiente parada de su itinerario; los que acaban de
-     * llegar parten de la entrada.
+     * llegar parten de la entrada. Quien espera a un camillero sale cuando el camillero llega por él.
      */
     private void retarget(double at) {
         Map<String, Itinerary> alive = new HashMap<>();
@@ -497,7 +582,9 @@ public final class ScenePlayer {
             if (itinerary == null) {
                 itinerary = new Itinerary(layout.getEntrance(), planner, renderer);
             }
-            itinerary.goTo(new Itinerary.Stop(placement.phase(), placement.position()), at);
+            Double departure = departures.remove(placement.patientCode());
+            itinerary.goTo(new Itinerary.Stop(placement.phase(), placement.position()), at,
+                    departure == null ? at : departure);
             alive.put(placement.patientCode(), itinerary);
         }
         itineraries.clear();
