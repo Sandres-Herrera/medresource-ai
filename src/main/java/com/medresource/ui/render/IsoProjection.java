@@ -31,8 +31,8 @@ public record IsoProjection(int cols, int rows, double cellWidth, double cellHei
     public static final int TILE_H = 32;
     /** Píxeles que sube un metro de altura. */
     public static final int Z_SCALE = 40;
-    /** Casillas de terreno que se dejan alrededor del edificio (la acera de la entrada). */
-    public static final double SITE_MARGIN = 1.0;
+    /** Casillas de terreno que se dejan alrededor del edificio: la acera, el césped, los árboles y la vía. */
+    public static final double SITE_MARGIN = 2.2;
     /** Espacio libre arriba del dibujo, para los muros y las etiquetas de las salas, en píxeles. */
     public static final int TOP_SPACE = 90;
     /** Espacio libre abajo del dibujo, para el borde del terreno, en píxeles. */

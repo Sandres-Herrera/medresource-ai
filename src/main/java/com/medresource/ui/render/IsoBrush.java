@@ -210,6 +210,30 @@ public final class IsoBrush {
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), IsoPalette.GLASS, IsoPalette.GLASS_TOP);
     }
 
+    /**
+     * Panel de vidrio: las caras con el relleno transparente que se le da y los bordes del marco; el borde de
+     * arriba, más grueso.
+     *
+     * @param graphics   superficie de dibujo
+     * @param projection proyección de la vista
+     * @param x          columna de la esquina superior
+     * @param y          fila de la esquina superior
+     * @param z          altura de la base
+     * @param w          ancho
+     * @param d          fondo
+     * @param h          alto
+     * @param fill       relleno del vidrio, con transparencia
+     * @param frame      color del marco
+     */
+    public static void pane(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
+                            double d, double h, Color fill, Color frame) {
+        graphics.setStroke(new BasicStroke(0.8f));
+        face(graphics, leftFace(projection, x, y, z, w, d, h), fill, frame);
+        face(graphics, rightFace(projection, x, y, z, w, d, h), fill, frame);
+        graphics.setStroke(new BasicStroke(1.2f));
+        face(graphics, quad(projection, x, y, x + w, y + d, z + h), fill, frame);
+    }
+
     /** Cara izquierda de una caja: la de las filas mayores. */
     static Path2D leftFace(IsoProjection projection, double x, double y, double z, double w, double d, double h) {
         return polygon(projection, new double[][] {{x, y + d, z}, {x + w, y + d, z}, {x + w, y + d, z + h},

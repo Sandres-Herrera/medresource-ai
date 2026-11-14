@@ -108,7 +108,6 @@ public final class IsometricRenderer implements SceneRenderer {
         for (IsoItem item : items) {
             item.paint(graphics);
         }
-        structure.paintTags(graphics);
         paintOverflow(graphics, layout, overflow);
     }
 
