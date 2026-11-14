@@ -99,6 +99,22 @@ class IsometricRendererTest {
     }
 
     @Test
+    void startsLightAndRebuildsTheHospitalWithTheDarkTheme() {
+        Point2D floor = renderer.projectionOf(layout).at(layout.getEntrance().col() + 1.25, 3.25, 0);
+        BufferedImage light = paint(List.of(), 0);
+
+        renderer.setTheme(IsoTheme.DARK);
+        BufferedImage dark = paint(List.of(), 0);
+
+        assertEquals(IsoTheme.DARK, renderer.getTheme());
+        assertEquals(IsoTheme.DARK.color(IsoTheme.Part.BACKGROUND), renderer.background());
+        Color before = new Color(light.getRGB((int) floor.getX(), (int) floor.getY()));
+        Color after = new Color(dark.getRGB((int) floor.getX(), (int) floor.getY()));
+        assertTrue(after.getRed() + after.getGreen() < before.getRed() + before.getGreen(), before + " " + after);
+        assertThrows(IllegalArgumentException.class, () -> renderer.setTheme(null));
+    }
+
+    @Test
     void rejectsMissingData() {
         Graphics2D graphics = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics();
 

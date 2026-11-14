@@ -4,6 +4,7 @@ import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.model.StaffSeat;
 
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -16,8 +17,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Vista 2.5D del hospital: el mismo plano visto en diagonal desde arriba, con pisos, muros de vidrio, muebles y
- * personas con volumen.
+ * Vista 2.5D del hospital: el mismo plano visto en diagonal desde arriba, con césped y árboles alrededor, pisos de
+ * baldosa, muros cortados a media altura con ventanales y letreros, muebles y personas con volumen, en un tema claro
+ * o uno oscuro ({@link #setTheme}).
  *
  * <p>No cambia las coordenadas del mundo: las personas siguen caminando sobre el plano 2D que da el renderizador 2D
  * que recibe ({@link #centerOf} y {@link #seatOf} son los suyos), y esta vista solo las proyecta con una
@@ -25,8 +27,8 @@ import java.util.Optional;
  * del mundo de esta vista ({@link #worldSize}) son los de la proyección, y en ellos trabaja la cámara.</p>
  *
  * <p>Dibuja de atrás hacia adelante ({@link IsoItem#BACK_TO_FRONT}): primero el piso, después los muros, los
- * muebles y las personas en orden de profundidad, y al final las etiquetas de las salas. El edificio y los muebles
- * de cada plano se arman una sola vez y se reutilizan en cada cuadro.</p>
+ * muebles, los letreros y las personas en orden de profundidad. El edificio y los muebles de cada plano se arman una
+ * sola vez por tema y se reutilizan en cada cuadro.</p>
  */
 public final class IsometricRenderer implements SceneRenderer {
 
@@ -34,6 +36,7 @@ public final class IsometricRenderer implements SceneRenderer {
     public static final double PICK_RADIUS = 14.0;
 
     private final SceneRenderer flat;
+    private IsoTheme theme = IsoTheme.LIGHT;
     private HospitalLayout cachedLayout;
     private IsoProjection projection;
     private IsoStructure structure;
@@ -51,6 +54,33 @@ public final class IsometricRenderer implements SceneRenderer {
             throw new IllegalArgumentException("El renderizador 2D es obligatorio.");
         }
         this.flat = flat;
+    }
+
+    /**
+     * Cambia el tema de colores. El edificio y los muebles se vuelven a armar en el próximo cuadro; las personas no
+     * cambian.
+     *
+     * @param theme tema claro u oscuro
+     * @throws IllegalArgumentException si es nulo
+     */
+    public void setTheme(IsoTheme theme) {
+        if (theme == null) {
+            throw new IllegalArgumentException("El tema es obligatorio.");
+        }
+        if (this.theme != theme) {
+            this.theme = theme;
+            cachedLayout = null;
+        }
+    }
+
+    /** Tema de colores con que se dibuja: el claro, si nadie lo cambia. */
+    public IsoTheme getTheme() {
+        return theme;
+    }
+
+    /** Color del fondo del panel alrededor del terreno, según el tema. */
+    public Color background() {
+        return theme.color(IsoTheme.Part.BACKGROUND);
     }
 
     @Override
@@ -108,7 +138,6 @@ public final class IsometricRenderer implements SceneRenderer {
         for (IsoItem item : items) {
             item.paint(graphics);
         }
-        structure.paintTags(graphics);
         paintOverflow(graphics, layout, overflow);
     }
 
@@ -163,15 +192,18 @@ public final class IsometricRenderer implements SceneRenderer {
         return prepare(layout);
     }
 
-    /** Arma el edificio y los muebles del plano la primera vez que se pide, y los reutiliza después. */
+    /**
+     * Arma el edificio y los muebles del plano la primera vez que se pide (o después de cambiar de tema), y los
+     * reutiliza en los demás cuadros.
+     */
     private IsoProjection prepare(HospitalLayout layout) {
         if (layout == null) {
             throw new IllegalArgumentException("El plano es obligatorio.");
         }
         if (layout != cachedLayout) {
             projection = IsoProjection.of(layout, flat);
-            structure = new IsoStructure(layout, projection);
-            IsoFurniture furniture = new IsoFurniture(layout, projection, flat);
+            structure = new IsoStructure(layout, projection, theme);
+            IsoFurniture furniture = new IsoFurniture(layout, projection, flat, theme);
             figures = new IsoFigures(projection, furniture);
             List<IsoItem> items = new ArrayList<>(structure.items());
             items.addAll(furniture.items());

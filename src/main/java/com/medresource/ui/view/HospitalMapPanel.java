@@ -3,7 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.ui.render.Camera;
-import com.medresource.ui.render.IsoPalette;
+import com.medresource.ui.render.IsoTheme;
 import com.medresource.ui.render.IsometricRenderer;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
@@ -260,6 +260,22 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     /**
+     * Cambia el tema de la vista 2.5D, claro u oscuro. No cambia la cámara ni la selección.
+     *
+     * @param theme tema
+     * @throws IllegalArgumentException si es nulo
+     */
+    public void setIsoTheme(IsoTheme theme) {
+        isometricRenderer.setTheme(theme);
+        repaint();
+    }
+
+    /** Tema de la vista 2.5D: el claro, si nadie lo cambia. */
+    public IsoTheme getIsoTheme() {
+        return isometricRenderer.getTheme();
+    }
+
+    /**
      * Selecciona un paciente: se dibuja con un anillo y, si la cámara sigue la selección, la cámara va con él.
      *
      * @param patientCode código del paciente, o nulo para no seleccionar a nadie
@@ -471,7 +487,7 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     private void paintScene(Graphics2D graphics, int width, int height) {
-        graphics.setColor(isometric ? IsoPalette.BACKGROUND : Palette.BACKGROUND);
+        graphics.setColor(isometric ? isometricRenderer.background() : Palette.BACKGROUND);
         graphics.fillRect(0, 0, width, height);
         Optional<Camera> camera = cameraFor(width, height);
         if (camera.isEmpty()) {

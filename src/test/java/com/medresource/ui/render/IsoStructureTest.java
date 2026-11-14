@@ -78,7 +78,7 @@ class IsoStructureTest {
     }
 
     @Test
-    void thereIsOneItemPerWallAndOnePerCornerPost() {
+    void thereIsOneItemPerWallPerCornerPostAndPerDoorBesidesTheSignsAndTheOutdoors() {
         int posts = 0;
         for (int col = 0; col <= layout.getCols(); col++) {
             for (int row = 0; row <= layout.getRows(); row++) {
@@ -90,7 +90,28 @@ class IsoStructureTest {
             }
         }
 
-        assertEquals(structure.wallCount() + posts, structure.items().size());
+        assertTrue(structure.items().size() > structure.wallCount() + posts + layout.getDoors().size());
+    }
+
+    @Test
+    void theWallsThatFaceACorridorAreWindows() {
+        Area waiting = first(ZoneType.WAITING_ROOM);
+        Area corridor = first(ZoneType.CORRIDOR);
+
+        boolean window = false;
+        for (int col = waiting.col(); col < waiting.right(); col++) {
+            window |= structure.isWindow(true, col, corridor.row());
+        }
+        assertTrue(window, "la sala de espera da al pasillo");
+        assertFalse(structure.isWindow(false, waiting.col(), waiting.row() + 3), "entre el triage y la sala");
+        assertFalse(structure.isWindow(true, 0, layout.getRows()), "la fachada del frente es baja");
+    }
+
+    @Test
+    void eachRoomHasItsSignWithTheNumberWhenThereAreSeveral() {
+        assertEquals("UCI", structure.signOf(first(ZoneType.ICU)).orElseThrow());
+        assertEquals("2 QUIRÓFANO", structure.signOf(layout.areasOf(ZoneType.OPERATING_ROOM).get(1)).orElseThrow());
+        assertTrue(structure.signOf(first(ZoneType.CORRIDOR)).isEmpty());
     }
 
     @Test
@@ -101,27 +122,31 @@ class IsoStructureTest {
     }
 
     @Test
-    void theRoomsHaveANeonBorderAndTheirTag() {
-        BufferedImage image = new BufferedImage(projection.size().width, projection.size().height,
-                BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = image.createGraphics();
+    void theFloorsAndTheGrassTakeTheColorsOfTheTheme() {
+        for (IsoTheme theme : IsoTheme.values()) {
+            IsoStructure building = new IsoStructure(layout, projection, theme);
+            BufferedImage image = new BufferedImage(projection.size().width, projection.size().height,
+                    BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = image.createGraphics();
 
-        structure.paintGround(graphics);
-        structure.paintTags(graphics);
+            building.paintGround(graphics);
 
-        Area icu = first(ZoneType.ICU);
-        Point2D tag = projection.at(icu.col() + 0.4, icu.row() + 0.4, IsoStructure.TAG_HEIGHT);
-        assertEquals(IsoPalette.accent(ZoneType.ICU).getRGB(),
-                image.getRGB((int) tag.getX() - 20, (int) tag.getY() - 8));
-        Point2D floor = projection.at(icu.col() + 1.5, icu.row() + 2.5, 0);
-        Color seen = new Color(image.getRGB((int) floor.getX(), (int) floor.getY()));
-        assertTrue(seen.getRed() >= IsoPalette.FLOOR.getRed() && seen.getRed() < 60,
-                "el piso es oscuro, con el tinte del área: " + seen);
+            Area icu = first(ZoneType.ICU);
+            Point2D floor = projection.at(icu.col() + 1.25, icu.row() + 2.25, 0);
+            Color seen = new Color(image.getRGB((int) floor.getX(), (int) floor.getY()));
+            Color expected = theme.floor(ZoneType.ICU);
+            assertTrue(Math.abs(seen.getRed() - expected.getRed()) < 40, theme + ": " + seen);
+            Point2D grass = projection.at(layout.getCols() + 1.6, layout.getRows() / 2.0, 0);
+            Color lawn = new Color(image.getRGB((int) grass.getX(), (int) grass.getY()));
+            assertTrue(lawn.getGreen() > lawn.getRed() && lawn.getGreen() > lawn.getBlue(), theme + ": " + lawn);
+            assertEquals(theme, building.getTheme());
+        }
     }
 
     @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> new IsoStructure(null, projection));
         assertThrows(IllegalArgumentException.class, () -> new IsoStructure(layout, null));
+        assertThrows(IllegalArgumentException.class, () -> new IsoStructure(layout, projection, null));
     }
 }

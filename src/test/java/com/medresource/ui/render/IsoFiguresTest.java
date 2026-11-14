@@ -16,6 +16,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -107,6 +108,12 @@ class IsoFiguresTest {
         assertEquals(bed.col() + bed.row() + 1, item.depth(), 1e-9);
         assertEquals(IsoItem.PERSON, item.layer());
         assertTrue(IsoItem.BACK_TO_FRONT.compare(new IsoItem(item.depth(), IsoItem.FURNITURE, g -> { }), item) < 0);
+    }
+
+    @Test
+    void eachPatientKeepsTheSameHairColor() {
+        assertEquals(IsoFigures.hairOf("P001"), IsoFigures.hairOf("P001"));
+        assertNotNull(IsoFigures.hairOf(null));
     }
 
     @Test

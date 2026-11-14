@@ -1,6 +1,5 @@
 package com.medresource.ui.render;
 
-import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
 
@@ -34,27 +33,6 @@ class IsoPaletteTest {
     }
 
     @Test
-    void theCorridorsAreALittleLighterAndTheMorgueALittleDarker() {
-        assertEquals(IsoPalette.FLOOR, IsoPalette.floor(ZoneType.HOSPITALIZATION));
-        assertTrue(luminance(IsoPalette.floor(ZoneType.CORRIDOR)) > luminance(IsoPalette.FLOOR));
-        assertTrue(luminance(IsoPalette.floor(ZoneType.MORGUE)) < luminance(IsoPalette.FLOOR));
-    }
-
-    @Test
-    void thePeopleStandOutOnTheDarkFloors() {
-        for (ZoneType zone : ZoneType.values()) {
-            assertTrue(luminance(IsoPalette.floor(zone)) < 0.15, zone.name());
-        }
-        for (TriageLevel level : TriageLevel.values()) {
-            assertTrue(luminance(Palette.triage(level)) > 2 * luminance(IsoPalette.CORRIDOR_FLOOR), level.name());
-        }
-        for (Color staff : new Color[] {Palette.DOCTOR_COAT, Palette.NURSE_UNIFORM, Palette.TRIAGE_NURSE,
-                Palette.PORTER_UNIFORM}) {
-            assertTrue(luminance(staff) > 2 * luminance(IsoPalette.CORRIDOR_FLOOR), staff.toString());
-        }
-    }
-
-    @Test
     void theCapIsTheUniformDarker() {
         Color cap = IsoPalette.cap(Palette.NURSE_UNIFORM);
 
@@ -75,7 +53,6 @@ class IsoPaletteTest {
     @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> IsoPalette.accent(null));
-        assertThrows(IllegalArgumentException.class, () -> IsoPalette.floor(null));
         assertThrows(IllegalArgumentException.class, () -> IsoPalette.cap(null));
         assertThrows(IllegalArgumentException.class, () -> IsoPalette.darker(Color.RED, 1.5));
         assertThrows(IllegalArgumentException.class, () -> IsoPalette.lighter(null, 0.5));

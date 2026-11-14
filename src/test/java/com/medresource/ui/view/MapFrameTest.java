@@ -4,6 +4,7 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
+import com.medresource.ui.render.IsoTheme;
 import com.medresource.ui.render.Renderer2D;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,25 @@ class MapFrameTest {
         frame.viewToggle().flatPill().doClick();
 
         assertFalse(map.isIsometric());
+    }
+
+    @Test
+    void theThemeToggleOnlyShowsIn25dAndChangesTheThemeOfThePlan() {
+        HospitalMapPanel map = map();
+        MapFrame frame = new MapFrame(map, "estándar · 20 × 16 m");
+
+        assertFalse(frame.themeToggle().isVisible(), "en 2D no hay tema que elegir");
+
+        frame.viewToggle().isometricPill().doClick();
+        frame.themeToggle().darkPill().doClick();
+
+        assertTrue(frame.themeToggle().isVisible());
+        assertEquals(IsoTheme.DARK, map.getIsoTheme());
+
+        frame.viewToggle().flatPill().doClick();
+
+        assertFalse(frame.themeToggle().isVisible());
+        assertEquals(IsoTheme.DARK, map.getIsoTheme(), "el tema se recuerda al volver a 2.5D");
     }
 
     @Test

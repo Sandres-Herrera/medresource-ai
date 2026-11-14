@@ -22,7 +22,9 @@ import java.util.Optional;
  * sentado; quien no puede caminar va acostado en una camilla, que empuja un camillero mientras se mueve; los demás van
  * de pie. El personal que está en su puesto de la sala del personal va sentado.</p>
  *
- * <p>El color del cuerpo dice quién es cada uno: el del triage para un paciente (gris si falleció), bata blanca con
+ * <p>Cada persona tiene piernas, torso, brazos y cabeza; los pacientes tienen pelo de uno de seis tonos, siempre el
+ * mismo para el mismo código. El color de la ropa dice quién es cada uno: el del triage para un paciente (gris si
+ * falleció), bata blanca con
  * un distintivo del color de su especialidad para un médico, verde agua para un enfermero y gris azulado para un
  * camillero; el personal lleva además un gorro más oscuro. Sobre la cabeza de cada paciente va su barra de salud y,
  * en tratamiento, la de su avance.</p>
@@ -39,6 +41,9 @@ public final class IsoFigures {
     public static final double STANDING_FOCUS = 0.35;
 
     private static final double CENTER_TOLERANCE = 1e-6;
+    private static final Color[] HAIR = {new Color(0x2B, 0x1D, 0x14), new Color(0x4A, 0x32, 0x22),
+        new Color(0x1C, 0x1C, 0x1C), new Color(0x6B, 0x44, 0x23), new Color(0xA0, 0x52, 0x2D),
+        new Color(0xB8, 0xB8, 0xB8)};
 
     /** Cómo va un paciente en este instante. */
     public enum Pose {
@@ -207,9 +212,9 @@ public final class IsoFigures {
                     col + 0.5, row + 0.3, marker, body);
             case ON_STRETCHER -> stretcher(graphics, gx, gy, marker, body);
             case SEATED -> IsoBrush.person(graphics, projection, gx, gy - 0.02, IsoFurniture.SEAT_TOP, marker.bob(),
-                    new IsoBrush.Person(body, null, marker.sex(), scale, true));
+                    new IsoBrush.Person(body, null, marker.sex(), scale, true, hairOf(marker.code())));
             case STANDING -> standing(graphics, gx, gy, marker.bob(),
-                    new IsoBrush.Person(body, null, marker.sex(), scale, false));
+                    new IsoBrush.Person(body, null, marker.sex(), scale, false, hairOf(marker.code())));
         };
         if (!marker.deceased()) {
             IsoBrush.bar(graphics, top.getX(), top.getY() - 6, IsoBrush.BAR_WIDTH,
@@ -237,7 +242,7 @@ public final class IsoFigures {
         IsoBrush.box(graphics, projection, x, y, z + 0.09, w, 0.07, 0.01, IsoPalette.lighter(body, 0.55));
         double radius = IsoBrush.screenRadius(IsoBrush.HEAD_RADIUS * (marker.minor() ? MINOR_SCALE : 1.0));
         Point2D head = projection.at(headX, headY, z + 0.08);
-        IsoBrush.head(graphics, head.getX(), head.getY() - radius * 0.6, radius, null);
+        IsoBrush.head(graphics, head.getX(), head.getY() - radius * 0.6, radius, null, hairOf(marker.code()));
         return new Point2D.Double(head.getX(), head.getY() - radius * 1.6);
     }
 
@@ -254,9 +259,12 @@ public final class IsoFigures {
             graphics.fill(new Ellipse2D.Double(at.getX() - 2.6, at.getY() - 1.8, 5.2, 3.6));
         }
         double lift = marker.bob();
-        IsoBrush.box(graphics, projection, x + 0.08, y + 0.08, 0.05, w - 0.16, d - 0.16, 0.18, IsoPalette.METAL);
-        IsoBrush.box(graphics, projection, x, y, 0.23, w, d, 0.05, IsoPalette.BED_FRAME);
-        IsoBrush.box(graphics, projection, x + 0.02, y + 0.02, 0.28, w - 0.04, d - 0.04, 0.05, IsoPalette.MATTRESS);
+        IsoTheme theme = furniture.getTheme();
+        IsoBrush.box(graphics, projection, x + 0.08, y + 0.08, 0.05, w - 0.16, d - 0.16, 0.18,
+                theme.color(IsoTheme.Part.METAL));
+        IsoBrush.box(graphics, projection, x, y, 0.23, w, d, 0.05, theme.color(IsoTheme.Part.BED_FRAME));
+        IsoBrush.box(graphics, projection, x + 0.02, y + 0.02, 0.28, w - 0.04, d - 0.04, 0.05,
+                theme.color(IsoTheme.Part.MATTRESS));
         Point2D top;
         if (marker.deceased()) {
             IsoBrush.box(graphics, projection, x + 0.04, y + 0.04, 0.33, w - 0.08, d - 0.08, 0.1, IsoPalette.SHEET);
@@ -265,7 +273,8 @@ public final class IsoFigures {
             IsoBrush.box(graphics, projection, x + 0.25, y + 0.04, 0.33, w - 0.3, d - 0.08, 0.09, body);
             double radius = IsoBrush.screenRadius(IsoBrush.HEAD_RADIUS);
             Point2D head = projection.at(x + 0.13, gy, 0.4);
-            IsoBrush.head(graphics, head.getX(), head.getY() - radius * 0.6 + lift, radius, null);
+            IsoBrush.head(graphics, head.getX(), head.getY() - radius * 0.6 + lift, radius, null,
+                    hairOf(marker.code()));
             top = new Point2D.Double(head.getX(), head.getY() - radius * 1.6);
         }
         if (marker.isCarried()) {
@@ -289,8 +298,8 @@ public final class IsoFigures {
             standing(graphics, gx, gy, marker.bob(), person);
         }
         if (marker.isDoctor()) {
-            double height = marker.seated() ? IsoBrush.SEATED_BODY_HEIGHT : IsoBrush.BODY_HEIGHT;
-            Point2D chest = projection.at(gx, gy, (marker.seated() ? IsoFurniture.SEAT_TOP : 0) + height * 0.62);
+            Point2D chest = projection.at(gx, gy, (marker.seated() ? IsoFurniture.SEAT_TOP : 0)
+                    + IsoBrush.chestHeight(marker.seated()));
             graphics.setColor(Palette.specialty(marker.specialty()));
             graphics.fill(new Rectangle2D.Double(chest.getX() - 3.5, chest.getY() + marker.bob() - 1.2, 7, 2.4));
         }
@@ -299,6 +308,16 @@ public final class IsoFigures {
     private static IsoBrush.Person porter() {
         return new IsoBrush.Person(Palette.PORTER_UNIFORM, IsoPalette.cap(Palette.PORTER_UNIFORM), Sex.MALE, 1.0,
                 false);
+    }
+
+    /**
+     * Color del pelo de un paciente: uno de seis tonos, siempre el mismo para el mismo código.
+     *
+     * @param code código del paciente
+     * @return color del pelo
+     */
+    public static Color hairOf(String code) {
+        return HAIR[Math.floorMod(code == null ? 0 : code.hashCode(), HAIR.length)];
     }
 
     /** Color del cuerpo de un paciente: el de su triage, gris si falleció o si todavía no tiene triage. */

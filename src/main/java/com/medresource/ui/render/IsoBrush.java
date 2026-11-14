@@ -4,8 +4,6 @@ import com.medresource.model.Sex;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Shape;
@@ -14,31 +12,38 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Pincel de la vista 2.5D: dibuja pisos, cajas, muros de vidrio y personas sobre una {@link IsoProjection}.
+ * Pincel de la vista 2.5D: dibuja pisos, cajas, paneles de vidrio y personas sobre una {@link IsoProjection}.
  *
  * <p>Todo se mide en metros sobre la cuadrícula del plano: {@code x} crece con las columnas, {@code y} con las filas y
  * {@code z} hacia arriba. Una caja muestra sus tres caras visibles: la de arriba (la más clara), la del frente
  * izquierdo (la cara de las filas mayores) y la del frente derecho (la de las columnas mayores, la más oscura).</p>
  *
- * <p>Una persona es un cilindro con cabeza: el cuerpo lleva el color que dice quién es, con un degradado de luz de
- * izquierda a derecha, y el personal lleva además un gorro más oscuro. Las mujeres llevan vestido (el cilindro se
- * abre hacia abajo). Todas tienen un contorno casi negro y una sombra en el piso.</p>
+ * <p>Una persona tiene piernas, torso con brazos y cabeza con pelo: la ropa lleva el color que dice quién es y el
+ * personal lleva además un gorro más oscuro. Las mujeres llevan vestido. Todas tienen un contorno casi negro, que
+ * las separa del piso en el tema claro y en el oscuro, y una sombra en el piso.</p>
  *
  * <p>No guarda estado: cada método dibuja de una vez sobre la superficie que recibe.</p>
  */
 public final class IsoBrush {
 
-    /** Radio del cuerpo de un adulto, en metros. */
+    /** Radio que ocupa en el piso un adulto, en metros (para su sombra y para no chocar con los muebles). */
     public static final double BODY_RADIUS = 0.13;
+    /** Alto de las piernas de un adulto, en metros. */
+    public static final double LEG_HEIGHT = 0.34;
+    /** Alto del torso de un adulto, en metros. */
+    public static final double TORSO_HEIGHT = 0.3;
     /** Alto del cuerpo de un adulto de pie, en metros (sin la cabeza). */
-    public static final double BODY_HEIGHT = 0.44;
-    /** Alto del cuerpo de un adulto sentado, en metros. */
-    public static final double SEATED_BODY_HEIGHT = 0.3;
+    public static final double BODY_HEIGHT = LEG_HEIGHT + TORSO_HEIGHT;
+    /** Alto del cuerpo de un adulto sentado, desde el asiento, en metros. */
+    public static final double SEATED_BODY_HEIGHT = 0.35;
     /** Radio de la cabeza de un adulto, en metros. */
-    public static final double HEAD_RADIUS = 0.115;
+    public static final double HEAD_RADIUS = 0.1;
+    /** Medio ancho de los hombros de un adulto, en metros. */
+    public static final double TORSO_HALF_WIDTH = 0.12;
     /** Grosor del contorno de las personas, en píxeles. */
     public static final float OUTLINE_WIDTH = 1.1f;
     /** Ancho de la barra de salud, en píxeles. */
@@ -47,6 +52,10 @@ public final class IsoBrush {
     public static final int BAR_HEIGHT = 3;
 
     private static final double SQRT2 = Math.sqrt(2);
+    private static final double PANTS = 0.72;
+    private static final double SLEEVE = 0.86;
+    private static final float PERSON_STROKE = 0.9f;
+    private static final Color SHOES = new Color(0x1F, 0x24, 0x30);
     private static final double FACE_EAST = 0.76;
     private static final double FACE_TOP = 0.18;
     private static final double EDGE = 0.8;
@@ -62,8 +71,25 @@ public final class IsoBrush {
      * @param sex    sexo: las mujeres llevan vestido
      * @param scale  tamaño (1 para un adulto)
      * @param seated {@code true} si está sentada
+     * @param hair   color del pelo, o nulo para el castaño oscuro de siempre (con gorro no se ve)
      */
-    public record Person(Color body, Color cap, Sex sex, double scale, boolean seated) {
+    public record Person(Color body, Color cap, Sex sex, double scale, boolean seated, Color hair) {
+
+        /** Castaño oscuro: el pelo de quien no dice otro. */
+        public static final Color DEFAULT_HAIR = new Color(0x3B, 0x2A, 0x1E);
+
+        /**
+         * Crea una persona con el pelo castaño oscuro.
+         *
+         * @param body   color del cuerpo
+         * @param cap    color del gorro, o nulo
+         * @param sex    sexo
+         * @param scale  tamaño
+         * @param seated {@code true} si está sentada
+         */
+        public Person(Color body, Color cap, Sex sex, double scale, boolean seated) {
+            this(body, cap, sex, scale, seated, DEFAULT_HAIR);
+        }
 
         /**
          * Valida la persona.
@@ -76,6 +102,9 @@ public final class IsoBrush {
             }
             if (!(scale > 0)) {
                 throw new IllegalArgumentException("El tamaño de la persona debe ser positivo.");
+            }
+            if (hair == null) {
+                hair = DEFAULT_HAIR;
             }
         }
     }
@@ -159,7 +188,8 @@ public final class IsoBrush {
     }
 
     /**
-     * Caja de vidrio: caras casi transparentes con bordes celestes y el borde de arriba brillante.
+     * Panel de vidrio: las caras con el relleno transparente que se le da y los bordes del marco; el borde de
+     * arriba, más grueso.
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -169,14 +199,16 @@ public final class IsoBrush {
      * @param w          ancho
      * @param d          fondo
      * @param h          alto
+     * @param fill       relleno del vidrio, con transparencia
+     * @param frame      color del marco
      */
-    public static void glass(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
-                             double d, double h) {
+    public static void pane(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
+                            double d, double h, Color fill, Color frame) {
         graphics.setStroke(new BasicStroke(0.8f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), IsoPalette.GLASS, IsoPalette.GLASS_EDGE);
-        face(graphics, rightFace(projection, x, y, z, w, d, h), IsoPalette.GLASS, IsoPalette.GLASS_EDGE);
-        graphics.setStroke(new BasicStroke(1.1f));
-        face(graphics, quad(projection, x, y, x + w, y + d, z + h), IsoPalette.GLASS, IsoPalette.GLASS_TOP);
+        face(graphics, leftFace(projection, x, y, z, w, d, h), fill, frame);
+        face(graphics, rightFace(projection, x, y, z, w, d, h), fill, frame);
+        graphics.setStroke(new BasicStroke(1.2f));
+        face(graphics, quad(projection, x, y, x + w, y + d, z + h), fill, frame);
     }
 
     /** Cara izquierda de una caja: la de las filas mayores. */
@@ -241,7 +273,12 @@ public final class IsoBrush {
     }
 
     /**
-     * Dibuja una persona de pie o sentada con los pies en un punto de la cuadrícula.
+     * Dibuja una persona de pie o sentada con los pies en un punto de la cuadrícula: piernas (o vestido), torso con
+     * brazos y manos, cuello y cabeza con pelo o con gorro.
+     *
+     * <p>La ropa lleva el color que dice quién es; el pantalón es el mismo color más oscuro. De pie, las piernas
+     * miden {@value #LEG_HEIGHT} m y el torso {@value #TORSO_HEIGHT} m; sentada, los muslos van hacia el frente
+     * sobre el asiento y las piernas bajan hasta el piso.</p>
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -255,43 +292,100 @@ public final class IsoBrush {
     public static Point2D person(Graphics2D graphics, IsoProjection projection, double gx, double gy, double z,
                                  double lift, Person person) {
         double scale = person.scale();
-        double radius = screenRadius(BODY_RADIUS * scale);
-        double ratio = (double) IsoProjection.TILE_H / IsoProjection.TILE_W;
-        double height = (person.seated() ? SEATED_BODY_HEIGHT : BODY_HEIGHT) * scale * IsoProjection.Z_SCALE;
+        double unit = IsoProjection.Z_SCALE * scale;
+        Color clothes = person.body();
+        Color pants = IsoPalette.darker(clothes, PANTS);
+        Color sleeve = IsoPalette.darker(clothes, SLEEVE);
         Point2D base = projection.at(gx, gy, z);
         double cx = base.getX();
-        double bottom = base.getY() + lift;
-        double top = bottom - height;
-        boolean dress = person.sex() == Sex.FEMALE;
-        double bottomRadius = dress ? radius * 1.25 : radius;
-        double topRadius = dress ? radius * 0.78 : radius;
-        Path2D.Double body = new Path2D.Double();
-        body.moveTo(cx - topRadius, top);
-        body.lineTo(cx - bottomRadius, bottom);
-        body.append(new Arc2D.Double(cx - bottomRadius, bottom - bottomRadius * ratio, 2 * bottomRadius,
-                2 * bottomRadius * ratio, 180, 180, Arc2D.OPEN), true);
-        body.lineTo(cx + topRadius, top);
-        body.append(new Arc2D.Double(cx - topRadius, top - topRadius * ratio, 2 * topRadius, 2 * topRadius * ratio,
-                0, 180, Arc2D.OPEN), true);
-        body.closePath();
-        Color color = person.body();
-        graphics.setPaint(new GradientPaint((float) (cx - bottomRadius), 0f, IsoPalette.lighter(color, 0.28),
-                (float) (cx + bottomRadius), 0f, IsoPalette.darker(color, 0.72)));
-        graphics.fill(body);
-        graphics.setStroke(new BasicStroke(OUTLINE_WIDTH));
-        graphics.setColor(IsoPalette.OUTLINE);
-        graphics.draw(body);
-        graphics.setColor(IsoPalette.lighter(color, 0.3));
-        graphics.fill(new Ellipse2D.Double(cx - topRadius + 0.6, top - topRadius * ratio + 0.3,
-                2 * topRadius - 1.2, 2 * topRadius * ratio - 0.6));
-        double head = screenRadius(HEAD_RADIUS * scale);
-        double headY = top - head * 0.92;
-        head(graphics, cx, headY, head, person.cap());
+        double feet = base.getY() + lift;
+        double halfWidth = TORSO_HALF_WIDTH * unit;
+        graphics.setStroke(new BasicStroke(PERSON_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        double hip;
+        if (person.seated()) {
+            double thigh = 0.2 * scale;
+            box(graphics, projection, gx - 0.09 * scale, gy - 0.02, z, 0.18 * scale, thigh, 0.07 * scale, pants);
+            box(graphics, projection, gx - 0.09 * scale, gy + thigh - 0.06, 0, 0.18 * scale, 0.05, z, pants);
+            hip = feet - 0.05 * unit;
+        } else {
+            double legs = LEG_HEIGHT * unit;
+            hip = feet - legs;
+            if (person.sex() == Sex.FEMALE) {
+                outlined(graphics, trapezoid(cx, hip, halfWidth * 0.9, feet - 0.13 * unit, halfWidth * 1.25),
+                        IsoPalette.lighter(clothes, 0.08));
+                outlined(graphics, new Rectangle2D.Double(cx - halfWidth * 0.75, feet - 0.13 * unit,
+                        halfWidth * 0.55, 0.13 * unit), pants);
+                outlined(graphics, new Rectangle2D.Double(cx + halfWidth * 0.2, feet - 0.13 * unit,
+                        halfWidth * 0.55, 0.13 * unit), pants);
+            } else {
+                outlined(graphics, trapezoid(cx, hip, halfWidth * 0.9, feet, halfWidth * 0.82), pants);
+                graphics.setColor(IsoPalette.darker(pants, 0.7));
+                graphics.draw(new Line2D.Double(cx + 0.6, hip + 2, cx + 0.6, feet));
+            }
+            graphics.setColor(SHOES);
+            graphics.fill(new RoundRectangle2D.Double(cx - halfWidth * 0.95, feet - 1.6, halfWidth * 0.85, 2.6, 1.5,
+                    1.5));
+            graphics.fill(new RoundRectangle2D.Double(cx + halfWidth * 0.12, feet - 1.6, halfWidth * 0.85, 2.6, 1.5,
+                    1.5));
+        }
+        double shoulders = hip - TORSO_HEIGHT * unit;
+        outlined(graphics, trapezoid(cx, shoulders, halfWidth, hip + 1, halfWidth * 0.86), clothes);
+        graphics.setColor(IsoPalette.darker(clothes, 0.82));
+        graphics.draw(new Line2D.Double(cx, shoulders + 3, cx, hip));
+        for (int side = -1; side <= 1; side += 2) {
+            double sx = cx + side * (halfWidth + 0.6);
+            Path2D.Double arm = new Path2D.Double();
+            arm.moveTo(sx, shoulders + 2);
+            arm.quadTo(sx + side * 1.4, (shoulders + hip) / 2, sx + side * 0.5, hip - 1);
+            graphics.setStroke(new BasicStroke((float) (0.07 * unit), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(IsoPalette.OUTLINE);
+            graphics.draw(arm);
+            graphics.setStroke(new BasicStroke((float) (0.07 * unit - 1.6), BasicStroke.CAP_ROUND,
+                    BasicStroke.JOIN_ROUND));
+            graphics.setColor(sleeve);
+            graphics.draw(arm);
+            graphics.setColor(Palette.PATIENT_HEAD);
+            graphics.fill(new Ellipse2D.Double(sx + side * 0.5 - 1.7, hip - 2.6, 3.4, 3.4));
+        }
+        graphics.setStroke(new BasicStroke(PERSON_STROKE));
+        double head = HEAD_RADIUS * unit;
+        double headY = shoulders - head * 0.85;
+        graphics.setColor(Palette.PATIENT_HEAD);
+        graphics.fill(new Rectangle2D.Double(cx - head * 0.35, shoulders - head * 0.4, head * 0.7, head * 0.6));
+        head(graphics, cx, headY, head, person.cap(), person.hair());
         return new Point2D.Double(cx, headY - head);
     }
 
     /**
-     * Cabeza: una esfera color piel con contorno y, si lleva, el gorro en la mitad de arriba.
+     * Altura del pecho de una persona, donde el médico lleva el distintivo de su especialidad.
+     *
+     * @param seated {@code true} si está sentada (la altura se mide desde el asiento)
+     * @return la altura en metros
+     */
+    public static double chestHeight(boolean seated) {
+        return (seated ? 0.05 : LEG_HEIGHT) + TORSO_HEIGHT * 0.62;
+    }
+
+    private static Path2D trapezoid(double cx, double top, double topHalf, double bottom, double bottomHalf) {
+        Path2D.Double shape = new Path2D.Double();
+        shape.moveTo(cx - topHalf, top);
+        shape.lineTo(cx + topHalf, top);
+        shape.lineTo(cx + bottomHalf, bottom);
+        shape.lineTo(cx - bottomHalf, bottom);
+        shape.closePath();
+        return shape;
+    }
+
+    private static void outlined(Graphics2D graphics, Shape shape, Color fill) {
+        graphics.setColor(fill);
+        graphics.fill(shape);
+        graphics.setStroke(new BasicStroke(PERSON_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(IsoPalette.OUTLINE);
+        graphics.draw(shape);
+    }
+
+    /**
+     * Cabeza sin pelo: una esfera color piel con contorno y, si lleva, el gorro en la mitad de arriba.
      *
      * @param graphics superficie de dibujo
      * @param cx       centro horizontal en pantalla
@@ -300,16 +394,31 @@ public final class IsoBrush {
      * @param cap      color del gorro, o nulo
      */
     public static void head(Graphics2D graphics, double cx, double cy, double radius, Color cap) {
+        head(graphics, cx, cy, radius, cap, null);
+    }
+
+    /**
+     * Cabeza: una esfera color piel con contorno y, encima, el gorro si lleva o si no el pelo.
+     *
+     * @param graphics superficie de dibujo
+     * @param cx       centro horizontal en pantalla
+     * @param cy       centro vertical en pantalla
+     * @param radius   radio en píxeles
+     * @param cap      color del gorro, o nulo
+     * @param hair     color del pelo, o nulo para no dibujarlo
+     */
+    public static void head(Graphics2D graphics, double cx, double cy, double radius, Color cap, Color hair) {
         Ellipse2D ball = new Ellipse2D.Double(cx - radius, cy - radius, 2 * radius, 2 * radius);
         graphics.setPaint(new GradientPaint((float) (cx - radius), 0f, IsoPalette.lighter(Palette.PATIENT_HEAD, 0.25),
                 (float) (cx + radius), 0f, IsoPalette.darker(Palette.PATIENT_HEAD, 0.8)));
         graphics.fill(ball);
-        if (cap != null) {
+        Color top = cap != null ? cap : hair;
+        if (top != null) {
             Path2D.Double hat = new Path2D.Double();
             hat.append(new Arc2D.Double(cx - radius, cy - radius, 2 * radius, 2 * radius, 0, 180, Arc2D.OPEN), false);
-            hat.quadTo(cx, cy + radius * 0.25, cx + radius, cy);
+            hat.quadTo(cx, cy + radius * (cap != null ? 0.25 : -0.35), cx + radius, cy);
             hat.closePath();
-            graphics.setColor(cap);
+            graphics.setColor(top);
             graphics.fill(hat);
         }
         graphics.setStroke(new BasicStroke(OUTLINE_WIDTH));
@@ -336,33 +445,5 @@ public final class IsoBrush {
             graphics.setColor(fill);
             graphics.fill(new RoundRectangle2D.Double(left, top, filled, BAR_HEIGHT, 2, 2));
         }
-    }
-
-    /**
-     * Etiqueta flotante: una píldora de color con su texto, unida al piso por una línea punteada.
-     *
-     * @param graphics superficie de dibujo
-     * @param floor    punto del piso al que apunta
-     * @param at       punto de la pantalla donde va el borde de abajo de la píldora
-     * @param text     texto
-     * @param fill     color de la píldora y de la línea
-     * @param textColor color del texto
-     */
-    public static void tag(Graphics2D graphics, Point2D floor, Point2D at, String text, Color fill, Color textColor) {
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
-        FontMetrics metrics = graphics.getFontMetrics();
-        double width = metrics.stringWidth(text) + 14.0;
-        double height = 16.0;
-        graphics.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), 150));
-        graphics.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
-                new float[] {2f, 3f}, 0f));
-        graphics.draw(new Line2D.Double(floor, at));
-        graphics.setColor(fill);
-        graphics.fill(new Ellipse2D.Double(floor.getX() - 2.2, floor.getY() - 2.2, 4.4, 4.4));
-        graphics.fill(new RoundRectangle2D.Double(at.getX() - width / 2, at.getY() - height, width, height, height,
-                height));
-        graphics.setColor(textColor);
-        graphics.drawString(text, (float) (at.getX() - metrics.stringWidth(text) / 2.0),
-                (float) (at.getY() - height / 2 + metrics.getAscent() / 2.0 - 1));
     }
 }
