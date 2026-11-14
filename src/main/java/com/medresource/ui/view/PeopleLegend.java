@@ -21,7 +21,7 @@ import java.util.List;
  * <p>Los pacientes llevan el color de su nivel de triage (del I, el más urgente, al V), gris claro si todavía no
  * tienen triage y gris oscuro si fallecieron. El personal lleva un gorro: el médico, bata blanca; el enfermero,
  * uniforme verde agua; la enfermera de triage, uniforme lila; y el camillero, que busca a los pacientes en la sala de
- * espera y empuja las camillas, uniforme gris azulado.</p>
+ * espera y empuja las camillas, uniforme gris azulado; y el vigilante de la salida, azul oscuro.</p>
  */
 public final class PeopleLegend extends ThemedCard {
 
@@ -41,6 +41,8 @@ public final class PeopleLegend extends ThemedCard {
     public static final String TRIAGE_NURSE = "Enf. de triage";
     /** Texto del camillero. */
     public static final String PORTER = "Camillero";
+    /** Texto del vigilante de la salida. */
+    public static final String GUARD = "Vigilante";
 
     private final List<String> entries = new ArrayList<>();
     private final List<FigureIcon> figures = new ArrayList<>();
@@ -64,6 +66,7 @@ public final class PeopleLegend extends ThemedCard {
         staff.add(entry(NURSE, Palette.NURSE_UNIFORM, IsoPalette.cap(Palette.NURSE_UNIFORM)));
         staff.add(entry(TRIAGE_NURSE, Palette.TRIAGE_NURSE, IsoPalette.cap(Palette.TRIAGE_NURSE)));
         staff.add(entry(PORTER, Palette.PORTER_UNIFORM, IsoPalette.cap(Palette.PORTER_UNIFORM)));
+        staff.add(entry(GUARD, Palette.GUARD_UNIFORM, IsoPalette.cap(Palette.GUARD_UNIFORM)));
         groups.add(section("Pacientes · color del triage", patients), BorderLayout.NORTH);
         groups.add(section("Personal · con gorro", staff), BorderLayout.CENTER);
         add(title, BorderLayout.NORTH);

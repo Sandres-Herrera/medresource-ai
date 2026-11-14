@@ -31,12 +31,12 @@ class PeopleLegendTest {
     void listsThePatientsByTheirColorAndThenTheStaffByTheirRole() {
         List<String> entries = legend.entries();
 
-        assertEquals(TriageLevel.values().length + 6, entries.size());
+        assertEquals(TriageLevel.values().length + 7, entries.size());
         assertEquals("I · Inmediato", entries.get(0));
         assertEquals(PeopleLegend.PENDING, entries.get(TriageLevel.values().length));
         assertEquals(PeopleLegend.DECEASED, entries.get(TriageLevel.values().length + 1));
-        assertEquals(List.of(PeopleLegend.DOCTOR, PeopleLegend.NURSE, PeopleLegend.TRIAGE_NURSE, PeopleLegend.PORTER),
-                entries.subList(entries.size() - 4, entries.size()));
+        assertEquals(List.of(PeopleLegend.DOCTOR, PeopleLegend.NURSE, PeopleLegend.TRIAGE_NURSE, PeopleLegend.PORTER,
+                PeopleLegend.GUARD), entries.subList(entries.size() - 5, entries.size()));
     }
 
     @Test
@@ -48,7 +48,7 @@ class PeopleLegendTest {
         assertNull(figures.get(0).getCap());
         int doctor = legend.entries().indexOf(PeopleLegend.DOCTOR);
         assertEquals(Palette.DOCTOR_COAT, figures.get(doctor).getBody());
-        assertEquals(Palette.PORTER_UNIFORM, figures.get(figures.size() - 1).getBody());
+        assertEquals(Palette.GUARD_UNIFORM, figures.get(figures.size() - 1).getBody());
         figures.subList(doctor, figures.size()).forEach(figure -> assertNotNull(figure.getCap(),
                 "el personal lleva gorro"));
     }
