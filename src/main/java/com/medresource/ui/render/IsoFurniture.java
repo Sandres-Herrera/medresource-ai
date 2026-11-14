@@ -114,6 +114,11 @@ public final class IsoFurniture {
         this.theme = theme;
     }
 
+    /** Tema de colores de los muebles. */
+    public IsoTheme getTheme() {
+        return theme;
+    }
+
     private Color color(Part part) {
         return theme.color(part);
     }
@@ -319,7 +324,8 @@ public final class IsoFurniture {
                     double z = 0.14 + drawer * 0.15;
                     graphics.setColor(IsoPalette.darker(ALARM_RED, 0.75));
                     graphics.fill(IsoBrush.polygon(projection, new double[][] {{x + 0.14, y + 0.404, z},
-                            {x + 0.56, y + 0.404, z}, {x + 0.56, y + 0.404, z + 0.11}, {x + 0.14, y + 0.404, z + 0.11}}));
+                            {x + 0.56, y + 0.404, z}, {x + 0.56, y + 0.404, z + 0.11},
+                            {x + 0.14, y + 0.404, z + 0.11}}));
                 }
                 IsoBrush.box(graphics, projection, x + 0.18, y + 0.08, 0.78, 0.3, 0.22, 0.1, color(Part.DEVICE));
             }
@@ -475,7 +481,8 @@ public final class IsoFurniture {
     }
 
     private void anesthesia(Graphics2D graphics, Position spot) {
-        IsoBrush.box(graphics, projection, spot.col() + 0.08, spot.row() + 0.08, 0, 0.24, 0.2, 0.55, color(Part.DEVICE));
+        IsoBrush.box(graphics, projection, spot.col() + 0.08, spot.row() + 0.08, 0, 0.24, 0.2, 0.55,
+                color(Part.DEVICE));
         screen(graphics, spot.col() + 0.2, spot.row() + 0.18, 0.55);
     }
 

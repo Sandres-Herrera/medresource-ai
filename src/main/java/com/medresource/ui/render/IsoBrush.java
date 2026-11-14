@@ -4,8 +4,6 @@ import com.medresource.model.Sex;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Shape;
@@ -18,7 +16,7 @@ import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Pincel de la vista 2.5D: dibuja pisos, cajas, muros de vidrio y personas sobre una {@link IsoProjection}.
+ * Pincel de la vista 2.5D: dibuja pisos, cajas, paneles de vidrio y personas sobre una {@link IsoProjection}.
  *
  * <p>Todo se mide en metros sobre la cuadrícula del plano: {@code x} crece con las columnas, {@code y} con las filas y
  * {@code z} hacia arriba. Una caja muestra sus tres caras visibles: la de arriba (la más clara), la del frente
@@ -187,27 +185,6 @@ public final class IsoBrush {
         face(graphics, leftFace(projection, x, y, z, w, d, h), left, IsoPalette.darker(left, EDGE));
         face(graphics, rightFace(projection, x, y, z, w, d, h), right, IsoPalette.darker(right, EDGE));
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), top, IsoPalette.darker(top, EDGE));
-    }
-
-    /**
-     * Caja de vidrio: caras casi transparentes con bordes celestes y el borde de arriba brillante.
-     *
-     * @param graphics   superficie de dibujo
-     * @param projection proyección de la vista
-     * @param x          columna de la esquina superior
-     * @param y          fila de la esquina superior
-     * @param z          altura de la base
-     * @param w          ancho
-     * @param d          fondo
-     * @param h          alto
-     */
-    public static void glass(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
-                             double d, double h) {
-        graphics.setStroke(new BasicStroke(0.8f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), IsoPalette.GLASS, IsoPalette.GLASS_EDGE);
-        face(graphics, rightFace(projection, x, y, z, w, d, h), IsoPalette.GLASS, IsoPalette.GLASS_EDGE);
-        graphics.setStroke(new BasicStroke(1.1f));
-        face(graphics, quad(projection, x, y, x + w, y + d, z + h), IsoPalette.GLASS, IsoPalette.GLASS_TOP);
     }
 
     /**
@@ -468,33 +445,5 @@ public final class IsoBrush {
             graphics.setColor(fill);
             graphics.fill(new RoundRectangle2D.Double(left, top, filled, BAR_HEIGHT, 2, 2));
         }
-    }
-
-    /**
-     * Etiqueta flotante: una píldora de color con su texto, unida al piso por una línea punteada.
-     *
-     * @param graphics superficie de dibujo
-     * @param floor    punto del piso al que apunta
-     * @param at       punto de la pantalla donde va el borde de abajo de la píldora
-     * @param text     texto
-     * @param fill     color de la píldora y de la línea
-     * @param textColor color del texto
-     */
-    public static void tag(Graphics2D graphics, Point2D floor, Point2D at, String text, Color fill, Color textColor) {
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
-        FontMetrics metrics = graphics.getFontMetrics();
-        double width = metrics.stringWidth(text) + 14.0;
-        double height = 16.0;
-        graphics.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), 150));
-        graphics.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
-                new float[] {2f, 3f}, 0f));
-        graphics.draw(new Line2D.Double(floor, at));
-        graphics.setColor(fill);
-        graphics.fill(new Ellipse2D.Double(floor.getX() - 2.2, floor.getY() - 2.2, 4.4, 4.4));
-        graphics.fill(new RoundRectangle2D.Double(at.getX() - width / 2, at.getY() - height, width, height, height,
-                height));
-        graphics.setColor(textColor);
-        graphics.drawString(text, (float) (at.getX() - metrics.stringWidth(text) / 2.0),
-                (float) (at.getY() - height / 2 + metrics.getAscent() / 2.0 - 1));
     }
 }

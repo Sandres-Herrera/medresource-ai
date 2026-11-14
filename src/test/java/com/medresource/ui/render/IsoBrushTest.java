@@ -1,7 +1,6 @@
 package com.medresource.ui.render;
 
 import com.medresource.model.Sex;
-import com.medresource.model.ZoneType;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Color;
@@ -76,7 +75,8 @@ class IsoBrushTest {
         graphics.setColor(Color.RED);
         graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
 
-        IsoBrush.glass(graphics, projection, 1, 1, 0, 1, 0.1, 1);
+        IsoBrush.pane(graphics, projection, 1, 1, 0, 1, 0.1, 1, IsoTheme.LIGHT.color(IsoTheme.Part.WINDOW),
+                IsoTheme.LIGHT.color(IsoTheme.Part.WINDOW_FRAME));
 
         Color seen = new Color(pixel(projection.at(1.5, 1.1, 0.5)));
         assertTrue(seen.getRed() > 180, "el rojo de atrás se sigue viendo: " + seen);
@@ -131,18 +131,6 @@ class IsoBrushTest {
 
         assertEquals(Color.GREEN.getRGB(), image.getRGB(93, 51));
         assertNotEquals(Color.GREEN.getRGB(), image.getRGB(107, 51));
-    }
-
-    @Test
-    void theTagIsAPillWithItsText() {
-        Point2D floor = projection.at(2, 2, 0);
-        Point2D at = projection.at(2, 2, 1.5);
-
-        IsoBrush.tag(graphics, floor, at, "UCI", IsoPalette.accent(ZoneType.ICU),
-                IsoPalette.TAG_TEXT);
-
-        Color pill = new Color(image.getRGB((int) at.getX() - 12, (int) at.getY() - 8));
-        assertEquals(IsoPalette.accent(ZoneType.ICU), pill);
     }
 
     @Test

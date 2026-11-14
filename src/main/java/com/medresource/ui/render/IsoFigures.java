@@ -23,7 +23,8 @@ import java.util.Optional;
  * de pie. El personal que está en su puesto de la sala del personal va sentado.</p>
  *
  * <p>Cada persona tiene piernas, torso, brazos y cabeza; los pacientes tienen pelo de uno de seis tonos, siempre el
- * mismo para el mismo código. El color de la ropa dice quién es cada uno: el del triage para un paciente (gris si falleció), bata blanca con
+ * mismo para el mismo código. El color de la ropa dice quién es cada uno: el del triage para un paciente (gris si
+ * falleció), bata blanca con
  * un distintivo del color de su especialidad para un médico, verde agua para un enfermero y gris azulado para un
  * camillero; el personal lleva además un gorro más oscuro. Sobre la cabeza de cada paciente va su barra de salud y,
  * en tratamiento, la de su avance.</p>
@@ -258,9 +259,12 @@ public final class IsoFigures {
             graphics.fill(new Ellipse2D.Double(at.getX() - 2.6, at.getY() - 1.8, 5.2, 3.6));
         }
         double lift = marker.bob();
-        IsoBrush.box(graphics, projection, x + 0.08, y + 0.08, 0.05, w - 0.16, d - 0.16, 0.18, IsoPalette.METAL);
-        IsoBrush.box(graphics, projection, x, y, 0.23, w, d, 0.05, IsoPalette.BED_FRAME);
-        IsoBrush.box(graphics, projection, x + 0.02, y + 0.02, 0.28, w - 0.04, d - 0.04, 0.05, IsoPalette.MATTRESS);
+        IsoTheme theme = furniture.getTheme();
+        IsoBrush.box(graphics, projection, x + 0.08, y + 0.08, 0.05, w - 0.16, d - 0.16, 0.18,
+                theme.color(IsoTheme.Part.METAL));
+        IsoBrush.box(graphics, projection, x, y, 0.23, w, d, 0.05, theme.color(IsoTheme.Part.BED_FRAME));
+        IsoBrush.box(graphics, projection, x + 0.02, y + 0.02, 0.28, w - 0.04, d - 0.04, 0.05,
+                theme.color(IsoTheme.Part.MATTRESS));
         Point2D top;
         if (marker.deceased()) {
             IsoBrush.box(graphics, projection, x + 0.04, y + 0.04, 0.33, w - 0.08, d - 0.08, 0.1, IsoPalette.SHEET);
