@@ -32,4 +32,12 @@ class StaffMarkerTest {
         assertEquals(0.8, new StaffMarker("E01", null, Sex.FEMALE, true, 1, 2, 0.8).bob(), 0.0);
         assertEquals(0.0, new StaffMarker("E01", null, Sex.FEMALE, true, 1, 2).bob(), 0.0);
     }
+
+    @Test
+    void walksOnlyWhenItIsSaid() {
+        assertFalse(new StaffMarker("E01", null, Sex.FEMALE, false, 1, 2, 0.8).moving());
+        assertTrue(new StaffMarker("E01", null, Sex.FEMALE, false, 1, 2, 0.0, true).moving());
+        assertFalse(new PorterMarker("P001", 1, 2).moving());
+        assertTrue(new PorterMarker("P001", 1, 2, true).moving());
+    }
 }

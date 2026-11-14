@@ -830,6 +830,27 @@ class ScenePlayerTest {
         assertTrue(staffBreathes);
     }
 
+    @Test
+    void theStaffAndThePortersSayWhenTheyWalk() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 60);
+        boolean staffWalks = false;
+        boolean porterWalks = false;
+        while (!player.isFinished() && player.getTime() < 3 * 3600 && !(staffWalks && porterWalks)) {
+            player.advanceTo(player.getTime() + 1);
+            for (StaffMarker member : player.staffMarkers()) {
+                if (member.moving()) {
+                    staffWalks = true;
+                    assertEquals(0.0, member.bob(), 0.0, member.code());
+                    assertFalse(member.seated(), member.code());
+                }
+            }
+            porterWalks |= player.porterMarkers().stream().anyMatch(PorterMarker::moving);
+        }
+
+        assertTrue(staffWalks, "el personal camina");
+        assertTrue(porterWalks, "los camilleros caminan");
+    }
+
     // ---------- ficha del paciente ----------
 
     @Test

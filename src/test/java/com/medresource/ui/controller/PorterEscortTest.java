@@ -102,6 +102,19 @@ class PorterEscortTest {
     }
 
     @Test
+    void walksOnTheWayAndStopsWhenHeIsGone() {
+        PorterEscort escort = fetchAt(100);
+
+        escort.update(100 + (escort.readyAt() - 100) / 2, null);
+        assertTrue(escort.isMoving(), "va hacia la silla");
+
+        escort.update(escort.readyAt() + 1, null);
+        escort.update(escort.readyAt() + 1000, null);
+        assertTrue(escort.isGone());
+        assertFalse(escort.isMoving());
+    }
+
+    @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class,
                 () -> PorterEscort.fetch(null, chair, layout, planner, renderer, 0));
