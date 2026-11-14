@@ -19,8 +19,10 @@ import java.awt.geom.RoundRectangle2D;
  * Pincel de la vista 2.5D: dibuja pisos, cajas, paneles de vidrio y personas sobre una {@link IsoProjection}.
  *
  * <p>Todo se mide en metros sobre la cuadrícula del plano: {@code x} crece con las columnas, {@code y} con las filas y
- * {@code z} hacia arriba. Una caja muestra sus tres caras visibles: la de arriba (la más clara), la del frente
- * izquierdo (la cara de las filas mayores) y la del frente derecho (la de las columnas mayores, la más oscura).</p>
+ * {@code z} hacia arriba. Una caja muestra la cara de arriba (la más clara) y las caras de los lados que miran hacia
+ * quien mira: en la vista de siempre, la del frente izquierdo (la cara de las filas mayores) y la del frente derecho
+ * (la de las columnas mayores, la más oscura). Si la cámara gira, cada cara toma el color del lado de la pantalla al
+ * que mira, así que la luz parece venir siempre del mismo lado de la pantalla.</p>
  *
  * <p>Una persona tiene piernas, torso con brazos y cabeza con pelo: la ropa lleva el color que dice quién es y el
  * personal lleva además un gorro más oscuro. Las mujeres llevan vestido. Todas tienen un contorno casi negro, que
@@ -59,6 +61,10 @@ public final class IsoBrush {
     private static final double FACE_EAST = 0.76;
     private static final double FACE_TOP = 0.18;
     private static final double EDGE = 0.8;
+    /** Caras de los lados de una caja: hacia dónde mira cada una, en columnas y filas. */
+    private static final int[][] SIDES = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
+    /** Alto mínimo en pantalla, en píxeles, para que valga la pena dibujar las caras de los lados. */
+    private static final double MIN_SIDE_PIXELS = 0.05;
 
     private IsoBrush() {
     }
@@ -165,7 +171,9 @@ public final class IsoBrush {
     }
 
     /**
-     * Caja sólida con un color por cara y un borde un poco más oscuro que cada cara.
+     * Caja sólida con un color por cara y un borde un poco más oscuro que cada cara. Se dibujan las caras de los lados
+     * que miran hacia quien mira, cada una con el color de la izquierda, el de la derecha o una mezcla de los dos según
+     * hacia qué lado de la pantalla mira, y al final la de arriba.
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -176,20 +184,27 @@ public final class IsoBrush {
      * @param d          fondo
      * @param h          alto
      * @param top        color de la cara de arriba
-     * @param left       color de la cara izquierda (la de las filas mayores)
-     * @param right      color de la cara derecha (la de las columnas mayores)
+     * @param left       color de las caras que miran a la izquierda (en la vista de siempre, la de las filas mayores)
+     * @param right      color de las caras que miran a la derecha (en la vista de siempre, la de las columnas mayores)
      */
     public static void box(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
                            double d, double h, Color top, Color left, Color right) {
         graphics.setStroke(new BasicStroke(0.5f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), left, IsoPalette.darker(left, EDGE));
-        face(graphics, rightFace(projection, x, y, z, w, d, h), right, IsoPalette.darker(right, EDGE));
+        if (h * projection.heightScale() >= MIN_SIDE_PIXELS) {
+            for (int[] side : SIDES) {
+                if (projection.faces(side[0], side[1])) {
+                    Color color = mix(left, right, projection.rightness(side[0], side[1]));
+                    face(graphics, sideFace(projection, side, x, y, z, w, d, h), color,
+                            IsoPalette.darker(color, EDGE));
+                }
+            }
+        }
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), top, IsoPalette.darker(top, EDGE));
     }
 
     /**
      * Panel de vidrio: las caras con el relleno transparente que se le da y los bordes del marco; el borde de
-     * arriba, más grueso.
+     * arriba, más grueso. Como la caja, solo muestra los lados que miran hacia quien mira.
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -205,8 +220,13 @@ public final class IsoBrush {
     public static void pane(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
                             double d, double h, Color fill, Color frame) {
         graphics.setStroke(new BasicStroke(0.8f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), fill, frame);
-        face(graphics, rightFace(projection, x, y, z, w, d, h), fill, frame);
+        if (h * projection.heightScale() >= MIN_SIDE_PIXELS) {
+            for (int[] side : SIDES) {
+                if (projection.faces(side[0], side[1])) {
+                    face(graphics, sideFace(projection, side, x, y, z, w, d, h), fill, frame);
+                }
+            }
+        }
         graphics.setStroke(new BasicStroke(1.2f));
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), fill, frame);
     }
@@ -221,6 +241,44 @@ public final class IsoBrush {
     static Path2D rightFace(IsoProjection projection, double x, double y, double z, double w, double d, double h) {
         return polygon(projection, new double[][] {{x + w, y, z}, {x + w, y + d, z}, {x + w, y + d, z + h},
                 {x + w, y, z + h}});
+    }
+
+    /** Cara de un lado de una caja, la que mira hacia el lado dado. */
+    private static Path2D sideFace(IsoProjection projection, int[] side, double x, double y, double z, double w,
+                                   double d, double h) {
+        if (side[1] > 0) {
+            return leftFace(projection, x, y, z, w, d, h);
+        }
+        if (side[0] > 0) {
+            return rightFace(projection, x, y, z, w, d, h);
+        }
+        if (side[1] < 0) {
+            return polygon(projection, new double[][] {{x, y, z}, {x + w, y, z}, {x + w, y, z + h}, {x, y, z + h}});
+        }
+        return polygon(projection, new double[][] {{x, y, z}, {x, y + d, z}, {x, y + d, z + h}, {x, y, z + h}});
+    }
+
+    /**
+     * Mezcla dos colores.
+     *
+     * @param from color con parte 0
+     * @param to   color con parte 1
+     * @param share parte del segundo, de 0 a 1
+     * @return la mezcla; con 0 o 1, el color de ese extremo tal cual
+     */
+    static Color mix(Color from, Color to, double share) {
+        if (share <= 0) {
+            return from;
+        }
+        if (share >= 1) {
+            return to;
+        }
+        return new Color(channel(from.getRed(), to.getRed(), share), channel(from.getGreen(), to.getGreen(), share),
+                channel(from.getBlue(), to.getBlue(), share), channel(from.getAlpha(), to.getAlpha(), share));
+    }
+
+    private static int channel(int from, int to, double share) {
+        return (int) Math.round(from + (to - from) * share);
     }
 
     private static void face(Graphics2D graphics, Shape shape, Color fill, Color edge) {
@@ -247,7 +305,7 @@ public final class IsoBrush {
     public static void shadow(Graphics2D graphics, IsoProjection projection, double gx, double gy, double radius) {
         Point2D at = projection.at(gx, gy, 0);
         double rx = screenRadius(radius);
-        double ry = rx * IsoProjection.TILE_H / IsoProjection.TILE_W;
+        double ry = rx * projection.groundRatio();
         graphics.setColor(IsoPalette.SHADOW);
         graphics.fill(new Ellipse2D.Double(at.getX() - rx + 1, at.getY() - ry + 0.5, 2 * rx, 2 * ry));
     }
@@ -266,7 +324,7 @@ public final class IsoBrush {
                             Color color) {
         Point2D at = projection.at(gx, gy, 0);
         double rx = screenRadius(radius);
-        double ry = rx * IsoProjection.TILE_H / IsoProjection.TILE_W;
+        double ry = rx * projection.groundRatio();
         graphics.setStroke(new BasicStroke(2.2f));
         graphics.setColor(color);
         graphics.draw(new Ellipse2D.Double(at.getX() - rx, at.getY() - ry, 2 * rx, 2 * ry));
