@@ -68,6 +68,9 @@ public final class SimulationWindow extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
+    /** Título de la ventana: la misma para la vista 2D y la 2.5D. */
+    public static final String TITLE = "MedResource AI — Simulación";
+
     private static final int FRAME_MILLIS = 33;
     private static final int GAP = 10;
     /** Tamaño mínimo de la ventana, si la pantalla lo permite. */
@@ -105,7 +108,7 @@ public final class SimulationWindow extends JFrame {
      * @throws IllegalArgumentException si alguno es nulo
      */
     public SimulationWindow(SimulationController controller, Renderer2D renderer) {
-        super("MedResource AI — Simulación 2D");
+        super(TITLE);
         if (controller == null || renderer == null) {
             throw new IllegalArgumentException("El controlador y el renderizador son obligatorios.");
         }

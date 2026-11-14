@@ -11,7 +11,8 @@ import java.awt.Font;
  * Marco del plano en la ventana de la simulación: una tarjeta con borde de acento y, arriba, el título «Plano del
  * hospital», el tamaño del plano y, mientras la cámara sigue a alguien, la etiqueta «Siguiendo a P003».
  *
- * <p>Arriba a la derecha lleva el botón de pantalla completa; quien usa el marco decide qué hacer al pulsarlo
+ * <p>Arriba a la derecha lleva el selector de la vista ({@link ViewToggle}: 2D o 2.5D), que cambia la vista del
+ * plano al instante, y el botón de pantalla completa; quien usa el marco decide qué hacer al pulsarlo
  * ({@link #onFullscreen}). Mientras el plano se ve en otra ventana, {@link #restoreMap()} lo devuelve al marco.</p>
  */
 public final class MapFrame extends ThemedCard {
@@ -26,6 +27,7 @@ public final class MapFrame extends ThemedCard {
     public static final int BUTTON_SIZE = 26;
 
     private final JLabel size = new JLabel();
+    private final ViewToggle viewToggle = new ViewToggle();
     private final IconButton expand = new IconButton(HomeIcon.EXPAND, "Pantalla completa", BUTTON_SIZE);
     private final HospitalMapPanel map;
     private transient Runnable fullscreenAction = () -> { };
@@ -44,6 +46,8 @@ public final class MapFrame extends ThemedCard {
         }
         this.map = map;
         setHighlighted(true);
+        viewToggle.setIsometric(map.isIsometric());
+        viewToggle.onChange(map::setIsometric);
         expand.setOutlined(true);
         expand.setToolTipText("Ver el plano a pantalla completa");
         expand.addActionListener(event -> fullscreenAction.run());
@@ -65,6 +69,7 @@ public final class MapFrame extends ThemedCard {
         size.setForeground(HomeTheme.MUTED);
         right.add(followTag);
         right.add(size);
+        right.add(viewToggle);
         right.add(expand);
         header.add(left, BorderLayout.WEST);
         header.add(right, BorderLayout.EAST);
@@ -114,6 +119,11 @@ public final class MapFrame extends ThemedCard {
     /** Indica si el plano está dentro del marco. */
     public boolean hasMap() {
         return map.getParent() == this;
+    }
+
+    /** Selector de la vista del plano, 2D o 2.5D. */
+    public ViewToggle viewToggle() {
+        return viewToggle;
     }
 
     public IconButton fullscreenButton() {
