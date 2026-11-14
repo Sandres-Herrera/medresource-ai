@@ -126,4 +126,14 @@ class StaffPainterTest {
 
         assertEquals(Palette.NURSE_UNIFORM.getRGB(), image.getRGB(50, 62));
     }
+
+    @Test
+    void picksTheClosestFigureOfTheStaff() {
+        StaffMarker near = new StaffMarker("D01", Specialty.SURGERY, Sex.MALE, false, 50, 50);
+        StaffMarker far = new StaffMarker("E01", null, Sex.FEMALE, false, 58, 50);
+
+        assertEquals("D01", StaffPainter.pick(List.of(far, near), 50, 46).orElseThrow());
+        assertTrue(StaffPainter.pick(List.of(near), 200, 200).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> StaffPainter.pick(null, 0, 0));
+    }
 }

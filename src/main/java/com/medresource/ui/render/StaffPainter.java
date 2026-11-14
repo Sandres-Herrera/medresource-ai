@@ -14,6 +14,7 @@ import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Dibuja a los médicos y enfermeros sobre el plano.
@@ -34,6 +35,8 @@ import java.util.List;
  */
 public final class StaffPainter {
 
+    /** Distancia, en píxeles del mundo, a la que un clic todavía le atina a una figura del personal. */
+    public static final double PICK_RADIUS = 12.0;
     private static final double HEAD_RADIUS = 5.0;
     private static final int CODE_SIZE = 9;
 
@@ -131,5 +134,31 @@ public final class StaffPainter {
         graphics.fill(shape);
         graphics.setColor(Palette.PATIENT_OUTLINE);
         graphics.draw(shape);
+    }
+
+    /**
+     * Busca al médico o enfermero que se ve en un punto del plano 2D: el más cercano a menos de
+     * {@value #PICK_RADIUS} píxeles del centro de su figura.
+     *
+     * @param staff  médicos y enfermeros
+     * @param worldX coordenada x en el mundo
+     * @param worldY coordenada y en el mundo
+     * @return código del más cercano, o vacío si no hay ninguno
+     * @throws IllegalArgumentException si la lista es nula
+     */
+    public static Optional<String> pick(List<StaffMarker> staff, double worldX, double worldY) {
+        if (staff == null) {
+            throw new IllegalArgumentException("La lista del personal es obligatoria.");
+        }
+        String best = null;
+        double bestDistance = PICK_RADIUS;
+        for (StaffMarker marker : staff) {
+            double distance = Math.hypot(marker.x() - worldX, marker.y() - 4 - worldY);
+            if (distance <= bestDistance) {
+                best = marker.code();
+                bestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(best);
     }
 }

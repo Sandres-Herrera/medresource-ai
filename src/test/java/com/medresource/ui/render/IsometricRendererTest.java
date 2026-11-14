@@ -4,6 +4,7 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.model.Sex;
+import com.medresource.model.Specialty;
 import com.medresource.model.StaffSeat;
 import com.medresource.model.TriageLevel;
 import com.medresource.services.simulation.HospitalFactory;
@@ -159,6 +160,28 @@ class IsometricRendererTest {
         paint(List.of(), 0);
         assertFalse(renderer.alarmOn(layout, bed), "sin paciente la alarma se apaga");
         assertThrows(IllegalArgumentException.class, () -> renderer.setClock(Double.NaN));
+    }
+
+    @Test
+    void picksTheDoctorWhoseChestIsUnderThePointer() {
+        Point2D cell = flat.centerOf(layout.positionOf("H1-C1").orElseThrow());
+        StaffMarker doctor = new StaffMarker("D01", Specialty.SURGERY, Sex.MALE, false, cell.getX(), cell.getY());
+        Point2D chest = renderer.projectionOf(layout).fromPlan(cell.getX(), cell.getY(),
+                IsoBrush.chestHeight(false));
+
+        assertEquals("D01", renderer.pickStaff(layout, List.of(doctor), chest.getX(), chest.getY()).orElseThrow());
+        assertTrue(renderer.pickStaff(layout, List.of(doctor), chest.getX() + 100, chest.getY()).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> renderer.pickStaff(layout, null, 0, 0));
+    }
+
+    @Test
+    void theAlertsGoOverTheCenterOfTheirCell() {
+        Position bed = layout.positionOf("UCI-C1").orElseThrow();
+
+        Point2D over = renderer.pointOver(layout, bed, 1.5);
+
+        assertEquals(renderer.projectionOf(layout).at(bed.col() + 0.5, bed.row() + 0.5, 1.5), over);
+        assertThrows(IllegalArgumentException.class, () -> renderer.pointOver(layout, null, 1));
     }
 
     @Test

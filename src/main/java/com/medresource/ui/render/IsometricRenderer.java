@@ -279,6 +279,53 @@ public final class IsometricRenderer implements SceneRenderer {
     }
 
     /**
+     * Busca al médico o enfermero que se ve en un punto de esta vista: el más cercano cuyo pecho queda a menos de
+     * {@value #PICK_RADIUS} píxeles.
+     *
+     * @param layout plano del hospital
+     * @param staff  médicos y enfermeros
+     * @param viewX  coordenada x en esta vista
+     * @param viewY  coordenada y en esta vista
+     * @return código del más cercano, o vacío si no hay ninguno
+     * @throws IllegalArgumentException si falta el plano o la lista
+     */
+    public Optional<String> pickStaff(HospitalLayout layout, List<StaffMarker> staff, double viewX, double viewY) {
+        if (staff == null) {
+            throw new IllegalArgumentException("La lista del personal es obligatoria.");
+        }
+        prepare(layout);
+        String best = null;
+        double bestDistance = PICK_RADIUS;
+        for (StaffMarker marker : staff) {
+            double base = marker.seated() ? IsoFurniture.SEAT_TOP : 0.0;
+            Point2D chest = projection.fromPlan(marker.x(), marker.y(), base + IsoBrush.chestHeight(marker.seated()));
+            double distance = chest.distance(viewX, viewY);
+            if (distance <= bestDistance) {
+                best = marker.code();
+                bestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    /**
+     * Punto de esta vista que queda sobre el centro de una casilla, a cierta altura: donde va un aviso.
+     *
+     * @param layout   plano del hospital
+     * @param position casilla
+     * @param height   altura sobre el piso, en metros
+     * @return el punto de esta vista
+     * @throws IllegalArgumentException si falta el plano o la casilla
+     */
+    public Point2D pointOver(HospitalLayout layout, Position position, double height) {
+        if (position == null) {
+            throw new IllegalArgumentException("La casilla es obligatoria.");
+        }
+        prepare(layout);
+        return projection.at(position.col() + 0.5, position.row() + 0.5, height);
+    }
+
+    /**
      * Proyección que usa esta vista para un plano.
      *
      * @param layout plano del hospital
