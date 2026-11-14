@@ -47,6 +47,8 @@ public final class Palette {
     public static final Color BLOOD_UNIT = new Color(0xB7, 0x1C, 0x1C);
     /** Cabeza de los pacientes. */
     public static final Color PATIENT_HEAD = new Color(0xFF, 0xCC, 0x99);
+    /** Cuerpo de un paciente que todavía no tiene triage. */
+    public static final Color UNCLASSIFIED = new Color(0x9E, 0x9E, 0x9E);
     /** Cuerpo y cabeza de un paciente fallecido. */
     public static final Color DECEASED = new Color(0x75, 0x75, 0x75);
     /**
@@ -79,6 +81,12 @@ public final class Palette {
     public static final Color BAR_TRACK = new Color(0x37, 0x47, 0x4F);
     /** Parte ya hecha del tratamiento. */
     public static final Color TREATMENT_PROGRESS = new Color(0x29, 0x79, 0xFF);
+
+    /**
+     * Uniforme de las enfermeras de triage, que atienden los puestos de triage y no son enfermeros del hospital:
+     * lila, distinto de los colores de triage y del resto del personal.
+     */
+    public static final Color TRIAGE_NURSE = new Color(0xC0, 0x84, 0xFC);
 
     /** Colchón de una camilla. */
     public static final Color STRETCHER = new Color(0xEC, 0xEF, 0xF1);

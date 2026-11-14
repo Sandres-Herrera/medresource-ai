@@ -50,7 +50,6 @@ public final class PatientPainter {
     private static final double MINOR_SCALE = 0.75;
     private static final double HEAD_RADIUS = 5.0;
     private static final int BADGE_SIZE = 11;
-    private static final Color UNKNOWN_TRIAGE = new Color(0x9E, 0x9E, 0x9E);
     /** Ancho de la barra de salud, en píxeles. */
     private static final int HEALTH_BAR_WIDTH = 18;
     /** Ancho de la barra de avance del tratamiento, en píxeles. */
@@ -146,7 +145,7 @@ public final class PatientPainter {
         double cx = marker.x() + OFFSET_X;
         double cy = marker.y() + marker.bob();
         Color body = marker.deceased() ? Palette.DECEASED
-                : marker.triage() == null ? UNKNOWN_TRIAGE : Palette.triage(marker.triage());
+                : marker.triage() == null ? Palette.UNCLASSIFIED : Palette.triage(marker.triage());
         Color head = marker.deceased() ? Palette.DECEASED : Palette.PATIENT_HEAD;
         double radius = HEAD_RADIUS * scale;
         if (marker.onStretcher()) {

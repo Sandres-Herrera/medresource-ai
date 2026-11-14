@@ -150,4 +150,21 @@ class PaletteTest {
         assertTrue(distance(Palette.SELECTION, Palette.NURSE_UNIFORM) > 60);
         assertTrue(distance(Palette.SELECTION, Palette.DOCTOR_COAT) > 60);
     }
+
+    @Test
+    void theTriageNurseCannotBeMistakenForAPatientNorForTheRestOfTheStaff() {
+        for (TriageLevel level : TriageLevel.values()) {
+            assertTrue(distance(Palette.TRIAGE_NURSE, Palette.triage(level)) > 60, level.name());
+        }
+        for (Color other : new Color[] {Palette.NURSE_UNIFORM, Palette.DOCTOR_COAT, Palette.PORTER_UNIFORM,
+                Palette.UNCLASSIFIED, Palette.DECEASED}) {
+            assertTrue(distance(Palette.TRIAGE_NURSE, other) > 60, other.toString());
+        }
+    }
+
+    @Test
+    void aPatientWithoutTriageIsLightGrayAndADeceasedOneDarkGray() {
+        assertEquals(new Color(0x9E, 0x9E, 0x9E), Palette.UNCLASSIFIED);
+        assertTrue(Palette.UNCLASSIFIED.getRed() > Palette.DECEASED.getRed());
+    }
 }
