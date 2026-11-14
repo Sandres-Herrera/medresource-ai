@@ -9,8 +9,7 @@ import java.awt.RenderingHints;
 import java.awt.geom.Ellipse2D;
 
 /**
- * Punto de color de 8 píxeles: el de la leyenda de triage, el de cada evento del registro y el del recorrido del
- * paciente.
+ * Punto de color de 8 píxeles, como el de cada evento del recorrido en la ficha del paciente.
  */
 public final class Dot extends JComponent {
 
