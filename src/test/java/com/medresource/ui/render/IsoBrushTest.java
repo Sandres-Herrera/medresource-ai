@@ -152,6 +152,34 @@ class IsoBrushTest {
     }
 
     @Test
+    void theStepAdvancesHalfARoundEveryStepLength() {
+        assertEquals(0.0, IsoBrush.stride(0, 0), 1e-12);
+        assertEquals(Math.PI, IsoBrush.stride(IsoBrush.STEP_LENGTH, 0), 1e-9);
+        assertEquals(IsoBrush.stride(1, 2), IsoBrush.stride(2, 1), 1e-12);
+    }
+
+    @Test
+    void whoeverWalksOpensTheLegsAndRisesWhenTheyCross() {
+        IsoBrush.Person person = new IsoBrush.Person(Palette.NURSE_UNIFORM, null, Sex.MALE, 1.0, false);
+        Point2D still = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person);
+        Point2D crossing = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, 0.0);
+        Point2D open = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, Math.PI / 2);
+        Point2D notWalking = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, Double.NaN);
+
+        assertEquals(still.getY() - IsoBrush.WALK_BOUNCE, crossing.getY(), 1e-9);
+        assertEquals(still.getY(), open.getY(), 1e-9);
+        assertEquals(still, notWalking);
+    }
+
+    @Test
+    void aSeatedPersonDoesNotWalk() {
+        IsoBrush.Person seated = new IsoBrush.Person(Palette.DOCTOR_COAT, null, Sex.FEMALE, 1.0, true);
+
+        assertEquals(IsoBrush.person(graphics, projection, 2, 2, 0, 0, seated),
+                IsoBrush.person(graphics, projection, 2, 2, 0, 0, seated, 0.0));
+    }
+
+    @Test
     void aPersonHasHairUnlessItWearsACapAndTheChestIsOnTheTorso() {
         IsoBrush.Person patient = new IsoBrush.Person(Palette.UNCLASSIFIED, null, Sex.MALE, 1.0, false);
         Color red = new Color(0xA0, 0x52, 0x2D);
