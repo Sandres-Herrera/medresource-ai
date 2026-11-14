@@ -111,6 +111,21 @@ class IsoBrushTest {
     }
 
     @Test
+    void aPersonHasHairUnlessItWearsACapAndTheChestIsOnTheTorso() {
+        IsoBrush.Person patient = new IsoBrush.Person(Palette.UNCLASSIFIED, null, Sex.MALE, 1.0, false);
+        Color red = new Color(0xA0, 0x52, 0x2D);
+
+        Point2D top = IsoBrush.person(graphics, projection, 2, 2, 0, 0,
+                new IsoBrush.Person(Palette.UNCLASSIFIED, null, Sex.MALE, 1.0, false, red));
+
+        assertEquals(IsoBrush.Person.DEFAULT_HAIR, patient.hair());
+        Color hair = new Color(pixel(new Point2D.Double(top.getX(), top.getY() + 2)));
+        assertEquals(red.getRGB(), hair.getRGB(), "el pelo va arriba de la cabeza");
+        assertTrue(IsoBrush.chestHeight(false) > IsoBrush.LEG_HEIGHT);
+        assertTrue(IsoBrush.chestHeight(false) < IsoBrush.BODY_HEIGHT);
+    }
+
+    @Test
     void theBarFillsItsShareFromTheLeft() {
         IsoBrush.bar(graphics, 100, 50, 20, 0.5, Color.GREEN);
 
