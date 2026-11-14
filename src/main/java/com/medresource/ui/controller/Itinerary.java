@@ -23,6 +23,9 @@ import java.util.Set;
  *
  * <p>Las filas son la excepción: en la fila del triage y en la sala de espera el paciente se corre de puesto
  * cuando alguien sale, así que un puesto nuevo en la misma fila reemplaza al anterior en vez de esperar turno.</p>
+ *
+ * <p>Una parada también puede esperar a que alguien venga por el paciente ({@link #goTo(Stop, double, double)}): por
+ * ejemplo, desde la sala de espera no sale hasta que llega el camillero que lo busca.</p>
  */
 public final class Itinerary {
 
@@ -85,6 +88,19 @@ public final class Itinerary {
      * @throws IllegalArgumentException si falta la parada o el momento es negativo
      */
     public void goTo(Stop stop, double at) {
+        goTo(stop, at, at);
+    }
+
+    /**
+     * Agrega una parada al itinerario, como {@link #goTo(Stop, double)}, pero sin salir hacia ella antes de un
+     * momento dado: el paciente se queda donde está hasta entonces.
+     *
+     * @param stop     parada nueva
+     * @param at       momento en que el motor lo manda allí, en segundos simulados
+     * @param notBefore momento desde el que puede salir hacia ella; si es anterior a {@code at}, sale en {@code at}
+     * @throws IllegalArgumentException si falta la parada o el momento es negativo
+     */
+    public void goTo(Stop stop, double at, double notBefore) {
         if (stop == null) {
             throw new IllegalArgumentException("La parada es obligatoria.");
         }
@@ -104,10 +120,11 @@ public final class Itinerary {
             }
             return;
         }
+        double departure = Math.max(at, notBefore);
         if (heading == null || pending.isEmpty() && !walker.isMoving()) {
-            walkTo(stop, at);
+            walkTo(stop, departure);
         } else {
-            pending.addLast(new Pending(stop, at));
+            pending.addLast(new Pending(stop, departure));
         }
     }
 
@@ -139,6 +156,14 @@ public final class Itinerary {
     /** Paradas que esperan su turno, en orden. */
     public List<Stop> pendingStops() {
         return pending.stream().map(Pending::stop).toList();
+    }
+
+    /**
+     * Momento en que llega (o llegó) a la parada hacia la que camina, en segundos simulados; si ya recorrió todo su
+     * itinerario, el momento en que llegó a la última.
+     */
+    public double arrivalTime() {
+        return walker.arrivalTime();
     }
 
     /** Indica si ya recorrió todo su itinerario: llegó a la última parada y no le queda ninguna. */
