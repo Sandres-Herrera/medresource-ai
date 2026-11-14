@@ -4,6 +4,7 @@ import com.medresource.model.Hospital;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Patient;
 import com.medresource.model.PatientStatus;
+import com.medresource.model.Position;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
 import com.medresource.services.simulation.CaseGenerator;
@@ -222,6 +223,26 @@ public final class SimulationController {
      */
     public Optional<PatientCard> patientCard(String patientCode) {
         return player.card(patientCode);
+    }
+
+    /**
+     * Ficha de un médico o de un enfermero tal como se ve ahora.
+     *
+     * @param staffCode código del médico o del enfermero
+     * @return su ficha, o vacío si no es del hospital
+     */
+    public Optional<StaffCard> staffCard(String staffCode) {
+        return player.staffCard(staffCode);
+    }
+
+    /**
+     * Lo que se ve ahora en una casilla del plano: quién está ahí, desde hace cuánto y cuánto le falta.
+     *
+     * @param cell casilla del plano
+     * @return la información, o vacío si ahí no hay un recurso ni un paciente
+     */
+    public Optional<PlaceInfo> placeInfo(Position cell) {
+        return player.placeInfo(cell);
     }
 
     public List<PatientMarker> markers() {
