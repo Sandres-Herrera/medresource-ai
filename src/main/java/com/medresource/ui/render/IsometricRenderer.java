@@ -33,6 +33,8 @@ import java.util.Optional;
  * <p>La cámara puede girar el hospital y levantar la mirada ({@link #setView}): el giro va de 0 a 360 grados y la
  * elevación, de la diagonal de siempre hasta verlo desde arriba. Cambiar el ángulo vuelve a armar el edificio en el
  * cuadro siguiente; las personas no cambian de lugar.</p>
+ *
+ * <p>En cada cuadro las puertas se abren para quien se acerca a ellas, sea paciente, médico, enfermero o camillero.</p>
  */
 public final class IsometricRenderer implements SceneRenderer {
 
@@ -161,6 +163,7 @@ public final class IsometricRenderer implements SceneRenderer {
             throw new IllegalArgumentException("El sobrante de la sala de espera no puede ser negativo.");
         }
         prepare(layout);
+        openDoors(patients, staff, porters);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
@@ -172,6 +175,22 @@ public final class IsometricRenderer implements SceneRenderer {
             item.paint(graphics);
         }
         paintOverflow(graphics, layout, overflow);
+    }
+
+    /** Abre las puertas a las que se acerca alguien: pacientes, personal o camilleros. */
+    private void openDoors(List<PatientMarker> patients, List<StaffMarker> staff, List<PorterMarker> porters) {
+        if (patients == null || staff == null || porters == null) {
+            throw new IllegalArgumentException("Las listas de personas son obligatorias.");
+        }
+        List<Point2D> people = new ArrayList<>();
+        patients.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        staff.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        porters.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        structure.openDoorsNear(people);
+    }
+
+    private Point2D gridOf(double planX, double planY) {
+        return new Point2D.Double(projection.gridX(planX), projection.gridY(planY));
     }
 
     /**

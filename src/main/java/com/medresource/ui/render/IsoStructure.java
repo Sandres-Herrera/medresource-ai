@@ -19,6 +19,7 @@ import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +43,11 @@ import java.util.regex.Pattern;
  * (en la vista de siempre, abajo a la izquierda y abajo a la derecha; si la cámara gira, los que queden de ese lado)
  * son bajos, para que se vea el interior. Los que dan a un pasillo son ventanales: antepecho, vidrio con parteluz y
  * cabezal. Los demás llevan enchape de baldosa en la mitad de abajo de su cara visible.</p>
+ *
+ * <p>Las puertas corredizas se abren cuando alguien se acerca ({@link #openDoorsNear}): empiezan a abrirse a
+ * {@value #DOOR_REACH} m de su centro y quedan abiertas del todo a {@value #DOOR_OPEN_DISTANCE} m; sin nadie cerca,
+ * las dos hojas se juntan en el medio. Como la apertura sale de dónde está cada persona en ese cuadro, la puerta se
+ * abre y se cierra poco a poco mientras la gente camina.</p>
  *
  * <p>Todo se arma con la {@link IsoProjection} que recibe, con su ángulo: la profundidad de cada elemento, qué fachada
  * es baja y qué caras se ven. Lo que va pintado en una sola cara (los letreros, la pantalla de turnos, las franjas de
@@ -72,6 +78,12 @@ public final class IsoStructure {
     public static final double CORRIDOR_BAND = 0.18;
     /** Tramos de muro que ocupa, como mucho, el letrero de una sala. */
     public static final int SIGN_SEGMENTS = 4;
+    /** Distancia, en metros, a la que una puerta empieza a abrirse cuando alguien se acerca. */
+    public static final double DOOR_REACH = 1.5;
+    /** Distancia, en metros, a la que una puerta ya está abierta del todo. */
+    public static final double DOOR_OPEN_DISTANCE = 0.7;
+    /** Parte de cada hoja que queda a la vista con la puerta abierta del todo: el resto se esconde junto al marco. */
+    public static final double OPEN_LEAF_SHARE = 0.2;
 
     /** Píxeles de letra por metro del muro donde se pinta un letrero. */
     private static final double TEXT_UNIT = 40.0;
@@ -100,6 +112,7 @@ public final class IsoStructure {
     private final IsoTheme theme;
     private final Map<Edge, Double> walls = new LinkedHashMap<>();
     private final Set<Edge> doors = new HashSet<>();
+    private final Map<Edge, Double> openness = new HashMap<>();
     private final List<Sign> signs = new ArrayList<>();
     private final Set<Edge> signEdges = new HashSet<>();
     private final boolean entranceFromLeft;
@@ -315,6 +328,56 @@ public final class IsoStructure {
         Optional<Area> second = areaCovering(col, row);
         return first.isPresent() && second.isPresent() && (first.get().zone() == ZoneType.CORRIDOR
                 || second.get().zone() == ZoneType.CORRIDOR);
+    }
+
+    /**
+     * Abre las puertas según dónde está cada persona en este cuadro: cada puerta se abre tanto como lo pide la persona
+     * más cercana a su centro. Las demás quedan cerradas.
+     *
+     * @param people puntos de la cuadrícula (columna y fila, con decimales) donde están las personas
+     * @throws IllegalArgumentException si la lista es nula
+     */
+    public void openDoorsNear(List<Point2D> people) {
+        if (people == null) {
+            throw new IllegalArgumentException("La lista de personas es obligatoria.");
+        }
+        openness.clear();
+        for (Edge door : doors) {
+            double cx = door.horizontal() ? door.col() + 0.5 : door.col();
+            double cy = door.horizontal() ? door.row() : door.row() + 0.5;
+            double nearest = Double.MAX_VALUE;
+            for (Point2D person : people) {
+                nearest = Math.min(nearest, Math.hypot(person.getX() - cx, person.getY() - cy));
+            }
+            double open = (DOOR_REACH - nearest) / (DOOR_REACH - DOOR_OPEN_DISTANCE);
+            if (open > 0) {
+                openness.put(door, Math.min(1.0, open));
+            }
+        }
+    }
+
+    /**
+     * Cuánto está abierta la puerta de un borde.
+     *
+     * @param horizontal {@code true} para el borde de arriba de la casilla; {@code false} para el de su izquierda
+     * @param col        columna de la casilla
+     * @param row        fila de la casilla
+     * @return de 0 (cerrada, o si ahí no hay puerta) a 1 (abierta del todo)
+     */
+    public double doorOpenness(boolean horizontal, int col, int row) {
+        return openness.getOrDefault(new Edge(horizontal, col, row), 0.0);
+    }
+
+    /**
+     * Indica si hay una puerta en un borde: entre dos áreas, la entrada de urgencias o la salida a la calle.
+     *
+     * @param horizontal {@code true} para el borde de arriba de la casilla; {@code false} para el de su izquierda
+     * @param col        columna de la casilla
+     * @param row        fila de la casilla
+     * @return {@code true} si hay una puerta
+     */
+    public boolean hasDoor(boolean horizontal, int col, int row) {
+        return doors.contains(new Edge(horizontal, col, row));
     }
 
     /**
@@ -763,14 +826,18 @@ public final class IsoStructure {
         graphics.draw(lines);
     }
 
-    /** Puerta corrediza de vidrio: el dintel arriba y dos hojas entreabiertas junto a los marcos. */
+    /**
+     * Puerta corrediza de vidrio: el dintel arriba y dos hojas que se juntan en el medio cuando está cerrada y se corren
+     * hacia los marcos a medida que se abre.
+     */
     private void door(Graphics2D graphics, Edge door) {
         double t = WALL_THICKNESS;
         boolean front = isFrontFacade(door.horizontal(), door.col(), door.row());
         double h = front ? LOW_WALL_HEIGHT : WALL_HEIGHT;
         Color glass = theme.color(Part.DOOR_GLASS);
         Color frame = theme.color(Part.DOOR_FRAME);
-        double leaf = 0.24;
+        double open = openness.getOrDefault(door, 0.0);
+        double leaf = (1 - t) / 2 * (1 - (1 - OPEN_LEAF_SHARE) * open);
         if (door.horizontal()) {
             double y = door.row() - 0.03;
             for (double x : new double[] {door.col() + t / 2, door.col() + 1 - t / 2 - leaf}) {
