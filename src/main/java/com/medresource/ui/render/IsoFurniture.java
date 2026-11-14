@@ -59,6 +59,10 @@ public final class IsoFurniture {
     public static final double OPERATING_TOP = 0.49;
     /** Altura de la superficie de la mesa de la morgue. */
     public static final double SLAB_TOP = 0.42;
+    /** Columna del monitor de signos vitales dentro de la casilla de su cama de UCI: el centro de la cama. */
+    public static final double MONITOR_X = (BED_LEFT + BED_RIGHT) / 2;
+    /** Fila del monitor dentro de la casilla de su cama de UCI: justo detrás de la cabecera. */
+    public static final double MONITOR_Y = -0.08;
     /** Casillas entre un objeto y el siguiente a lo largo de un pasillo. */
     public static final int CORRIDOR_PROP_STEP = 3;
     /** Casillas de la fila del título que quedan libres debajo del letrero de la sala. */
@@ -145,7 +149,7 @@ public final class IsoFurniture {
             switch (zone) {
                 case ICU -> {
                     add(items, spot, graphics -> bed(graphics, spot));
-                    add(items, spot.col() + 0.25, spot.row() + 0.22, graphics -> monitor(graphics, spot));
+                    add(items, spot.col() + MONITOR_X, spot.row() + MONITOR_Y, graphics -> monitor(graphics, spot));
                     addWardExtras(items, spot);
                 }
                 case OPERATING_ROOM -> {
@@ -614,9 +618,13 @@ public final class IsoFurniture {
                 IsoPalette.darker(color(Part.BED_FRAME), 0.85));
     }
 
+    /**
+     * Monitor de signos vitales de una cama de UCI: en su soporte, detrás de la cabecera y centrado con la cama, así
+     * ningún muro lo tapa y la pantalla se ve por encima de la cabecera.
+     */
     private void monitor(Graphics2D graphics, Position spot) {
-        double x = spot.col() + 0.25;
-        double y = spot.row() + 0.22;
+        double x = spot.col() + MONITOR_X;
+        double y = spot.row() + MONITOR_Y;
         IsoBrush.box(graphics, projection, x - 0.09, y - 0.09, 0, 0.18, 0.18, 0.03, color(Part.METAL));
         IsoBrush.box(graphics, projection, x - 0.02, y - 0.02, 0.03, 0.04, 0.04, 0.62, color(Part.METAL));
         screen(graphics, x, y, 0.66);

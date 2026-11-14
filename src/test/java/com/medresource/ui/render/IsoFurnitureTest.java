@@ -79,6 +79,21 @@ class IsoFurnitureTest {
     }
 
     @Test
+    void theIcuMonitorStandsBehindTheHeadOfItsBedAwayFromTheWalls() {
+        assertTrue(IsoFurniture.MONITOR_X > IsoFurniture.BED_LEFT && IsoFurniture.MONITOR_X < IsoFurniture.BED_RIGHT);
+        assertTrue(IsoFurniture.MONITOR_Y < IsoFurniture.BED_TOP);
+        Area icu = layout.areasOf(ZoneType.ICU).get(0);
+        for (String code : layout.getResourceCodes()) {
+            Position bed = layout.positionOf(code).orElseThrow();
+            if (icu.covers(bed)) {
+                Position behind = new Position(bed.col(), bed.row() - 1);
+                assertTrue(icu.covers(behind), "detrás hay piso de la UCI, no un muro");
+                assertTrue(layout.resourceAt(behind).isEmpty(), "y no hay otra cama");
+            }
+        }
+    }
+
+    @Test
     void knowsWhereAPatientLiesDownOrSits() {
         assertEquals(IsoFurniture.Kind.BED, furniture.kindAt(layout.positionOf("H1-C1").orElseThrow()).orElseThrow());
         assertEquals(IsoFurniture.Kind.BED,
