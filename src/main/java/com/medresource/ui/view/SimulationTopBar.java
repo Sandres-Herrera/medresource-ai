@@ -23,8 +23,9 @@ import java.util.function.IntConsumer;
  * Barra de arriba de la ventana de la simulación, con el tema oscuro.
  *
  * <p>A la izquierda, la marca «MedResource AI» y los datos del caso (escenario, estrategia y semilla). A la
- * derecha, los controles: reproducir o pausar (botón de acento), «Siguiente evento», volver a empezar, las
- * velocidades ×1, ×2, ×5 y ×10, guardar una captura y el reloj con la hora y el día.</p>
+ * derecha, los controles: reproducir o pausar (botón de acento), «Siguiente evento», «Repetir 30 s» (volver a ver lo
+ * último que pasó), volver a empezar, las velocidades ×1, ×2, ×5 y ×10, guardar una captura y el reloj con la hora y
+ * el día.</p>
  *
  * <p>No tiene reglas: la ventana les pone acción a los botones y le dice qué mostrar.</p>
  */
@@ -34,9 +35,14 @@ public final class SimulationTopBar extends JPanel {
 
     /** Alto de los botones de la barra. */
     public static final int BUTTON_SIZE = 34;
+    /** Texto del botón que vuelve a mostrar los últimos segundos. */
+    public static final String REPLAY_TEXT = "Repetir 30 s";
+    /** Texto del mismo botón mientras se ve la repetición: vuelve a lo que pasa ahora. */
+    public static final String LIVE_TEXT = "Volver al presente";
 
     private final IconButton play = new IconButton(HomeIcon.PLAY, "Reproducir", BUTTON_SIZE);
     private final HomeButton skip = new HomeButton(HomeButton.Style.OUTLINE, "Siguiente evento", HomeIcon.SKIP);
+    private final HomeButton replay = new HomeButton(HomeButton.Style.OUTLINE, REPLAY_TEXT, HomeIcon.CLOCK);
     private final IconButton restart = new IconButton(HomeIcon.RESTART, "Volver a empezar", BUTTON_SIZE);
     private final IconButton capture = new IconButton(HomeIcon.CAMERA, "Guardar captura del plano", BUTTON_SIZE);
     private final SpeedSegment speeds = new SpeedSegment();
@@ -90,6 +96,7 @@ public final class SimulationTopBar extends JPanel {
         controls.setOpaque(false);
         controls.add(play);
         controls.add(skip);
+        controls.add(replay);
         controls.add(restart);
         controls.add(speeds);
         controls.add(capture);
@@ -178,6 +185,20 @@ public final class SimulationTopBar extends JPanel {
 
     public IconButton restartButton() {
         return restart;
+    }
+
+    /** Botón «Repetir 30 s»; durante la repetición dice «Volver al presente». */
+    public HomeButton replayButton() {
+        return replay;
+    }
+
+    /**
+     * Cambia el botón de la repetición según si se está viendo una.
+     *
+     * @param replaying {@code true} mientras se ve la repetición
+     */
+    public void setReplaying(boolean replaying) {
+        replay.setText(replaying ? LIVE_TEXT : REPLAY_TEXT);
     }
 
     public IconButton captureButton() {

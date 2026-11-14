@@ -12,8 +12,9 @@ import java.awt.Font;
  * hospital», el tamaño del plano y, mientras la cámara sigue a alguien, la etiqueta «Siguiendo a P003».
  *
  * <p>Arriba a la derecha lleva el selector de la vista ({@link ViewToggle}: 2D o 2.5D), que cambia la vista del
- * plano al instante; en la vista 2.5D, el selector del tema ({@link ThemeToggle}: claro u oscuro); y el botón de
- * pantalla completa; quien usa el marco decide qué hacer al pulsarlo
+ * plano; en la vista 2.5D, el selector del tema ({@link ThemeToggle}: claro u oscuro) y el botón «Vista inicial», que
+ * deshace el giro y el acercamiento de la cámara; y el botón de pantalla completa; quien usa el marco decide qué hacer
+ * al pulsarlo
  * ({@link #onFullscreen}). Mientras el plano se ve en otra ventana, {@link #restoreMap()} lo devuelve al marco.</p>
  */
 public final class MapFrame extends ThemedCard {
@@ -30,6 +31,7 @@ public final class MapFrame extends ThemedCard {
     private final JLabel size = new JLabel();
     private final ViewToggle viewToggle = new ViewToggle();
     private final ThemeToggle themeToggle = new ThemeToggle();
+    private final HomeButton resetView = new HomeButton(HomeButton.Style.OUTLINE, "Vista inicial", HomeIcon.MAP);
     private final IconButton expand = new IconButton(HomeIcon.EXPAND, "Pantalla completa", BUTTON_SIZE);
     private final HospitalMapPanel map;
     private transient Runnable fullscreenAction = () -> { };
@@ -52,8 +54,12 @@ public final class MapFrame extends ThemedCard {
         viewToggle.onChange(isometric -> {
             map.setIsometric(isometric);
             themeToggle.setVisible(isometric);
+            resetView.setVisible(isometric);
             revalidate();
         });
+        resetView.setToolTipText("Deshacer el giro y el acercamiento de la cámara");
+        resetView.setVisible(map.isIsometric());
+        resetView.addActionListener(event -> map.resetView());
         themeToggle.setTheme(map.getIsoTheme());
         themeToggle.setVisible(map.isIsometric());
         themeToggle.onChange(map::setIsoTheme);
@@ -78,6 +84,7 @@ public final class MapFrame extends ThemedCard {
         size.setForeground(HomeTheme.MUTED);
         right.add(followTag);
         right.add(size);
+        right.add(resetView);
         right.add(themeToggle);
         right.add(viewToggle);
         right.add(expand);
@@ -134,6 +141,11 @@ public final class MapFrame extends ThemedCard {
     /** Selector del tema de la vista 2.5D, claro u oscuro: solo se ve en la vista 2.5D. */
     public ThemeToggle themeToggle() {
         return themeToggle;
+    }
+
+    /** Botón «Vista inicial»: solo se ve en la vista 2.5D. */
+    public HomeButton resetViewButton() {
+        return resetView;
     }
 
     /** Selector de la vista del plano, 2D o 2.5D. */
