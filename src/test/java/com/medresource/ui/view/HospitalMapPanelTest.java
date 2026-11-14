@@ -9,7 +9,7 @@ import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import com.medresource.ui.render.Camera;
-import com.medresource.ui.render.IsoPalette;
+import com.medresource.ui.render.IsoTheme;
 import com.medresource.ui.render.IsometricRenderer;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
@@ -564,10 +564,23 @@ class HospitalMapPanelTest {
 
         assertTrue(panel.isIsometric());
         BufferedImage image = panel.toImage(1000, 700);
-        assertEquals(IsoPalette.BACKGROUND.getRGB(), image.getRGB(0, 0));
+        assertEquals(IsoTheme.LIGHT.color(IsoTheme.Part.BACKGROUND).getRGB(), image.getRGB(0, 0));
         Dimension world = new IsometricRenderer(renderer).worldSize(standard);
         Camera camera = panel.cameraFor(1000, 700).orElseThrow();
         assertEquals(Camera.fit(world.width, world.height, 1000, 700, MARGIN), camera);
+    }
+
+    @Test
+    void the25dViewCanBeLightOrDarkWithoutMovingTheCamera() {
+        panel.setIsometric(true);
+        Camera before = panel.cameraFor(1000, 700).orElseThrow();
+
+        panel.setIsoTheme(IsoTheme.DARK);
+
+        assertEquals(IsoTheme.DARK, panel.getIsoTheme());
+        assertEquals(IsoTheme.DARK.color(IsoTheme.Part.BACKGROUND).getRGB(), panel.toImage(1000, 700).getRGB(0, 0));
+        assertEquals(before, panel.cameraFor(1000, 700).orElseThrow());
+        assertThrows(IllegalArgumentException.class, () -> panel.setIsoTheme(null));
     }
 
     @Test
