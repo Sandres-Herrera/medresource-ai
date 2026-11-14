@@ -113,7 +113,7 @@ class LayoutFactoryTest {
     }
 
     @Test
-    void putsTheBedsInTheOrderTheHospitalHasThemWithAFreeCellBetweenEachTwo() {
+    void putsTheBedsInTheOrderTheHospitalHasThemWithAFreeCellAndAFreeRowBetweenThem() {
         Hospital hospital = hospital(HospitalConfig.standard());
         HospitalLayout layout = factory.create(hospital);
         Area ward = onlyAreaOf(layout, ZoneType.HOSPITALIZATION);
@@ -125,7 +125,7 @@ class LayoutFactoryTest {
             if (previous != null && previous.row() == spot.row()) {
                 assertEquals(previous.col() + 2, spot.col(), "una casilla libre entre dos camas");
             } else if (previous != null) {
-                assertEquals(previous.row() + 1, spot.row());
+                assertEquals(previous.row() + 2, spot.row(), "una fila libre entre dos filas de camas");
             }
             previous = spot;
         }
@@ -157,7 +157,7 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
         Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-        assertEquals(11, staff.cols());
+        assertEquals(12, staff.cols());
         assertEquals(3, staff.rows());
         assertEquals(layout.staffSeatOf("D03").orElseThrow().table(),
                 layout.staffSeatOf("D04").orElseThrow().table());
@@ -258,8 +258,8 @@ class LayoutFactoryTest {
 
     @Test
     void theIcuGrowsWiderWithTheNumberOfBedsUpToALimit() {
-        assertEquals(3, onlyAreaOf(layoutOf(SMALLEST), ZoneType.ICU).cols());
-        assertEquals(9, onlyAreaOf(layoutOf(LARGEST), ZoneType.ICU).cols());
+        assertEquals(6, onlyAreaOf(layoutOf(SMALLEST), ZoneType.ICU).cols());
+        assertEquals(18, onlyAreaOf(layoutOf(LARGEST), ZoneType.ICU).cols());
     }
 
     @Test
@@ -575,15 +575,15 @@ class LayoutFactoryTest {
 
     @Test
     void thePlanIsNeverNarrowerThanItsWidestBand() {
-        assertEquals(15, layoutOf(SMALLEST).getCols());
+        assertEquals(18, layoutOf(SMALLEST).getCols());
     }
 
     @Test
     void thePlanHasTheStandardSize() {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
 
-        assertEquals(21, layout.getCols());
-        assertEquals(18, layout.getRows());
+        assertEquals(24, layout.getCols());
+        assertEquals(21, layout.getRows());
     }
 
     @Test

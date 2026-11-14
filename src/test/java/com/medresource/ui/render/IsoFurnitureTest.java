@@ -53,14 +53,18 @@ class IsoFurnitureTest {
             }
         }
         long besideFree = layout.getResourceCodes().stream().map(code -> layout.positionOf(code).orElseThrow())
-                .filter(spot -> layout.areaAt(spot).orElseThrow().zone() == ZoneType.HOSPITALIZATION)
-                .map(spot -> new Position(spot.col() + 1, spot.row()))
-                .filter(side -> layout.areaAt(side).map(area -> area.zone() == ZoneType.HOSPITALIZATION).orElse(false)
-                        && layout.resourceAt(side).isEmpty())
+                .filter(spot -> {
+                    ZoneType zone = layout.areaAt(spot).orElseThrow().zone();
+                    Position side = new Position(spot.col() + 1, spot.row());
+                    return (zone == ZoneType.HOSPITALIZATION || zone == ZoneType.ICU)
+                            && layout.areaAt(side).map(area -> area.zone() == zone).orElse(false)
+                            && layout.resourceAt(side).isEmpty();
+                })
                 .count();
+        long discharge = 4L * layout.areasOf(ZoneType.DISCHARGE).size();
         long expected = beds + 3 * besideFree + 2 * icu + 3 * operating + layout.getWaitingSpots().size()
                 + 3L * layout.getTriageSpots().size() + layout.getBloodSpots().size() + layout.getMorgueSpots().size()
-                + desks + tables.size() + layout.getStaffCodes().size() + furniture.propCount();
+                + desks + tables.size() + layout.getStaffCodes().size() + furniture.propCount() + discharge;
 
         List<IsoItem> items = furniture.items();
 
@@ -72,6 +76,21 @@ class IsoFurnitureTest {
         assertTrue(furniture.propCount() > layout.getAreas().size() / 2);
         IsoFurniture dark = new IsoFurniture(layout, projection, new Renderer2D(), IsoTheme.DARK);
         assertEquals(furniture.propCount(), dark.propCount(), "el tema no cambia los muebles");
+    }
+
+    @Test
+    void theIcuMonitorStandsBehindTheHeadOfItsBedAwayFromTheWalls() {
+        assertTrue(IsoFurniture.MONITOR_X > IsoFurniture.BED_LEFT && IsoFurniture.MONITOR_X < IsoFurniture.BED_RIGHT);
+        assertTrue(IsoFurniture.MONITOR_Y < IsoFurniture.BED_TOP);
+        Area icu = layout.areasOf(ZoneType.ICU).get(0);
+        for (String code : layout.getResourceCodes()) {
+            Position bed = layout.positionOf(code).orElseThrow();
+            if (icu.covers(bed)) {
+                Position behind = new Position(bed.col(), bed.row() - 1);
+                assertTrue(icu.covers(behind), "detrás hay piso de la UCI, no un muro");
+                assertTrue(layout.resourceAt(behind).isEmpty(), "y no hay otra cama");
+            }
+        }
     }
 
     @Test
