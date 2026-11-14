@@ -45,6 +45,7 @@ import java.util.regex.Pattern;
  *
  * <p>Cada sala lleva su letrero pintado en la cara de adentro de su muro del fondo, sobre la fila del título: el
  * número si es una de varias salas iguales (por ejemplo «2» en el quirófano 2) o si no un pictograma, y el nombre.
+ * La sala de espera tiene además la pantalla de turnos en la esquina de su muro del fondo.
  * Los colores salen del {@link IsoTheme}: cambiar de tema no cambia el edificio.</p>
  */
 public final class IsoStructure {
@@ -75,6 +76,8 @@ public final class IsoStructure {
     private static final Color AMBULANCE_RED = new Color(0xE5, 0x48, 0x4D);
     private static final Color SIREN_BLUE = new Color(0x3B, 0x82, 0xF6);
     private static final Color WINDSHIELD = new Color(0x2B, 0x3A, 0x55);
+    private static final Color TV_FRAME = new Color(0x11, 0x15, 0x1C);
+    private static final Color TV_SCREEN = new Color(0x1D, 0x4E, 0xD8);
 
     /** Borde entre dos casillas: horizontal (arriba de la casilla) o vertical (a su izquierda). */
     record Edge(boolean horizontal, int col, int row) {
@@ -550,8 +553,40 @@ public final class IsoStructure {
             items.add(new IsoItem(sign.col() + sign.segments() + sign.row() + 0.6, IsoItem.WALL,
                     graphics -> sign(graphics, sign)));
         }
+        for (Area area : layout.areasOf(ZoneType.WAITING_ROOM)) {
+            int col = area.right() - 1;
+            Edge edge = new Edge(true, col, area.row());
+            if (walls.containsKey(edge) && !signEdges.contains(edge)) {
+                items.add(new IsoItem(col + 1 + area.row() + 0.6, IsoItem.WALL,
+                        graphics -> turnScreen(graphics, col, area.row())));
+            }
+        }
         addOutdoors(items);
         return items;
+    }
+
+    /** Pantalla de turnos colgada en el muro del fondo de la sala de espera. */
+    private void turnScreen(Graphics2D graphics, int col, int row) {
+        double plane = row + WALL_THICKNESS / 2 + 0.004;
+        double x0 = col + 0.14;
+        double x1 = col + 0.86;
+        graphics.setColor(TV_FRAME);
+        graphics.fill(IsoBrush.polygon(projection, new double[][] {{x0, plane, 0.5}, {x1, plane, 0.5},
+            {x1, plane, 0.9}, {x0, plane, 0.9}}));
+        graphics.setColor(TV_SCREEN);
+        graphics.fill(IsoBrush.polygon(projection, new double[][] {{x0 + 0.03, plane + 0.002, 0.53},
+            {x1 - 0.03, plane + 0.002, 0.53}, {x1 - 0.03, plane + 0.002, 0.87}, {x0 + 0.03, plane + 0.002, 0.87}}));
+        Point2D origin = projection.at(x0 + 0.07, plane + 0.004, 0.64);
+        double unit = 1 / TEXT_UNIT;
+        Graphics2D screen = (Graphics2D) graphics.create();
+        screen.transform(new AffineTransform(IsoProjection.TILE_W / 2.0 * unit, IsoProjection.TILE_H / 2.0 * unit, 0,
+                IsoProjection.Z_SCALE * unit, origin.getX(), origin.getY()));
+        screen.setColor(Color.WHITE);
+        screen.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 7));
+        screen.drawString("TURNO", 0f, -6f);
+        screen.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 9));
+        screen.drawString("A-17", 0f, 4f);
+        screen.dispose();
     }
 
     private void solid(Graphics2D graphics, double x, double y, double w, double d, double h) {

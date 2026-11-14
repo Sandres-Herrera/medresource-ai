@@ -59,6 +59,8 @@ public final class IsoFurniture {
     public static final double OPERATING_TOP = 0.49;
     /** Altura de la superficie de la mesa de la morgue. */
     public static final double SLAB_TOP = 0.42;
+    /** Casillas entre un objeto y el siguiente a lo largo de un pasillo. */
+    public static final int CORRIDOR_PROP_STEP = 6;
     /** Casillas de la fila del título que quedan libres debajo del letrero de la sala. */
     public static final int SIGN_CELLS = IsoStructure.SIGN_SEGMENTS;
     /** Altura del asiento de las sillas. */
@@ -74,6 +76,11 @@ public final class IsoFurniture {
     private static final Color LEAVES = new Color(0x4D, 0x9A, 0x3F);
     private static final Color LOCKER = new Color(0x8D, 0xA2, 0xC0);
     private static final Color CUP = new Color(0xF8, 0xFA, 0xFC);
+    private static final Color PARTITION = new Color(0xBF, 0xE3, 0xF5, 110);
+    private static final Color WHEELCHAIR_SEAT = new Color(0x25, 0x63, 0xEB);
+    private static final Color CART_BLUE = new Color(0x3B, 0x82, 0xF6);
+    private static final Color SCREEN = new Color(0x1E, 0x5A, 0x8C);
+    private static final Color KEYBOARD = new Color(0xD1, 0xD5, 0xDB);
     private static final Color[] SUPPLIES = {new Color(0xF8, 0x71, 0x71), new Color(0x60, 0xA5, 0xFA),
         new Color(0xFB, 0xBF, 0x24), new Color(0x34, 0xD3, 0x99), new Color(0xF1, 0xF5, 0xF9)};
 
@@ -144,13 +151,19 @@ public final class IsoFurniture {
                     items.add(new IsoItem(spot.col() + spot.row() + 1.2, IsoItem.PERSON + 1,
                             graphics -> lamp(graphics, spot)));
                 }
-                default -> add(items, spot, graphics -> bed(graphics, spot));
+                default -> {
+                    add(items, spot, graphics -> bed(graphics, spot));
+                    if (zone == ZoneType.HOSPITALIZATION) {
+                        addWardExtras(items, spot);
+                    }
+                }
             }
         }
         for (Position seat : layout.getWaitingSpots()) {
             add(items, seat, graphics -> waitingChair(graphics, seat));
         }
         for (Position station : layout.getTriageSpots()) {
+            add(items, station.col() + 0.5, station.row() + 0.02, graphics -> triageChair(graphics, station));
             add(items, station.col() + 0.5, station.row() + 0.06, graphics -> triageNurse(graphics, station));
             add(items, station.col() + 0.5, station.row() + 0.21, graphics -> triageDesk(graphics, station));
         }
@@ -183,13 +196,16 @@ public final class IsoFurniture {
         Set<Position> taken = takenCells();
         for (Area area : layout.getAreas()) {
             Prop[] props = propsOf(area.zone());
-            if (props.length == 0) {
+            if (props.length == 0 || area.zone() == ZoneType.CORRIDOR && area.cols() <= area.rows()) {
                 continue;
             }
+            boolean corridor = area.zone() == ZoneType.CORRIDOR;
+            int first = corridor ? area.col() + 2 : area.col() + Math.min(SIGN_CELLS, area.cols() - 1);
+            int step = corridor ? CORRIDOR_PROP_STEP : area.cols() > 4 ? 2 : 1;
             int placed = 0;
-            for (int col = area.col() + Math.min(SIGN_CELLS, area.cols() - 1); col < area.right(); col++) {
+            for (int col = first; col < area.right() - (corridor ? 1 : 0); col++) {
                 Position cell = new Position(col, area.row());
-                if (taken.contains(cell) || nearDoor(cell) || (col - area.col()) % 2 == 1 && area.cols() > 4) {
+                if (taken.contains(cell) || nearDoor(cell) || (col - first) % step != 0) {
                     continue;
                 }
                 Prop prop = props[placed % props.length];
@@ -201,6 +217,31 @@ public final class IsoFurniture {
         }
     }
 
+    /**
+     * Junto a cada cama de hospitalización que tiene la casilla de la derecha libre: una mesa de noche, un atril
+     * con suero y una mampara de vidrio que la separa de la cama siguiente.
+     */
+    private void addWardExtras(List<IsoItem> items, Position bed) {
+        Position side = new Position(bed.col() + 1, bed.row());
+        Optional<Area> area = layout.areaAt(side);
+        if (area.isEmpty() || area.get().zone() != ZoneType.HOSPITALIZATION || layout.resourceAt(side).isPresent()) {
+            return;
+        }
+        double x = side.col();
+        double y = side.row();
+        add(items, x + 0.17, y + 0.28, graphics -> {
+            IsoBrush.box(graphics, projection, x + 0.04, y + 0.15, 0, 0.26, 0.26, 0.45, color(Part.COUNTER_TOP),
+                    color(Part.CABINET), IsoPalette.darker(color(Part.CABINET), 0.8));
+            IsoBrush.box(graphics, projection, x + 0.1, y + 0.2, 0.45, 0.1, 0.08, 0.06, CUP);
+        });
+        add(items, x + 0.2, y + 0.7, graphics -> {
+            IsoBrush.box(graphics, projection, x + 0.12, y + 0.62, 0, 0.16, 0.16, 0.02, color(Part.METAL));
+            IsoBrush.box(graphics, projection, x + 0.19, y + 0.69, 0.02, 0.02, 0.02, 0.95, color(Part.METAL));
+            IsoBrush.box(graphics, projection, x + 0.15, y + 0.67, 0.78, 0.1, 0.05, 0.13, WATER);
+        });
+        add(items, x + 0.62, y + 0.5, graphics -> IsoBrush.pane(graphics, projection, x + 0.6, y + 0.06, 0, 0.04,
+                0.88, 0.85, PARTITION, color(Part.METAL)));
+    }
     /**
      * Cantidad de objetos contra los muros del fondo de las salas (lavamanos, vitrinas, casilleros…).
      *
@@ -255,7 +296,7 @@ public final class IsoFurniture {
             case DISCHARGE -> new Prop[] {Prop.PLANT, Prop.WATER_COOLER};
             case CONSULTATION -> new Prop[] {Prop.GLASS_CABINET, Prop.SINK, Prop.PLANT};
             case STAFF_ROOM -> new Prop[] {Prop.LOCKERS, Prop.COFFEE, Prop.PLANT, Prop.WATER_COOLER};
-            case CORRIDOR -> new Prop[0];
+            case CORRIDOR -> new Prop[] {Prop.PARKED_STRETCHER, Prop.BENCH, Prop.WHEELCHAIR, Prop.CLEANING_CART};
         };
     }
 
@@ -282,7 +323,15 @@ public final class IsoFurniture {
         /** Casilleros del personal. */
         LOCKERS,
         /** Mueble con la cafetera. */
-        COFFEE
+        COFFEE,
+        /** Camilla vacía estacionada contra el muro del pasillo. */
+        PARKED_STRETCHER,
+        /** Banca de espera del pasillo. */
+        BENCH,
+        /** Silla de ruedas vacía. */
+        WHEELCHAIR,
+        /** Carro de limpieza con su balde y su trapero. */
+        CLEANING_CART
     }
 
     private void prop(Graphics2D graphics, Prop prop, double col, double row) {
@@ -386,6 +435,40 @@ public final class IsoFurniture {
                     graphics.draw(IsoBrush.polygon(projection, new double[][] {{left, face, 0.06},
                             {left + 0.2, face, 0.06}, {left + 0.2, face, 0.94}, {left, face, 0.94}}));
                 }
+            }
+            case PARKED_STRETCHER -> {
+                for (double wheel : new double[] {x + 0.05, x + 0.65}) {
+                    Point2D at = projection.at(wheel, y + 0.46, 0.04);
+                    graphics.setColor(IsoPalette.OUTLINE);
+                    graphics.fill(new Ellipse2D.Double(at.getX() - 2.5, at.getY() - 1.6, 5, 3.2));
+                }
+                IsoBrush.box(graphics, projection, x + 0.05, y + 0.08, 0.05, 0.6, 0.3, 0.2, color(Part.METAL));
+                IsoBrush.box(graphics, projection, x - 0.05, y + 0.02, 0.25, 0.8, 0.42, 0.05, color(Part.BED_FRAME));
+                IsoBrush.box(graphics, projection, x - 0.03, y + 0.04, 0.3, 0.76, 0.38, 0.05, color(Part.MATTRESS));
+                IsoBrush.box(graphics, projection, x, y + 0.08, 0.35, 0.18, 0.3, 0.05, color(Part.PILLOW));
+            }
+            case BENCH -> {
+                IsoBrush.box(graphics, projection, x, y + 0.04, 0, 0.06, 0.3, 0.22, color(Part.METAL));
+                IsoBrush.box(graphics, projection, x + 0.64, y + 0.04, 0, 0.06, 0.3, 0.22, color(Part.METAL));
+                IsoBrush.box(graphics, projection, x - 0.05, y + 0.02, 0.22, 0.8, 0.34, 0.05, color(Part.CHAIR_TOP),
+                        color(Part.CHAIR), IsoPalette.darker(color(Part.CHAIR), 0.76));
+                IsoBrush.box(graphics, projection, x - 0.05, y, 0.27, 0.8, 0.06, 0.26, color(Part.CHAIR_TOP),
+                        color(Part.CHAIR), IsoPalette.darker(color(Part.CHAIR), 0.76));
+            }
+            case WHEELCHAIR -> {
+                for (double wheel : new double[] {y + 0.06, y + 0.42}) {
+                    Point2D at = projection.at(x + 0.2, wheel, 0.18);
+                    graphics.setStroke(new BasicStroke(1.8f));
+                    graphics.setColor(IsoPalette.OUTLINE);
+                    graphics.draw(new Ellipse2D.Double(at.getX() - 4.5, at.getY() - 7, 9, 14));
+                }
+                IsoBrush.box(graphics, projection, x + 0.18, y + 0.08, 0.24, 0.36, 0.34, 0.04, WHEELCHAIR_SEAT);
+                IsoBrush.box(graphics, projection, x + 0.18, y + 0.08, 0.28, 0.05, 0.34, 0.32, WHEELCHAIR_SEAT);
+            }
+            case CLEANING_CART -> {
+                IsoBrush.box(graphics, projection, x + 0.05, y + 0.05, 0.05, 0.55, 0.32, 0.45, SHARPS);
+                IsoBrush.box(graphics, projection, x + 0.1, y + 0.1, 0.5, 0.22, 0.22, 0.18, CART_BLUE);
+                IsoBrush.box(graphics, projection, x + 0.42, y + 0.12, 0.5, 0.04, 0.04, 0.55, color(Part.METAL));
             }
             case COFFEE -> {
                 IsoBrush.box(graphics, projection, x, y, 0, 0.7, 0.42, 0.55, color(Part.DESK_TOP), color(Part.WOOD),
@@ -529,12 +612,30 @@ public final class IsoFurniture {
                 color(Part.CHAIR), IsoPalette.darker(color(Part.CHAIR), 0.76));
     }
 
+    /** Puesto de triage: escritorio ancho con dos computadores, teclado, tensiómetro y la silla de la enfermera. */
     private void triageDesk(Graphics2D graphics, Position spot) {
-        IsoBrush.box(graphics, projection, spot.col() + 0.18, spot.row() + 0.14, 0, 0.64, 0.16, 0.42,
-                IsoPalette.lighter(IsoPalette.accent(ZoneType.TRIAGE), 0.15), color(Part.DESK),
+        double x = spot.col() + 0.06;
+        double y = spot.row() + 0.16;
+        IsoBrush.box(graphics, projection, x, y, 0, 0.88, 0.24, 0.42, color(Part.DESK_TOP), color(Part.DESK),
                 IsoPalette.darker(color(Part.DESK), 0.76));
-        IsoBrush.box(graphics, projection, spot.col() + 0.4, spot.row() + 0.16, 0.42, 0.2, 0.04, 0.14,
-                color(Part.DEVICE));
+        for (double left : new double[] {x + 0.12, x + 0.46}) {
+            IsoBrush.box(graphics, projection, left + 0.1, y + 0.05, 0.42, 0.04, 0.04, 0.06, color(Part.DEVICE));
+            IsoBrush.box(graphics, projection, left, y + 0.03, 0.48, 0.26, 0.03, 0.17, color(Part.DEVICE));
+            graphics.setColor(SCREEN);
+            graphics.fill(IsoBrush.polygon(projection, new double[][] {{left + 0.02, y + 0.062, 0.5},
+                {left + 0.24, y + 0.062, 0.5}, {left + 0.24, y + 0.062, 0.63}, {left + 0.02, y + 0.062, 0.63}}));
+        }
+        IsoBrush.box(graphics, projection, x + 0.2, y + 0.14, 0.42, 0.26, 0.07, 0.012, KEYBOARD);
+        IsoBrush.box(graphics, projection, x + 0.76, y + 0.08, 0.42, 0.09, 0.1, 0.07, color(Part.DEVICE));
+    }
+
+    /** Silla de oficina de la enfermera de triage, detrás del escritorio. */
+    private void triageChair(Graphics2D graphics, Position spot) {
+        double x = spot.col() + 0.38;
+        double y = spot.row() + 0.0;
+        IsoBrush.box(graphics, projection, x + 0.1, y + 0.05, 0, 0.04, 0.04, 0.22, color(Part.METAL));
+        IsoBrush.box(graphics, projection, x, y - 0.04, 0.22, 0.24, 0.2, 0.05, color(Part.CHAIR_TOP),
+                color(Part.CHAIR), IsoPalette.darker(color(Part.CHAIR), 0.76));
     }
 
     /** Enfermera de triage de pie detrás de su puesto: no es personal del motor, siempre está ahí. */

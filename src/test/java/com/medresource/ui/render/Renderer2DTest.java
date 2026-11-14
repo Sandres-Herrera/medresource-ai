@@ -100,8 +100,9 @@ class Renderer2DTest {
     @Test
     void doesNotPaintWhereThereIsNoArea() {
         // Fuera del borde de las cajas: la esquina del plano y la franja entre el triage y la sala de espera.
+        Area waiting = layout.areasOf(ZoneType.WAITING_ROOM).get(0);
         assertEquals(BLACK, image.getRGB(0, 0));
-        assertEquals(BLACK, image.getRGB(2 * CELL_W, 40));
+        assertEquals(BLACK, image.getRGB(waiting.col() * CELL_W, 40));
     }
 
     @Test
@@ -203,7 +204,8 @@ class Renderer2DTest {
     @Test
     void anUnusedSquareOfAnAreaHasNoCard() {
         Area hospitalization = layout.areasOf(ZoneType.HOSPITALIZATION).get(0);
-        Position unused = hospitalization.slot(30);
+        Position bed = layout.positionOf("H1-C1").orElseThrow();
+        Position unused = new Position(bed.col() + 1, bed.row());
 
         assertEquals(Palette.zone(ZoneType.HOSPITALIZATION).getRGB(), cardCornerOf(unused));
         assertEquals(0, countLabelPixels(unused.col() * CELL_W, unused.row() * CELL_H, CELL_W, CELL_H));

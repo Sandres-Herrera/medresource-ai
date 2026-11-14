@@ -113,13 +113,21 @@ class LayoutFactoryTest {
     }
 
     @Test
-    void putsTheBedsInTheOrderTheHospitalHasThem() {
+    void putsTheBedsInTheOrderTheHospitalHasThemWithAFreeCellBetweenEachTwo() {
         Hospital hospital = hospital(HospitalConfig.standard());
         HospitalLayout layout = factory.create(hospital);
         Area ward = onlyAreaOf(layout, ZoneType.HOSPITALIZATION);
 
-        for (int index = 0; index < hospital.getBeds().size(); index++) {
-            assertEquals(ward.slot(index), layout.positionOf(hospital.getBeds().get(index).getCode()).orElseThrow());
+        Position previous = null;
+        for (Bed bed : hospital.getBeds()) {
+            Position spot = layout.positionOf(bed.getCode()).orElseThrow();
+            assertTrue(ward.containsSlot(spot), "debajo del título de la sala: " + spot);
+            if (previous != null && previous.row() == spot.row()) {
+                assertEquals(previous.col() + 2, spot.col(), "una casilla libre entre dos camas");
+            } else if (previous != null) {
+                assertEquals(previous.row() + 1, spot.row());
+            }
+            previous = spot;
         }
     }
 
@@ -149,7 +157,7 @@ class LayoutFactoryTest {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
         Area staff = onlyAreaOf(layout, ZoneType.STAFF_ROOM);
 
-        assertEquals(10, staff.cols());
+        assertEquals(11, staff.cols());
         assertEquals(3, staff.rows());
         assertEquals(layout.staffSeatOf("D03").orElseThrow().table(),
                 layout.staffSeatOf("D04").orElseThrow().table());
@@ -243,7 +251,7 @@ class LayoutFactoryTest {
             HospitalLayout layout = layoutOf(config);
             Area ward = onlyAreaOf(layout, ZoneType.HOSPITALIZATION);
 
-            assertEquals(layout.getCols() - 8, ward.cols());
+            assertEquals(layout.getCols() - 9, ward.cols());
             assertEquals(layout.getCols(), ward.right());
         }
     }
@@ -305,9 +313,9 @@ class LayoutFactoryTest {
             List<Area> rooms = layout.areasOf(ZoneType.OPERATING_ROOM);
             int roomsRight = rooms.stream().mapToInt(Area::right).max().orElseThrow();
 
-            assertEquals(top.bottom() + 1, icu.row());
+            assertEquals(top.bottom() + 2, icu.row());
             assertEquals(0, icu.col());
-            assertEquals(icu.right() + 1, blood.col());
+            assertEquals(icu.right() + 2, blood.col());
             assertEquals(blood.right(), rooms.get(0).col());
             assertEquals(roomsRight, morgue.col());
             assertEquals(morgue.right(), discharge.col());
@@ -325,24 +333,24 @@ class LayoutFactoryTest {
             assertEquals(bottom, onlyAreaOf(layout, ZoneType.MORGUE).bottom());
             assertEquals(bottom, onlyAreaOf(layout, ZoneType.DISCHARGE).bottom());
             assertEquals(bottom, layout.areasOf(ZoneType.OPERATING_ROOM).stream().mapToInt(Area::bottom).max().orElseThrow());
-            assertEquals(bottom + 1, onlyAreaOf(layout, ZoneType.STAFF_ROOM).row());
+            assertEquals(bottom + 2, onlyAreaOf(layout, ZoneType.STAFF_ROOM).row());
         }
     }
 
     // ---------- pasillos y puertas ----------
 
     @Test
-    void aCorridorOneCellHighCrossesThePlanBetweenEachTwoBands() {
+    void aCorridorTwoCellsHighCrossesThePlanBetweenEachTwoBands() {
         for (HospitalConfig config : sizes()) {
             HospitalLayout layout = layoutOf(config);
             List<Area> corridors = layout.areasOf(ZoneType.CORRIDOR).stream()
-                    .filter(corridor -> corridor.cols() > 1).toList();
+                    .filter(corridor -> corridor.cols() > 2).toList();
 
             assertEquals(2, corridors.size());
             for (Area corridor : corridors) {
                 assertEquals(0, corridor.col());
                 assertEquals(layout.getCols(), corridor.cols());
-                assertEquals(1, corridor.rows());
+                assertEquals(2, corridor.rows());
             }
             assertEquals(onlyAreaOf(layout, ZoneType.TRIAGE).bottom(), corridors.get(0).row());
             assertEquals(onlyAreaOf(layout, ZoneType.ICU).bottom(), corridors.get(1).row());
@@ -355,7 +363,7 @@ class LayoutFactoryTest {
             HospitalLayout layout = layoutOf(config);
             Area icu = onlyAreaOf(layout, ZoneType.ICU);
             List<Area> vertical = layout.areasOf(ZoneType.CORRIDOR).stream()
-                    .filter(corridor -> corridor.cols() == 1).toList();
+                    .filter(corridor -> corridor.cols() == 2).toList();
 
             assertEquals(1, vertical.size());
             Area corridor = vertical.get(0);
@@ -567,15 +575,15 @@ class LayoutFactoryTest {
 
     @Test
     void thePlanIsNeverNarrowerThanItsWidestBand() {
-        assertEquals(14, layoutOf(SMALLEST).getCols());
+        assertEquals(15, layoutOf(SMALLEST).getCols());
     }
 
     @Test
     void thePlanHasTheStandardSize() {
         HospitalLayout layout = layoutOf(HospitalConfig.standard());
 
-        assertEquals(20, layout.getCols());
-        assertEquals(16, layout.getRows());
+        assertEquals(21, layout.getCols());
+        assertEquals(18, layout.getRows());
     }
 
     @Test
