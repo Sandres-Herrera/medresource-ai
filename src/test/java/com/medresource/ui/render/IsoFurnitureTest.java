@@ -54,11 +54,18 @@ class IsoFurnitureTest {
         }
         long expected = beds + 2 * icu + 3 * operating + layout.getWaitingSpots().size()
                 + 2L * layout.getTriageSpots().size() + layout.getBloodSpots().size() + layout.getMorgueSpots().size()
-                + desks + tables.size() + layout.getStaffCodes().size();
+                + desks + tables.size() + layout.getStaffCodes().size() + furniture.propCount();
 
         List<IsoItem> items = furniture.items();
 
         assertEquals(expected, items.size());
+    }
+
+    @Test
+    void theRoomsHavePropsAgainstTheirBackWallAndTheCorridorsNone() {
+        assertTrue(furniture.propCount() > layout.getAreas().size() / 2);
+        IsoFurniture dark = new IsoFurniture(layout, projection, new Renderer2D(), IsoTheme.DARK);
+        assertEquals(furniture.propCount(), dark.propCount(), "el tema no cambia los muebles");
     }
 
     @Test
@@ -102,5 +109,6 @@ class IsoFurnitureTest {
         assertThrows(IllegalArgumentException.class, () -> new IsoFurniture(null, projection, flat));
         assertThrows(IllegalArgumentException.class, () -> new IsoFurniture(layout, null, flat));
         assertThrows(IllegalArgumentException.class, () -> new IsoFurniture(layout, projection, null));
+        assertThrows(IllegalArgumentException.class, () -> new IsoFurniture(layout, projection, flat, null));
     }
 }
