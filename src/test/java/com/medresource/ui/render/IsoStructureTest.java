@@ -14,6 +14,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,6 +42,46 @@ class IsoStructureTest {
         assertEquals(IsoStructure.WALL_HEIGHT, structure.wallHeight(true, triage.col(), triage.row()), 0.0);
         assertEquals(IsoStructure.LOW_WALL_HEIGHT, structure.wallHeight(true, 0, layout.getRows()), 0.0);
         assertEquals(IsoStructure.LOW_WALL_HEIGHT, structure.wallHeight(false, layout.getCols(), 0), 0.0);
+    }
+
+    @Test
+    void seenFromBehindTheFacadeOfTheBackIsTheLowOne() {
+        IsoStructure turned = new IsoStructure(layout, projection.withView(180, IsoProjection.DEFAULT_ELEVATION));
+
+        assertEquals(IsoStructure.WALL_HEIGHT, turned.wallHeight(true, 0, layout.getRows()), 0.0);
+        assertEquals(IsoStructure.WALL_HEIGHT, turned.wallHeight(false, layout.getCols(), 0), 0.0);
+        assertEquals(IsoStructure.LOW_WALL_HEIGHT, turned.wallHeight(true, 0, 0), 0.0);
+        assertEquals(IsoStructure.LOW_WALL_HEIGHT, turned.wallHeight(false, 0, 0), 0.0);
+    }
+
+    @Test
+    void theDepthOfTheWallsFollowsTheAngleOfTheCamera() {
+        IsoProjection back = projection.withView(180, IsoProjection.DEFAULT_ELEVATION);
+        List<IsoItem> items = new IsoStructure(layout, back).items();
+
+        double min = items.stream().mapToDouble(IsoItem::depth).min().orElseThrow();
+        double max = items.stream().mapToDouble(IsoItem::depth).max().orElseThrow();
+        assertTrue(min >= back.depth(layout.getCols() + IsoProjection.SITE_MARGIN,
+                layout.getRows() + IsoProjection.SITE_MARGIN) - 1e-9);
+        assertTrue(max <= back.depth(-IsoProjection.SITE_MARGIN, -IsoProjection.SITE_MARGIN) + 1.5);
+    }
+
+    @Test
+    void theBuildingCanBeDrawnFromAnyAngle() {
+        for (double yaw = 0; yaw < 360; yaw += 60) {
+            IsoProjection view = projection.withView(yaw, 45);
+            IsoStructure building = new IsoStructure(layout, view);
+            BufferedImage image = new BufferedImage(view.size().width, view.size().height,
+                    BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = image.createGraphics();
+
+            building.paintGround(graphics);
+            building.items().forEach(item -> item.paint(graphics));
+
+            graphics.dispose();
+            Point2D center = view.at(layout.getCols() / 2.0, layout.getRows() / 2.0, 0);
+            assertTrue(image.getRGB((int) center.getX(), (int) center.getY()) != 0, "giro " + yaw);
+        }
     }
 
     @Test
