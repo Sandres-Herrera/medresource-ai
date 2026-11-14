@@ -113,4 +113,16 @@ class HomeButtonTest {
         assertTrue(outlined.getPreferredSize().width > plain.getPreferredSize().width, "el icono ocupa espacio");
         assertEquals(HomeTheme.CARD.getRGB(), paint(outlined).getRGB(4, HomeButton.OUTLINE_HEIGHT / 2));
     }
+
+    @Test
+    void itsTextCanChange() {
+        HomeButton button = new HomeButton(HomeButton.Style.OUTLINE, "Repetir 30 s", HomeIcon.CLOCK);
+        int narrow = button.getPreferredSize().width;
+
+        button.setText("Volver al presente");
+
+        assertEquals("Volver al presente", button.getText());
+        assertTrue(button.getPreferredSize().width > narrow);
+        assertThrows(IllegalArgumentException.class, () -> button.setText(" "));
+    }
 }

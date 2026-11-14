@@ -117,4 +117,18 @@ class MapFrameTest {
         assertThrows(IllegalArgumentException.class, () -> new MapFrame(map(), " "));
         assertThrows(IllegalArgumentException.class, () -> new MapFrame(map(), "estándar").onFullscreen(null));
     }
+
+    @Test
+    void theInitialViewButtonOnlyShowsIn25dAndUndoesTheTurn() {
+        HospitalMapPanel map = map();
+        MapFrame frame = new MapFrame(map, "estándar");
+        assertFalse(frame.resetViewButton().isVisible());
+
+        frame.viewToggle().isometricPill().doClick();
+        map.setView(90, 60);
+        frame.resetViewButton().doClick();
+
+        assertTrue(frame.resetViewButton().isVisible());
+        assertEquals(0.0, map.getYaw(), 0.0);
+    }
 }
