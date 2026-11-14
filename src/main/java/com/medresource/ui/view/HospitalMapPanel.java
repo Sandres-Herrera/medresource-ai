@@ -3,10 +3,13 @@ package com.medresource.ui.view;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.ui.render.Camera;
+import com.medresource.ui.render.IsoPalette;
+import com.medresource.ui.render.IsometricRenderer;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.PatientPicker;
+import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.StaffMarker;
 import com.medresource.ui.render.StaffPainter;
@@ -47,6 +50,11 @@ import java.util.function.Consumer;
  * <p>La rueda del ratón acerca o aleja el plano alrededor del puntero ({@link #zoomAt}), hasta
  * {@value #MAX_ZOOM_LEVEL} veces el aumento normal; acercado, el plano también se arrastra. Mientras la cámara sigue
  * a un paciente, la rueda cambia cuán de cerca lo sigue.</p>
+ *
+ * <p>Con {@link #setIsometric(boolean)} el mismo plano se ve en 2.5D ({@link IsometricRenderer}): las personas
+ * siguen en los mismos puntos del plano y solo cambia cómo se dibujan, así que el cambio es instantáneo. La cámara,
+ * la rueda, el arrastre, el clic y el seguimiento funcionan igual en las dos vistas. Encima del plano también dibuja
+ * a los camilleros que le den con {@link #showPorters}.</p>
  */
 public final class HospitalMapPanel extends JPanel {
 
@@ -77,10 +85,13 @@ public final class HospitalMapPanel extends JPanel {
 
     private transient HospitalLayout layout;
     private final transient SceneRenderer renderer;
+    private final transient IsometricRenderer isometricRenderer;
     private final transient PatientPainter patientPainter = new PatientPainter();
     private final transient StaffPainter staffPainter = new StaffPainter();
     private transient List<StaffMarker> staffMarkers = List.of();
     private transient List<PatientMarker> markers = List.of();
+    private transient List<PorterMarker> porters = List.of();
+    private boolean isometric;
     private int overflow;
     private String selected;
     private boolean following;
@@ -105,6 +116,7 @@ public final class HospitalMapPanel extends JPanel {
             throw new IllegalArgumentException("El renderizador es obligatorio.");
         }
         this.renderer = renderer;
+        this.isometricRenderer = new IsometricRenderer(renderer);
         this.layout = requireLayout(layout);
         setBackground(Palette.BACKGROUND);
         MouseAdapter mouse = new MouseAdapter() {
@@ -217,6 +229,37 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     /**
+     * Cambia los camilleros que se dibujan encima del plano y vuelve a dibujar.
+     *
+     * @param porters camilleros con su posición en el mundo
+     * @throws IllegalArgumentException si la lista es nula
+     */
+    public void showPorters(List<PorterMarker> porters) {
+        if (porters == null) {
+            throw new IllegalArgumentException("La lista de camilleros es obligatoria.");
+        }
+        this.porters = List.copyOf(porters);
+        repaint();
+    }
+
+    /**
+     * Cambia entre la vista 2D y la 2.5D. Al cambiar, vuelve al aumento normal y al centro del plano; la selección y
+     * el seguimiento se conservan.
+     *
+     * @param isometric {@code true} para la vista 2.5D; {@code false} para la 2D
+     */
+    public void setIsometric(boolean isometric) {
+        if (this.isometric != isometric) {
+            this.isometric = isometric;
+            resetZoom();
+        }
+    }
+
+    public boolean isIsometric() {
+        return isometric;
+    }
+
+    /**
      * Selecciona un paciente: se dibuja con un anillo y, si la cámara sigue la selección, la cámara va con él.
      *
      * @param patientCode código del paciente, o nulo para no seleccionar a nadie
@@ -307,7 +350,7 @@ public final class HospitalMapPanel extends JPanel {
         }
         Point2D anchor = camera.get().toWorld(screenX, screenY);
         zoomLevel = clamp(zoomLevel * factor, 1, MAX_ZOOM_LEVEL);
-        Dimension world = renderer.worldSize(layout);
+        Dimension world = worldSize();
         double zoom = clamp(baseZoom(world, getWidth(), getHeight()) * zoomLevel, Camera.MIN_ZOOM, Camera.MAX_ZOOM);
         keepCenter(anchor.getX() - (screenX - getWidth() / 2.0) / zoom,
                 anchor.getY() - (screenY - getHeight() / 2.0) / zoom);
@@ -362,6 +405,9 @@ public final class HospitalMapPanel extends JPanel {
             return Optional.empty();
         }
         Point2D world = camera.get().toWorld(screenX, screenY);
+        if (isometric) {
+            return isometricRenderer.pick(layout, markers, world.getX(), world.getY());
+        }
         return PatientPicker.pick(markers, world.getX(), world.getY());
     }
 
@@ -378,16 +424,15 @@ public final class HospitalMapPanel extends JPanel {
         if (width <= 2 * MARGIN || height <= 2 * MARGIN) {
             return Optional.empty();
         }
-        Dimension world = renderer.worldSize(layout);
+        Dimension world = worldSize();
         Optional<PatientMarker> target = selectedMarker();
         if (!following || target.isEmpty()) {
             return Optional.of(viewCamera(width, height, centerX, centerY));
         }
         double zoom = clamp(baseZoom(world, width, height) * FOLLOW_ZOOM * followLevel, Camera.MIN_ZOOM,
                 Camera.MAX_ZOOM);
-        PatientMarker marker = target.get();
-        return Optional.of(Camera.follow(marker.x() + PatientPainter.OFFSET_X, marker.y(), world.width,
-                world.height, width, height, zoom));
+        Point2D focus = focusOf(target.get());
+        return Optional.of(Camera.follow(focus.getX(), focus.getY(), world.width, world.height, width, height, zoom));
     }
 
     /**
@@ -426,7 +471,7 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     private void paintScene(Graphics2D graphics, int width, int height) {
-        graphics.setColor(Palette.BACKGROUND);
+        graphics.setColor(isometric ? IsoPalette.BACKGROUND : Palette.BACKGROUND);
         graphics.fillRect(0, 0, width, height);
         Optional<Camera> camera = cameraFor(width, height);
         if (camera.isEmpty()) {
@@ -435,8 +480,13 @@ public final class HospitalMapPanel extends JPanel {
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         camera.get().applyTo(graphics);
+        if (isometric) {
+            isometricRenderer.paint(graphics, layout, markers, staffMarkers, porters, selected, overflow);
+            return;
+        }
         renderer.render(graphics, layout);
         staffPainter.paint(graphics, staffMarkers);
+        staffPainter.paintPorters(graphics, porters);
         patientPainter.paint(graphics, markers);
         selectedMarker().ifPresent(marker -> patientPainter.paintSelection(graphics, marker));
         List<Position> seats = layout.getWaitingSpots();
@@ -453,13 +503,26 @@ public final class HospitalMapPanel extends JPanel {
      * en el punto pedido (el centro del plano si no hay ninguno).
      */
     private Camera viewCamera(int width, int height, double x, double y) {
-        Dimension world = renderer.worldSize(layout);
+        Dimension world = worldSize();
         if (!covering && zoomLevel <= 1) {
             return Camera.fit(world.width, world.height, width, height, MARGIN);
         }
         double zoom = clamp(baseZoom(world, width, height) * zoomLevel, Camera.MIN_ZOOM, Camera.MAX_ZOOM);
         return Camera.follow(Double.isNaN(x) ? world.width / 2.0 : x, Double.isNaN(y) ? world.height / 2.0 : y,
                 world.width, world.height, width, height, zoom);
+    }
+
+    /** Tamaño del mundo de la vista que se está usando, en píxeles. */
+    private Dimension worldSize() {
+        return isometric ? isometricRenderer.worldSize(layout) : renderer.worldSize(layout);
+    }
+
+    /** Punto del mundo de la vista que se está usando donde la cámara sigue a un paciente. */
+    private Point2D focusOf(PatientMarker marker) {
+        if (isometric) {
+            return isometricRenderer.focusOf(layout, marker);
+        }
+        return new Point2D.Double(marker.x() + PatientPainter.OFFSET_X, marker.y());
     }
 
     /** Aumento normal: el que deja ver todo el plano o, si llena el panel, el que lo llena. */
