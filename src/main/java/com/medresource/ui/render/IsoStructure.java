@@ -77,6 +77,10 @@ public final class IsoStructure {
     private static final Color SIREN_BLUE = new Color(0x3B, 0x82, 0xF6);
     private static final Color WINDSHIELD = new Color(0x2B, 0x3A, 0x55);
     private static final Color TV_FRAME = new Color(0x11, 0x15, 0x1C);
+    private static final Color GUIDE_RED = new Color(0xE5, 0x48, 0x4D, 200);
+    private static final Color GUIDE_BLUE = new Color(0x3B, 0x82, 0xF6, 200);
+    private static final Color GUIDE_GREEN = new Color(0x22, 0xC5, 0x5E, 200);
+    private static final Color TAXI = new Color(0xFA, 0xCC, 0x15);
     private static final Color TV_SCREEN = new Color(0x1D, 0x4E, 0xD8);
 
     /** Borde entre dos casillas: horizontal (arriba de la casilla) o vertical (a su izquierda). */
@@ -95,6 +99,7 @@ public final class IsoStructure {
     private final List<Sign> signs = new ArrayList<>();
     private final Set<Edge> signEdges = new HashSet<>();
     private final boolean entranceFromLeft;
+    private final Optional<Edge> exit;
 
     /**
      * Arma el edificio de un plano con el tema claro.
@@ -132,8 +137,28 @@ public final class IsoStructure {
         } else if (areaCovering(entrance.col(), entrance.row() - 1).isEmpty()) {
             doors.add(new Edge(true, entrance.col(), entrance.row()));
         }
+        exit = exitOf(layout);
+        exit.ifPresent(doors::add);
         findWalls();
         findSigns();
+    }
+
+    /**
+     * Puerta de salida a la calle: en la fachada derecha, a media altura de la zona de alta, si la zona de alta llega
+     * hasta ese borde del plano.
+     */
+    private static Optional<Edge> exitOf(HospitalLayout layout) {
+        return layout.areasOf(ZoneType.DISCHARGE).stream().filter(area -> area.right() == layout.getCols())
+                .findFirst().map(area -> new Edge(false, area.right(), area.row() + area.rows() / 2));
+    }
+
+    /**
+     * Fila de la puerta de salida a la calle, en la fachada derecha de la zona de alta.
+     *
+     * @return la fila, o vacío si la zona de alta no llega a la fachada
+     */
+    public Optional<Integer> exitRow() {
+        return exit.map(Edge::row);
     }
 
     /** Borde que comparten dos casillas vecinas. */
@@ -300,6 +325,7 @@ public final class IsoStructure {
             paintFloor(graphics, area);
         }
         paintCorridorBands(graphics);
+        paintGuideLines(graphics);
         paintOcclusion(graphics);
         for (Edge door : doors) {
             paintMat(graphics, door);
@@ -364,6 +390,14 @@ public final class IsoStructure {
         }
         floorText(graphics, entranceFromLeft ? x0 + 0.15 : gx + 1.7, entranceFromLeft ? gy + 1.7 : y0 + 0.15,
                 "URGENCIAS", 9, theme.color(Part.ROAD_MARK), entranceFromLeft);
+        exit.ifPresent(door -> {
+            double row = door.row();
+            graphics.setColor(theme.color(Part.ROAD));
+            graphics.fill(IsoBrush.quad(projection, x1 - 1.6, row - 1.4, x1, row + 2.4, 0));
+            graphics.setColor(theme.color(Part.SIDEWALK));
+            graphics.fill(IsoBrush.quad(projection, layout.getCols(), row - 0.2, x1 - 1.6, row + 1.2, 0));
+            floorText(graphics, x1 - 1.45, row + 2.25, "SALIDA", 9, theme.color(Part.ROAD_MARK), true);
+        });
     }
 
     private void paintFloor(Graphics2D graphics, Area area) {
@@ -410,6 +444,27 @@ public final class IsoStructure {
                 }
             }
         });
+    }
+
+    /**
+     * Líneas guía pintadas a lo largo de cada pasillo, como en los hospitales: roja hacia la UCI, azul hacia los
+     * consultorios y verde hacia la salida.
+     */
+    private void paintGuideLines(Graphics2D graphics) {
+        Color[] colors = {GUIDE_RED, GUIDE_BLUE, GUIDE_GREEN};
+        for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
+            boolean across = corridor.cols() >= corridor.rows();
+            double middle = across ? corridor.row() + corridor.rows() / 2.0 : corridor.col() + corridor.cols() / 2.0;
+            for (int index = 0; index < colors.length; index++) {
+                double offset = middle + (index - 1) * 0.16;
+                graphics.setColor(colors[index]);
+                graphics.fill(across
+                        ? IsoBrush.quad(projection, corridor.col() + 0.3, offset - 0.03, corridor.right() - 0.3,
+                                offset + 0.03, 0)
+                        : IsoBrush.quad(projection, offset - 0.03, corridor.row(), offset + 0.03, corridor.bottom(),
+                                0));
+            }
+        }
     }
 
     private boolean isCorridor(int col, int row) {
@@ -805,6 +860,30 @@ public final class IsoStructure {
         double ax = entranceFromLeft ? -margin + 0.15 : entrance.col() - 0.75;
         double ay = entranceFromLeft ? entrance.row() - 0.75 : -margin + 0.15;
         items.add(new IsoItem(ax + ay + 1.2, IsoItem.FURNITURE, graphics -> ambulance(graphics, ax, ay)));
+        exit.ifPresent(door -> {
+            double tx = cols + margin - 1.35;
+            double ty = door.row() - 1.15;
+            items.add(new IsoItem(tx + ty + 1.2, IsoItem.FURNITURE, graphics -> taxi(graphics, tx, ty)));
+            double lx = cols + SIDEWALK + 0.2;
+            double ly = door.row() + 1.5;
+            items.add(new IsoItem(lx + ly, IsoItem.FURNITURE, graphics -> streetLamp(graphics, lx, ly)));
+        });
+    }
+
+    /** Taxi amarillo esperando frente a la salida, a lo largo de las filas. */
+    private void taxi(Graphics2D graphics, double gx, double gy) {
+        double w = 0.75;
+        double d = 1.45;
+        IsoBrush.shadow(graphics, projection, gx + w / 2 + 0.15, gy + d / 2, 0.75);
+        for (double wheel : new double[] {gy + 0.3, gy + d - 0.3}) {
+            Point2D at = projection.at(gx + w, wheel, 0.1);
+            graphics.setColor(IsoPalette.OUTLINE);
+            graphics.fill(new Ellipse2D.Double(at.getX() - 4, at.getY() - 4, 8, 8));
+        }
+        IsoBrush.box(graphics, projection, gx, gy, 0.1, w, d, 0.32, TAXI);
+        IsoBrush.box(graphics, projection, gx + 0.08, gy + 0.35, 0.42, w - 0.16, 0.7, 0.24,
+                IsoPalette.lighter(TAXI, 0.3), WINDSHIELD, IsoPalette.darker(WINDSHIELD, 0.8));
+        IsoBrush.box(graphics, projection, gx + 0.25, gy + 0.6, 0.66, 0.25, 0.2, 0.06, IsoPalette.OUTLINE);
     }
 
     private void tree(Graphics2D graphics, double gx, double gy, double size) {

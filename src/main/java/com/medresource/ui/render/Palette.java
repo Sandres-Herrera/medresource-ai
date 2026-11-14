@@ -94,6 +94,8 @@ public final class Palette {
     public static final Color STRETCHER_FRAME = new Color(0x54, 0x6E, 0x7A);
     /** Uniforme del camillero que empuja la camilla: gris azulado, distinto del personal y de los pacientes. */
     public static final Color PORTER_UNIFORM = new Color(0x90, 0xA4, 0xAE);
+    /** Uniforme del vigilante de la salida: azul oscuro. */
+    public static final Color GUARD_UNIFORM = new Color(0x2F, 0x4F, 0x8A);
 
     /** Anillo del paciente seleccionado: celeste brillante, distinto de los colores de triage y del personal. */
     public static final Color SELECTION = new Color(0x00, 0xE5, 0xFF);
