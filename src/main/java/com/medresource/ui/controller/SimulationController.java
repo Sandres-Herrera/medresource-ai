@@ -4,6 +4,7 @@ import com.medresource.model.Hospital;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Patient;
 import com.medresource.model.PatientStatus;
+import com.medresource.model.Position;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
 import com.medresource.services.simulation.CaseGenerator;
@@ -13,6 +14,7 @@ import com.medresource.services.simulation.MetricsCalculator;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.ui.render.PatientMarker;
+import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.StaffMarker;
@@ -37,6 +39,7 @@ public final class SimulationController {
     private final SceneRenderer renderer;
     private SimulationEngine engine;
     private ScenePlayer player;
+    private AlertTracker alerts;
     private HospitalLayout layout;
     private String strategyName;
     private final SimulationClock clock = new SimulationClock();
@@ -65,6 +68,7 @@ public final class SimulationController {
         engine = new SimulationEngine(new CaseGenerator().generate(setup.caseConfig()), hospital, strategy);
         layout = new LayoutFactory().create(hospital);
         player = new ScenePlayer(engine, layout, renderer);
+        alerts = new AlertTracker(layout);
         strategyName = strategy.getName();
         running = false;
         clock.reset();
@@ -155,7 +159,22 @@ public final class SimulationController {
      * @return eventos nuevos en orden cronológico
      */
     public List<SimulationEvent> drainNewEvents() {
-        return player.drainReleasedEvents();
+        List<SimulationEvent> events = player.drainReleasedEvents();
+        alerts.onEvents(events, player.getTime(), player.getState()::positionOf);
+        return events;
+    }
+
+    /**
+     * Avisos que se ven ahora sobre el plano: los fallecidos y las llegadas masivas recientes (de los eventos ya
+     * entregados por {@link #drainNewEvents}), la UCI llena y la sangre agotada.
+     *
+     * @return los avisos
+     */
+    public List<PlanAlert> alerts() {
+        Hospital hospital = engine.getHospital();
+        alerts.onResources(hospital.freeIcuBeds().size(), hospital.getIcuBeds().size(),
+                hospital.getBloodBank().getUnits());
+        return alerts.active(player.getTime());
     }
 
     /**
@@ -222,6 +241,26 @@ public final class SimulationController {
      */
     public Optional<PatientCard> patientCard(String patientCode) {
         return player.card(patientCode);
+    }
+
+    /**
+     * Ficha de un médico o de un enfermero tal como se ve ahora.
+     *
+     * @param staffCode código del médico o del enfermero
+     * @return su ficha, o vacío si no es del hospital
+     */
+    public Optional<StaffCard> staffCard(String staffCode) {
+        return player.staffCard(staffCode);
+    }
+
+    /**
+     * Lo que se ve ahora en una casilla del plano: quién está ahí, desde hace cuánto y cuánto le falta.
+     *
+     * @param cell casilla del plano
+     * @return la información, o vacío si ahí no hay un recurso ni un paciente
+     */
+    public Optional<PlaceInfo> placeInfo(Position cell) {
+        return player.placeInfo(cell);
     }
 
     public List<PatientMarker> markers() {

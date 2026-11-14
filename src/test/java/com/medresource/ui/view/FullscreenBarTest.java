@@ -80,4 +80,28 @@ class FullscreenBarTest {
 
         assertEquals(List.of("reproducir", "siguiente", "salir"), heard);
     }
+
+    @Test
+    void theFollowButtonWorksOnlyWithAChosenPatientAndSaysWhatItWillDo() {
+        bar.setFollowEnabled(false);
+        assertFalse(bar.followButton().isEnabled());
+
+        bar.setFollowEnabled(true);
+        bar.showFollowing("P003");
+        assertTrue(bar.followButton().isEnabled());
+        assertEquals(FullscreenBar.UNFOLLOW_TEXT, bar.followButton().getText());
+
+        bar.showFollowing(null);
+        assertEquals(FullscreenBar.FOLLOW_TEXT, bar.followButton().getText());
+    }
+
+    @Test
+    void theReplayButtonAlsoGoesBackToThePresent() {
+        bar.setReplaying(true);
+        assertEquals(SimulationTopBar.LIVE_TEXT, bar.replayButton().getText());
+
+        bar.setReplaying(false);
+        assertEquals(SimulationTopBar.REPLAY_TEXT, bar.replayButton().getText());
+        assertTrue(FullscreenBar.HINT.contains("girar"));
+    }
 }

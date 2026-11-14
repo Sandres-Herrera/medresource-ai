@@ -4,6 +4,7 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.model.Sex;
+import com.medresource.model.Specialty;
 import com.medresource.model.StaffSeat;
 import com.medresource.model.TriageLevel;
 import com.medresource.services.simulation.HospitalFactory;
@@ -17,6 +18,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -112,6 +114,74 @@ class IsometricRendererTest {
         Color after = new Color(dark.getRGB((int) floor.getX(), (int) floor.getY()));
         assertTrue(after.getRed() + after.getGreen() < before.getRed() + before.getGreen(), before + " " + after);
         assertThrows(IllegalArgumentException.class, () -> renderer.setTheme(null));
+    }
+
+    @Test
+    void startsWithTheUsualViewAndTurnsTheHospital() {
+        assertEquals(0.0, renderer.getYaw(), 0.0);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, renderer.getElevation(), 0.0);
+        IsoProjection before = renderer.projectionOf(layout);
+
+        renderer.setView(-90, 60);
+
+        assertEquals(270.0, renderer.getYaw(), 1e-9);
+        assertEquals(60.0, renderer.getElevation(), 0.0);
+        assertEquals(before.withView(270, 60), renderer.projectionOf(layout));
+        assertEquals(renderer.projectionOf(layout).size(), renderer.worldSize(layout));
+    }
+
+    @Test
+    void stillPicksThePatientAfterTurningTheHospital() {
+        renderer.setView(135, 50);
+        PatientMarker patient = patientAt("P002", layout.positionOf("H1-C1").orElseThrow());
+        Point2D focus = renderer.focusOf(layout, patient);
+
+        assertEquals("P002", renderer.pick(layout, List.of(patient), focus.getX(), focus.getY()).orElseThrow());
+    }
+
+    @Test
+    void rejectsAViewOutOfRange() {
+        assertThrows(IllegalArgumentException.class, () -> renderer.setView(Double.NaN, 40));
+        assertThrows(IllegalArgumentException.class, () -> renderer.setView(0, 95));
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, renderer.getElevation(), 0.0);
+    }
+
+    @Test
+    void theMonitorOfAGravePatientInTheIcuRaisesTheAlarm() {
+        Position bed = layout.positionOf("UCI-C1").orElseThrow();
+        Point2D point = flat.centerOf(bed);
+        PatientMarker grave = new PatientMarker("P001", TriageLevel.I, Sex.MALE, false, false, point.getX(),
+                point.getY(), 8, 0.5);
+        renderer.setClock(0.1);
+
+        paint(List.of(grave), 0);
+
+        assertTrue(renderer.alarmOn(layout, bed));
+        paint(List.of(), 0);
+        assertFalse(renderer.alarmOn(layout, bed), "sin paciente la alarma se apaga");
+        assertThrows(IllegalArgumentException.class, () -> renderer.setClock(Double.NaN));
+    }
+
+    @Test
+    void picksTheDoctorWhoseChestIsUnderThePointer() {
+        Point2D cell = flat.centerOf(layout.positionOf("H1-C1").orElseThrow());
+        StaffMarker doctor = new StaffMarker("D01", Specialty.SURGERY, Sex.MALE, false, cell.getX(), cell.getY());
+        Point2D chest = renderer.projectionOf(layout).fromPlan(cell.getX(), cell.getY(),
+                IsoBrush.chestHeight(false));
+
+        assertEquals("D01", renderer.pickStaff(layout, List.of(doctor), chest.getX(), chest.getY()).orElseThrow());
+        assertTrue(renderer.pickStaff(layout, List.of(doctor), chest.getX() + 100, chest.getY()).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> renderer.pickStaff(layout, null, 0, 0));
+    }
+
+    @Test
+    void theAlertsGoOverTheCenterOfTheirCell() {
+        Position bed = layout.positionOf("UCI-C1").orElseThrow();
+
+        Point2D over = renderer.pointOver(layout, bed, 1.5);
+
+        assertEquals(renderer.projectionOf(layout).at(bed.col() + 0.5, bed.row() + 0.5, 1.5), over);
+        assertThrows(IllegalArgumentException.class, () -> renderer.pointOver(layout, null, 1));
     }
 
     @Test

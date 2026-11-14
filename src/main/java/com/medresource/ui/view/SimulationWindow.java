@@ -9,8 +9,10 @@ import com.medresource.ui.controller.EventLog;
 import com.medresource.ui.controller.HospitalPreset;
 import com.medresource.ui.controller.LiveCounters;
 import com.medresource.ui.controller.PatientCard;
+import com.medresource.ui.controller.ReplayBuffer;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationController;
+import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.Renderer2D;
 
 import javax.imageio.ImageIO;
@@ -63,6 +65,13 @@ import java.util.Optional;
  * vista 2D y la 2.5D en cualquier momento, sin detener la simulación; la tarjeta «Quién es quién»
  * ({@link PeopleLegend}) dice qué función cumple cada persona según su color.</p>
  *
+ * <p>Al hacer clic en un médico o un enfermero se abre su ficha ({@link StaffCardPanel}) con su especialidad y los
+ * pacientes que ha atendido; un clic en uno de ellos lo selecciona. Los avisos del plano (fallecidos, llegadas
+ * masivas, UCI llena, falta de sangre) se ven como íconos sobre su lugar. «Repetir 30 s» detiene la simulación y
+ * vuelve a mostrar los últimos 30 segundos que se vieron, con el cartel «Repetición»; al terminar (o con «Volver al
+ * presente») la simulación sigue donde estaba. A pantalla completa, al pasar el ratón sobre una cama, un quirófano o
+ * un consultorio aparece quién está ahí, y el botón «Seguir» hace que la cámara siga al paciente elegido.</p>
+ *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
  */
@@ -72,6 +81,8 @@ public final class SimulationWindow extends JFrame {
 
     /** Título de la ventana: la misma para la vista 2D y la 2.5D. */
     public static final String TITLE = "MedResource AI — Simulación";
+    /** Cartel que se ve sobre el plano durante la repetición. */
+    public static final String REPLAY_BANNER = "Repetición · últimos 30 s";
 
     private static final int FRAME_MILLIS = 33;
     private static final int GAP = 10;
@@ -91,6 +102,7 @@ public final class SimulationWindow extends JFrame {
     private final KpiTile discharged = new KpiTile("Altas", HomeTheme.GREEN);
     private final KpiTile deceased = new KpiTile("Fallecidos", HomeTheme.RED);
     private final PatientCardPanel cardPanel = new PatientCardPanel();
+    private final StaffCardPanel staffCardPanel = new StaffCardPanel();
     private final ResourcesPanel resourcesPanel = new ResourcesPanel();
     private final EventLogPanel logPanel = new EventLogPanel();
     private final MeterBar progressBar = new MeterBar(HomeTheme.ACCENT);
@@ -101,6 +113,12 @@ public final class SimulationWindow extends JFrame {
     private boolean summaryShown;
     private transient MapFullscreen fullscreen;
     private transient FullscreenBar fullscreenBar;
+    private final transient ReplayBuffer replayBuffer = new ReplayBuffer();
+    private transient ReplayBuffer.Replay replay;
+    private long replayStartNanos;
+    private boolean resumeAfterReplay;
+    private transient List<PlanAlert> liveAlerts = List.of();
+
 
     /**
      * Crea la ventana con una simulación lista para empezar.
@@ -117,6 +135,8 @@ public final class SimulationWindow extends JFrame {
         this.controller = controller;
         this.mapPanel = new HospitalMapPanel(controller.getLayout(), renderer);
         mapPanel.setCovering(true);
+        mapPanel.setAnimated(true);
+        mapPanel.setPlaceInfo(controller::placeInfo);
         this.mapFrame = new MapFrame(mapPanel, planText(controller));
         this.topBar = new SimulationTopBar(controller.getSetup().caseConfig().scenario().getDisplayName() + " · "
                 + controller.getStrategyName() + " · Semilla " + controller.getSetup().caseConfig().seed());
@@ -141,8 +161,8 @@ public final class SimulationWindow extends JFrame {
     }
 
     /**
-     * Texto del tamaño del plano para su marco, por ejemplo «estándar · 20 × 16 m · clic en un paciente ·
-     * arrastra para moverlo · rueda para acercar».
+     * Texto del tamaño del plano para su marco, por ejemplo «estándar · 24 × 21 m · clic en un paciente o un
+     * médico · arrastra para moverlo · rueda para acercar · clic derecho para girar».
      *
      * @param controller controlador de la simulación
      * @return el texto
@@ -152,7 +172,8 @@ public final class SimulationWindow extends JFrame {
         String size = HospitalPreset.matching(controller.getSetup().hospital())
                 .map(preset -> preset.getDisplayName().toLowerCase(Locale.ROOT)).orElse("personalizado");
         return size + " · " + layout.getCols() + " × " + layout.getRows()
-                + " m · clic en un paciente · arrastra para moverlo · rueda para acercar";
+                + " m · clic en un paciente o un médico · arrastra para moverlo · rueda para acercar"
+                + " · clic derecho para girar";
     }
 
     // ---------- armado ----------
@@ -185,7 +206,7 @@ public final class SimulationWindow extends JFrame {
         JPanel side = new JPanel();
         side.setOpaque(false);
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
-        for (JComponent card : List.<JComponent>of(cardPanel, resourcesPanel, new PeopleLegend())) {
+        for (JComponent card : List.<JComponent>of(cardPanel, staffCardPanel, resourcesPanel, new PeopleLegend())) {
             card.setAlignmentX(Component.LEFT_ALIGNMENT);
             card.setMaximumSize(new Dimension(PatientCardPanel.WIDTH, Integer.MAX_VALUE));
             side.add(card);
@@ -228,11 +249,21 @@ public final class SimulationWindow extends JFrame {
     private void wireActions() {
         topBar.playButton().addActionListener(event -> togglePlay());
         topBar.skipButton().addActionListener(event -> skipToNextEvent());
+        topBar.replayButton().addActionListener(event -> toggleReplay());
         topBar.restartButton().addActionListener(event -> restart());
         topBar.captureButton().addActionListener(event -> saveCapture());
         topBar.onSpeed(this::changeSpeed);
         mapFrame.onFullscreen(this::openFullscreen);
         mapPanel.setSelectionListener(code -> onSelectionChanged());
+        mapPanel.setStaffListener(this::showStaffCard);
+        mapPanel.setFollowListener(following -> {
+            cardPanel.setFollowing(false);
+            showFollowing(null);
+        });
+        staffCardPanel.onPatientClicked(code -> {
+            mapPanel.select(code);
+            onSelectionChanged();
+        });
         logPanel.onPatientClicked(code -> {
             mapPanel.select(code);
             onSelectionChanged();
@@ -251,6 +282,7 @@ public final class SimulationWindow extends JFrame {
     // ---------- acciones ----------
 
     private void skipToNextEvent() {
+        stopReplay();
         controller.skipToNextEvent();
         lastFrameNanos = System.nanoTime();
         refresh();
@@ -280,16 +312,22 @@ public final class SimulationWindow extends JFrame {
         FullscreenBar bar = new FullscreenBar();
         bar.playButton().addActionListener(event -> togglePlay());
         bar.skipButton().addActionListener(event -> skipToNextEvent());
+        bar.followButton().addActionListener(event -> toggleFollow());
+        bar.replayButton().addActionListener(event -> toggleReplay());
+        bar.setReplaying(replay != null);
+        bar.setFollowEnabled(mapPanel.getSelected().isPresent());
         bar.onSpeed(this::changeSpeed);
         bar.setSpeed(controller.getSpeed());
         bar.showFollowing(mapPanel.isFollowing() ? mapPanel.getSelected().orElse(null) : null);
         fullscreenBar = bar;
         mapPanel.setCovering(false);
         mapPanel.resetZoom();
+        mapPanel.setHoverEnabled(true);
         fullscreen = new MapFullscreen(this, bar, mapPanel);
         fullscreen.onClose(() -> {
             fullscreen = null;
             fullscreenBar = null;
+            mapPanel.setHoverEnabled(false);
             mapPanel.setCovering(true);
             mapPanel.resetZoom();
             mapFrame.restoreMap();
@@ -306,7 +344,92 @@ public final class SimulationWindow extends JFrame {
         }
     }
 
+    /** Hace que la cámara siga al paciente elegido o deje de seguirlo, como el botón de su ficha. */
+    private void toggleFollow() {
+        Optional<String> selected = mapPanel.getSelected();
+        if (selected.isEmpty()) {
+            return;
+        }
+        boolean following = !mapPanel.isFollowing();
+        mapPanel.setFollowing(following);
+        cardPanel.setFollowing(following);
+        showFollowing(following ? selected.get() : null);
+    }
+
+    /** Abre la ficha de un médico o de un enfermero al hacerle clic en el plano. */
+    private void showStaffCard(String staffCode) {
+        controller.staffCard(staffCode).ifPresent(staffCardPanel::showCard);
+    }
+
+    /** Empieza la repetición de los últimos segundos o, si ya se está viendo, vuelve al presente. */
+    private void toggleReplay() {
+        if (replay != null) {
+            stopReplay();
+            return;
+        }
+        if (!replayBuffer.canReplay()) {
+            return;
+        }
+        resumeAfterReplay = controller.isRunning();
+        controller.pause();
+        replay = replayBuffer.start();
+        replayStartNanos = System.nanoTime();
+        mapPanel.setBanner(REPLAY_BANNER);
+        showReplaying(true);
+        updateButtons();
+    }
+
+    /** Muestra el cuadro de la repetición que toca ahora; al llegar al final, vuelve al presente. */
+    private void advanceReplay(long now) {
+        double seconds = (now - replayStartNanos) / 1e9;
+        if (replay.isOver(seconds)) {
+            stopReplay();
+            return;
+        }
+        ReplayBuffer.Frame frame = replay.frameAt(seconds);
+        mapPanel.showStaff(frame.staff());
+        mapPanel.showPorters(frame.porters());
+        mapPanel.showPatients(frame.patients(), frame.overflow());
+        mapPanel.showAlerts(frame.alerts());
+        topBar.showTime(frame.minute(), frame.second());
+        if (fullscreenBar != null) {
+            fullscreenBar.showTime(frame.minute(), frame.second());
+        }
+    }
+
+    /** Termina la repetición: el plano vuelve a lo que pasa ahora y la simulación sigue si estaba corriendo. */
+    private void stopReplay() {
+        if (replay == null) {
+            return;
+        }
+        replay = null;
+        mapPanel.setBanner(null);
+        showReplaying(false);
+        refresh();
+        if (resumeAfterReplay) {
+            lastFrameNanos = System.nanoTime();
+            controller.play();
+        }
+        updateButtons();
+    }
+
+    private void showReplaying(boolean replaying) {
+        topBar.setReplaying(replaying);
+        if (fullscreenBar != null) {
+            fullscreenBar.setReplaying(replaying);
+        }
+    }
+
+    /** Indica si se está viendo la repetición de los últimos segundos. */
+    public boolean isReplaying() {
+        return replay != null;
+    }
+
     private void togglePlay() {
+        if (replay != null) {
+            stopReplay();
+            return;
+        }
         if (controller.isRunning()) {
             controller.pause();
         } else {
@@ -317,6 +440,11 @@ public final class SimulationWindow extends JFrame {
     }
 
     private void restart() {
+        replay = null;
+        mapPanel.setBanner(null);
+        showReplaying(false);
+        replayBuffer.clear();
+        staffCardPanel.clear();
         controller.reset();
         mapPanel.showLayout(controller.getLayout());
         mapPanel.select(null);
@@ -331,9 +459,16 @@ public final class SimulationWindow extends JFrame {
         long now = System.nanoTime();
         double elapsed = lastFrameNanos == 0 ? 0 : (now - lastFrameNanos) / 1_000_000.0;
         lastFrameNanos = now;
+        if (replay != null) {
+            advanceReplay(now);
+            return;
+        }
         if (controller.isRunning()) {
             controller.advance(elapsed);
             refresh();
+            replayBuffer.record(elapsed / 1000.0, controller.getMinute(), controller.getSecond(),
+                    controller.markers(), controller.staffMarkers(), controller.porterMarkers(),
+                    controller.overflow(), liveAlerts);
         }
         if (controller.isFinished() && !summaryShown) {
             summaryShown = true;
@@ -363,8 +498,19 @@ public final class SimulationWindow extends JFrame {
         progressText.setText(counters.finished() + " de " + counters.totalPatients()
                 + " pacientes terminaron su caso (" + counters.progressPercent() + " %)");
         appendEvents();
+        liveAlerts = controller.alerts();
+        mapPanel.showAlerts(liveAlerts);
         updateCard();
+        updateStaffCard();
         updateButtons();
+    }
+
+    /** Pone en la ficha del personal, si está abierta, lo que se ve ahora del médico o enfermero. */
+    private void updateStaffCard() {
+        String code = staffCardPanel.getStaffCode();
+        if (code != null) {
+            controller.staffCard(code).ifPresent(staffCardPanel::showCard);
+        }
     }
 
     /** Anota los eventos nuevos en el registro y muestra los que cumplen el filtro. */
@@ -394,6 +540,9 @@ public final class SimulationWindow extends JFrame {
     /** Cuando cambia el paciente seleccionado: su ficha, la cámara y el registro. */
     private void onSelectionChanged() {
         Optional<String> selected = mapPanel.getSelected();
+        if (fullscreenBar != null) {
+            fullscreenBar.setFollowEnabled(selected.isPresent());
+        }
         logPanel.setOnlySelectedEnabled(selected.isPresent());
         logPanel.setSelectedPatient(selected.orElse(null));
         mapPanel.setFollowing(false);
@@ -429,10 +578,13 @@ public final class SimulationWindow extends JFrame {
         topBar.setRunning(controller.isRunning());
         topBar.playButton().setEnabled(!finished);
         topBar.skipButton().setEnabled(!finished);
+        boolean canReplay = replay != null || replayBuffer.canReplay();
+        topBar.replayButton().setEnabled(canReplay);
         if (fullscreenBar != null) {
             fullscreenBar.setRunning(controller.isRunning());
             fullscreenBar.playButton().setEnabled(!finished);
             fullscreenBar.skipButton().setEnabled(!finished);
+            fullscreenBar.replayButton().setEnabled(canReplay);
         }
     }
 

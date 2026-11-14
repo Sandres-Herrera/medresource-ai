@@ -35,6 +35,7 @@ public final class PorterEscort {
     private final double readyAt;
     private Walker leaving;
     private Point2D position;
+    private boolean moving;
 
     private PorterEscort(String patientCode, HospitalLayout layout, WalkPlanner planner, SceneRenderer renderer,
                          Walker fetch, double readyAt) {
@@ -112,15 +113,18 @@ public final class PorterEscort {
         if (leaving != null) {
             leaving.update(time);
             position = leaving.getCurrent();
+            moving = leaving.isMoving();
             return;
         }
         fetch.update(Math.min(time, readyAt));
         position = fetch.getCurrent();
+        moving = fetch.isMoving();
         if (time < readyAt) {
             return;
         }
         if (itinerary != null) {
             position = beside(itinerary.getCurrent());
+            moving = !itinerary.hasArrived();
             if (!itinerary.hasArrived()) {
                 return;
             }
@@ -132,6 +136,7 @@ public final class PorterEscort {
                 renderer.centerOf(door.outside())), start));
         leaving.update(time);
         position = leaving.getCurrent();
+        moving = leaving.isMoving();
     }
 
     /** Casilla donde dejó al paciente (o donde está el camillero, si el paciente ya no está). */
@@ -145,6 +150,11 @@ public final class PorterEscort {
     /** Punto del mundo donde está ahora. */
     public Point2D getPosition() {
         return new Point2D.Double(position.getX(), position.getY());
+    }
+
+    /** Indica si va caminando: hacia la silla, junto al paciente o hacia la puerta por la que sale. */
+    public boolean isMoving() {
+        return moving;
     }
 
     /** Indica si ya se fue: dejó al paciente y llegó a la puerta por la que sale. */

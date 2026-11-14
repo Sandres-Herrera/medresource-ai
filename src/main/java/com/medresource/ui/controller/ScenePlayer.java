@@ -113,6 +113,7 @@ public final class ScenePlayer {
     private final Map<String, StaffMember> staff = new LinkedHashMap<>();
     private final Map<String, Walker> staffWalkers = new HashMap<>();
     private final Map<Integer, Map<String, String>> attendedByMinute = new HashMap<>();
+    private final Map<String, Map<String, Integer>> attendedHistory = new HashMap<>();
     private final Map<Integer, Map<String, Double>> healthByMinute = new HashMap<>();
     private final Map<String, SimulationEngine.TreatmentSpan> treatments = new HashMap<>();
     private final Map<String, Position> carePlaces = new HashMap<>();
@@ -240,7 +241,8 @@ public final class ScenePlayer {
             boolean seated = at.equals(renderer.seatOf(layout.staffSeatOf(member.getCode()).orElseThrow()));
             markers.add(new StaffMarker(member.getCode(),
                     member instanceof Doctor doctor ? doctor.getSpecialty() : null, member.getSex(), seated,
-                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving())));
+                    at.getX(), at.getY(), IdleMotion.bob(member.getCode(), time, walker.isMoving()),
+                    walker.isMoving()));
         }
         return markers;
     }
@@ -254,7 +256,7 @@ public final class ScenePlayer {
     public List<PorterMarker> porterMarkers() {
         List<PorterMarker> markers = new ArrayList<>();
         escorts.forEach((patient, escort) -> markers.add(new PorterMarker(patient, escort.getPosition().getX(),
-                escort.getPosition().getY())));
+                escort.getPosition().getY(), escort.isMoving())));
         return markers;
     }
 
@@ -282,6 +284,71 @@ public final class ScenePlayer {
                 phase.get() == SceneState.Phase.TREATING ? progressOf(patientCode) : PatientMarker.NO_PROGRESS,
                 patient.getArrivalMinute(), Math.max(0, getMinute() - patient.getArrivalMinute()),
                 caregiversOf(patientCode)));
+    }
+
+    /**
+     * Ficha de un médico o de un enfermero tal como se ve ahora: su especialidad, qué está haciendo y los pacientes que
+     * se ha visto que atendió hasta este momento, con cómo están ahora.
+     *
+     * @param staffCode código del médico o del enfermero
+     * @return su ficha, o vacío si no es del hospital
+     */
+    public Optional<StaffCard> staffCard(String staffCode) {
+        StaffMember member = staff.get(staffCode);
+        if (member == null) {
+            return Optional.empty();
+        }
+        String current = attendedByMinute.getOrDefault(staffMinute, Map.of()).get(staffCode);
+        Walker walker = staffWalkers.get(staffCode);
+        String activity = current != null ? "Atiende a " + current
+                : walker != null && walker.isMoving() ? "Caminando" : "Libre";
+        List<StaffCard.Attended> attended = new ArrayList<>();
+        attendedHistory.getOrDefault(staffCode, Map.of()).forEach((code, minute) -> {
+            Patient patient = patients.get(code);
+            attended.add(new StaffCard.Attended(code, patient.getTriageLevel(), minute, statusOf(patient)));
+        });
+        return Optional.of(new StaffCard(staffCode, member instanceof Doctor doctor ? doctor.getSpecialty() : null,
+                member.getSex(), activity, current, attended));
+    }
+
+    /**
+     * Lo que se ve ahora en una casilla del plano: el nombre del lugar y los pacientes que ya llegaron a ella, con
+     * desde hace cuánto están en su tratamiento y cuánto les falta.
+     *
+     * @param cell casilla del plano
+     * @return la información, o vacío si en esa casilla no hay un recurso ni un paciente
+     */
+    public Optional<PlaceInfo> placeInfo(Position cell) {
+        if (cell == null) {
+            return Optional.empty();
+        }
+        List<PlaceInfo.Occupant> occupants = new ArrayList<>();
+        for (SceneState.Placement placement : state.placements()) {
+            Itinerary itinerary = itineraries.get(placement.patientCode());
+            if (!placement.position().equals(cell) || itinerary == null || !itinerary.hasArrived()) {
+                continue;
+            }
+            Patient patient = patients.get(placement.patientCode());
+            SimulationEngine.TreatmentSpan span = treatments.get(placement.patientCode());
+            double there = Double.NaN;
+            double remaining = Double.NaN;
+            if (span != null && placement.phase() == SceneState.Phase.TREATING) {
+                there = Math.max(0.0, time - span.startMinute() * SECONDS_PER_MINUTE);
+                remaining = Math.max(0.0, span.endMinute() * SECONDS_PER_MINUTE - time);
+            }
+            occupants.add(new PlaceInfo.Occupant(placement.patientCode(), patient.getTriageLevel(),
+                    placement.phase().getDisplayName(), there, remaining));
+        }
+        if (occupants.isEmpty() && layout.resourceAt(cell).isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new PlaceInfo(placeName(cell), occupants));
+    }
+
+    /** Cómo está un paciente ahora: su etapa en la escena o, si ya salió, cómo terminó su caso. */
+    private String statusOf(Patient patient) {
+        return state.phaseOf(patient.getCode()).map(SceneState.Phase::getDisplayName)
+                .orElse(patient.getStatus().getDisplayName());
     }
 
     /**
@@ -449,6 +516,8 @@ public final class ScenePlayer {
         }
         staffMinute = minute;
         attendedByMinute.keySet().removeIf(old -> old < minute);
+        attendedByMinute.getOrDefault(minute, Map.of()).forEach((member, patient) -> attendedHistory
+                .computeIfAbsent(member, code -> new LinkedHashMap<>()).putIfAbsent(patient, minute));
         retargetStaff(Math.max(time, minute * SECONDS_PER_MINUTE));
     }
 

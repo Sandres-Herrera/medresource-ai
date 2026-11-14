@@ -4,16 +4,20 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.Position;
 import com.medresource.model.Sex;
+import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.ZoneType;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
+import com.medresource.ui.controller.PlaceInfo;
 import com.medresource.ui.render.Camera;
+import com.medresource.ui.render.IsoProjection;
 import com.medresource.ui.render.IsoTheme;
 import com.medresource.ui.render.IsometricRenderer;
 import com.medresource.ui.render.Palette;
 import com.medresource.ui.render.PatientMarker;
 import com.medresource.ui.render.PatientPainter;
+import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.PorterMarker;
 import com.medresource.ui.render.Renderer2D;
 import com.medresource.ui.render.StaffMarker;
@@ -27,6 +31,7 @@ import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -642,5 +647,241 @@ class HospitalMapPanelTest {
     private void click(int x, int y) {
         panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_CLICKED, 0L, 0, x, y, 1, false,
                 MouseEvent.BUTTON1));
+    }
+
+    // ---------- cámara libre de la vista 2.5D ----------
+
+    private void rightDrag(int fromX, int fromY, int toX, int toY) {
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_PRESSED, 0L, MouseEvent.BUTTON3_DOWN_MASK, fromX,
+                fromY, 1, false, MouseEvent.BUTTON3));
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_DRAGGED, 0L, MouseEvent.BUTTON3_DOWN_MASK, toX, toY,
+                0, false, MouseEvent.BUTTON3));
+        panel.dispatchEvent(new MouseEvent(panel, MouseEvent.MOUSE_RELEASED, 0L, 0, toX, toY, 1, false,
+                MouseEvent.BUTTON3));
+    }
+
+    @Test
+    void draggingWithTheRightButtonTurnsTheHospitalAndRaisesTheLook() {
+        panel.setSize(900, 600);
+        panel.setIsometric(true);
+
+        rightDrag(400, 300, 500, 250);
+
+        assertEquals(100 * HospitalMapPanel.YAW_PER_PIXEL, panel.getYaw(), 1e-9);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION + 50 * HospitalMapPanel.ELEVATION_PER_PIXEL,
+                panel.getElevation(), 1e-9);
+    }
+
+    @Test
+    void inTheFlatViewTheRightButtonDoesNotTurnAnything() {
+        panel.setSize(900, 600);
+
+        rightDrag(400, 300, 500, 250);
+
+        assertEquals(0.0, panel.getYaw(), 0.0);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, panel.getElevation(), 0.0);
+    }
+
+    @Test
+    void theLookStaysBetweenTheUsualDiagonalAndAbove() {
+        panel.rotateBy(-30, 500);
+        assertEquals(IsoProjection.MAX_ELEVATION, panel.getElevation(), 0.0);
+        assertEquals(330.0, panel.getYaw(), 1e-9);
+
+        panel.rotateBy(0, -500);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, panel.getElevation(), 0.0);
+        assertThrows(IllegalArgumentException.class, () -> panel.setView(Double.NaN, 40));
+    }
+
+    @Test
+    void turningKeepsInTheCenterThePointOfTheFloorThatWasThere() {
+        panel.setSize(900, 600);
+        panel.setIsometric(true);
+        panel.zoomAt(450, 300, 3);
+        Camera before = panel.cameraFor(900, 600).orElseThrow();
+        IsometricRenderer iso = new IsometricRenderer(renderer);
+        Point2D world = before.toWorld(450, 300);
+        Point2D floor = iso.projectionOf(standard).toPlan(world.getX(), world.getY());
+
+        panel.rotateBy(20, 0);
+
+        iso.setView(20, IsoProjection.DEFAULT_ELEVATION);
+        Point2D center = panel.cameraFor(900, 600).orElseThrow().toWorld(450, 300);
+        Point2D after = iso.projectionOf(standard).toPlan(center.getX(), center.getY());
+        assertEquals(floor.getX(), after.getX(), 1.0);
+        assertEquals(floor.getY(), after.getY(), 1.0);
+    }
+
+    @Test
+    void theCompassGivesBackTheInitialView() {
+        panel.setSize(900, 600);
+        panel.setIsometric(true);
+        panel.setView(135, 70);
+        panel.zoomAt(450, 300, 2);
+
+        panel.clickAt(900 - (int) MapOverlay.COMPASS_INSET, (int) MapOverlay.COMPASS_INSET);
+
+        assertEquals(0.0, panel.getYaw(), 0.0);
+        assertEquals(IsoProjection.DEFAULT_ELEVATION, panel.getElevation(), 0.0);
+        assertEquals(1.0, panel.getZoomLevel(), 0.0);
+    }
+
+    @Test
+    void theCompassIsDrawnOnlyInThe25DView() {
+        int x = 900 - (int) MapOverlay.COMPASS_INSET;
+        int y = (int) MapOverlay.COMPASS_INSET;
+        int flat = panel.toImage(900, 600).getRGB(x, y);
+
+        panel.setIsometric(true);
+
+        assertNotEquals(flat, panel.toImage(900, 600).getRGB(x, y));
+    }
+
+    // ---------- personal, avisos y panel flotante ----------
+
+    @Test
+    void aClickOnADoctorTellsWhoHeIs() {
+        fullSizePanel();
+        Point2D cell = renderer.centerOf(standard.positionOf("H1-C1").orElseThrow());
+        panel.showStaff(List.of(new StaffMarker("D02", Specialty.SURGERY, Sex.MALE, false, cell.getX(),
+                cell.getY())));
+        List<String> clicked = new ArrayList<>();
+        panel.setStaffListener(clicked::add);
+        Point2D screen = panel.cameraFor(panel.getWidth(), panel.getHeight()).orElseThrow()
+                .toScreen(cell.getX(), cell.getY() - 4);
+
+        panel.clickAt((int) screen.getX(), (int) screen.getY());
+
+        assertEquals(List.of("D02"), clicked);
+        assertEquals("D02", panel.staffAt((int) screen.getX(), (int) screen.getY()).orElseThrow());
+        assertThrows(IllegalArgumentException.class, () -> panel.setStaffListener(null));
+    }
+
+    @Test
+    void aClickOnAnAlertTakesTheCameraThereAndStopsFollowing() {
+        fullSizePanel();
+        showOnePatientOnTheFirstSeat();
+        panel.select("P001");
+        panel.setFollowing(true);
+        List<Boolean> follow = new ArrayList<>();
+        panel.setFollowListener(follow::add);
+        Position bed = standard.positionOf("UCI-C1").orElseThrow();
+        panel.showAlerts(List.of(new PlanAlert(PlanAlert.Kind.DEATH, bed, "Falleció P009")));
+        panel.setFollowing(false);
+        Camera camera = panel.cameraFor(panel.getWidth(), panel.getHeight()).orElseThrow();
+        Point2D center = renderer.centerOf(bed);
+        Point2D icon = camera.toScreen(center.getX(), center.getY());
+        assertEquals(PlanAlert.Kind.DEATH, panel.alertAt((int) icon.getX(), (int) icon.getY() - 14).orElseThrow()
+                .kind());
+        panel.setFollowing(true);
+
+        panel.flyTo(bed);
+
+        assertFalse(panel.isFollowing());
+        assertEquals(List.of(false), follow);
+        assertTrue(panel.getZoomLevel() >= HospitalMapPanel.ALERT_ZOOM);
+        Point2D seen = panel.cameraFor(panel.getWidth(), panel.getHeight()).orElseThrow()
+                .toScreen(center.getX(), center.getY());
+        assertTrue(seen.getX() >= 0 && seen.getX() <= panel.getWidth() && seen.getY() >= 0
+                && seen.getY() <= panel.getHeight(), "el lugar del aviso queda a la vista");
+        assertThrows(IllegalArgumentException.class, () -> panel.showAlerts(null));
+        assertThrows(IllegalArgumentException.class, () -> panel.flyTo(null));
+    }
+
+    @Test
+    void theFloatingPanelAppearsOnlyWhenItIsEnabledAndOverAPlace() {
+        fullSizePanel();
+        Position bed = standard.positionOf("H1-C1").orElseThrow();
+        PlaceInfo info = new PlaceInfo("Hospitalización · H1-C1", List.of());
+        panel.setPlaceInfo(cell -> cell.equals(bed) ? Optional.of(info) : Optional.empty());
+        Point2D center = renderer.centerOf(bed);
+        Point2D screen = panel.cameraFor(panel.getWidth(), panel.getHeight()).orElseThrow()
+                .toScreen(center.getX(), center.getY());
+
+        panel.hoverAt((int) screen.getX(), (int) screen.getY());
+        assertTrue(panel.getHoverInfo().isEmpty(), "sin pantalla completa no se ve");
+
+        panel.setHoverEnabled(true);
+        panel.hoverAt((int) screen.getX(), (int) screen.getY());
+        assertEquals(info, panel.getHoverInfo().orElseThrow());
+        assertEquals(bed, panel.cellAt((int) screen.getX(), (int) screen.getY()).orElseThrow());
+
+        panel.hoverAt(1, 1);
+        assertTrue(panel.getHoverInfo().isEmpty());
+        panel.hoverAt((int) screen.getX(), (int) screen.getY());
+        panel.setHoverEnabled(false);
+        assertTrue(panel.getHoverInfo().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> panel.setPlaceInfo(null));
+    }
+
+    @Test
+    void inThe25DViewTheCellUnderThePointerIsTheOneOfTheFloor() {
+        panel.setSize(900, 600);
+        panel.setIsometric(true);
+        panel.setView(70, 50);
+        Position bed = standard.positionOf("UCI-C2").orElseThrow();
+        IsometricRenderer iso = new IsometricRenderer(renderer);
+        iso.setView(70, 50);
+        Point2D floor = iso.projectionOf(standard).at(bed.col() + 0.5, bed.row() + 0.5, 0);
+        Point2D screen = panel.cameraFor(900, 600).orElseThrow().toScreen(floor.getX(), floor.getY());
+
+        assertEquals(bed, panel.cellAt((int) Math.round(screen.getX()), (int) Math.round(screen.getY()))
+                .orElseThrow());
+    }
+
+    @Test
+    void theBannerCanBeSetAndRemoved() {
+        panel.setBanner("Repetición");
+        assertEquals("Repetición", panel.getBanner().orElseThrow());
+
+        panel.setBanner(null);
+        assertTrue(panel.getBanner().isEmpty());
+    }
+
+    // ---------- animación ----------
+
+    @Test
+    void withAnimationTheChangeBetweenViewsTakesItsTime() {
+        panel.setSize(900, 600);
+        panel.setAnimated(true);
+
+        panel.setIsometric(true);
+
+        assertTrue(panel.isIsometric());
+        assertTrue(panel.isInTransition());
+        assertEquals(900, panel.toImage(900, 600).getWidth());
+        panel.setAnimated(false);
+        assertFalse(panel.isInTransition());
+    }
+
+    @Test
+    void withoutAnimationTheChangeIsInstant() {
+        panel.setIsometric(true);
+
+        assertFalse(panel.isAnimated());
+        assertFalse(panel.isInTransition());
+    }
+
+    @Test
+    void theAnimatedCameraCatchesUpLittleByLittle() {
+        panel.setSize(900, 600);
+        panel.setAnimated(true);
+        showOnePatientOnTheFirstSeat();
+        panel.select("P001");
+        BufferedImage canvas = new BufferedImage(900, 600, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = canvas.createGraphics();
+        panel.paint(graphics);
+        Camera before = panel.cameraFor(900, 600).orElseThrow();
+
+        panel.setFollowing(true);
+        panel.paint(graphics);
+
+        Camera target = panel.cameraFor(900, 600).orElseThrow();
+        assertNotEquals(before.zoom(), target.zoom());
+        Point2D center = panel.cameraFor(900, 600).orElseThrow().toWorld(450, 300);
+        assertTrue(panel.staffAt(450, 300).isEmpty());
+        assertTrue(center.getX() > 0);
+        graphics.dispose();
+        panel.setAnimated(false);
     }
 }

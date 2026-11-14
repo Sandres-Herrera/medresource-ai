@@ -19,8 +19,10 @@ import java.awt.geom.RoundRectangle2D;
  * Pincel de la vista 2.5D: dibuja pisos, cajas, paneles de vidrio y personas sobre una {@link IsoProjection}.
  *
  * <p>Todo se mide en metros sobre la cuadrícula del plano: {@code x} crece con las columnas, {@code y} con las filas y
- * {@code z} hacia arriba. Una caja muestra sus tres caras visibles: la de arriba (la más clara), la del frente
- * izquierdo (la cara de las filas mayores) y la del frente derecho (la de las columnas mayores, la más oscura).</p>
+ * {@code z} hacia arriba. Una caja muestra la cara de arriba (la más clara) y las caras de los lados que miran hacia
+ * quien mira: en la vista de siempre, la del frente izquierdo (la cara de las filas mayores) y la del frente derecho
+ * (la de las columnas mayores, la más oscura). Si la cámara gira, cada cara toma el color del lado de la pantalla al
+ * que mira, así que la luz parece venir siempre del mismo lado de la pantalla.</p>
  *
  * <p>Una persona tiene piernas, torso con brazos y cabeza con pelo: la ropa lleva el color que dice quién es y el
  * personal lleva además un gorro más oscuro. Las mujeres llevan vestido. Todas tienen un contorno casi negro, que
@@ -56,9 +58,21 @@ public final class IsoBrush {
     private static final double SLEEVE = 0.86;
     private static final float PERSON_STROKE = 0.9f;
     private static final Color SHOES = new Color(0x1F, 0x24, 0x30);
+    /** Metros que avanza una persona en medio paso: lo que tarda una pierna en pasar de atrás hacia adelante. */
+    public static final double STEP_LENGTH = 0.35;
+    /** Píxeles que se corre el pie hacia adelante o hacia atrás en el paso más largo. */
+    public static final double LEG_SWING = 3.2;
+    /** Píxeles que se corre la mano al balancear el brazo. */
+    public static final double ARM_SWING = 2.6;
+    /** Píxeles que sube el cuerpo cuando las piernas se cruzan al caminar. */
+    public static final double WALK_BOUNCE = 1.3;
     private static final double FACE_EAST = 0.76;
     private static final double FACE_TOP = 0.18;
     private static final double EDGE = 0.8;
+    /** Caras de los lados de una caja: hacia dónde mira cada una, en columnas y filas. */
+    private static final int[][] SIDES = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
+    /** Alto mínimo en pantalla, en píxeles, para que valga la pena dibujar las caras de los lados. */
+    private static final double MIN_SIDE_PIXELS = 0.05;
 
     private IsoBrush() {
     }
@@ -165,7 +179,9 @@ public final class IsoBrush {
     }
 
     /**
-     * Caja sólida con un color por cara y un borde un poco más oscuro que cada cara.
+     * Caja sólida con un color por cara y un borde un poco más oscuro que cada cara. Se dibujan las caras de los lados
+     * que miran hacia quien mira, cada una con el color de la izquierda, el de la derecha o una mezcla de los dos según
+     * hacia qué lado de la pantalla mira, y al final la de arriba.
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -176,20 +192,27 @@ public final class IsoBrush {
      * @param d          fondo
      * @param h          alto
      * @param top        color de la cara de arriba
-     * @param left       color de la cara izquierda (la de las filas mayores)
-     * @param right      color de la cara derecha (la de las columnas mayores)
+     * @param left       color de las caras que miran a la izquierda (en la vista de siempre, la de las filas mayores)
+     * @param right      color de las caras que miran a la derecha (en la vista de siempre, la de las columnas mayores)
      */
     public static void box(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
                            double d, double h, Color top, Color left, Color right) {
         graphics.setStroke(new BasicStroke(0.5f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), left, IsoPalette.darker(left, EDGE));
-        face(graphics, rightFace(projection, x, y, z, w, d, h), right, IsoPalette.darker(right, EDGE));
+        if (h * projection.heightScale() >= MIN_SIDE_PIXELS) {
+            for (int[] side : SIDES) {
+                if (projection.faces(side[0], side[1])) {
+                    Color color = mix(left, right, projection.rightness(side[0], side[1]));
+                    face(graphics, sideFace(projection, side, x, y, z, w, d, h), color,
+                            IsoPalette.darker(color, EDGE));
+                }
+            }
+        }
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), top, IsoPalette.darker(top, EDGE));
     }
 
     /**
      * Panel de vidrio: las caras con el relleno transparente que se le da y los bordes del marco; el borde de
-     * arriba, más grueso.
+     * arriba, más grueso. Como la caja, solo muestra los lados que miran hacia quien mira.
      *
      * @param graphics   superficie de dibujo
      * @param projection proyección de la vista
@@ -205,8 +228,13 @@ public final class IsoBrush {
     public static void pane(Graphics2D graphics, IsoProjection projection, double x, double y, double z, double w,
                             double d, double h, Color fill, Color frame) {
         graphics.setStroke(new BasicStroke(0.8f));
-        face(graphics, leftFace(projection, x, y, z, w, d, h), fill, frame);
-        face(graphics, rightFace(projection, x, y, z, w, d, h), fill, frame);
+        if (h * projection.heightScale() >= MIN_SIDE_PIXELS) {
+            for (int[] side : SIDES) {
+                if (projection.faces(side[0], side[1])) {
+                    face(graphics, sideFace(projection, side, x, y, z, w, d, h), fill, frame);
+                }
+            }
+        }
         graphics.setStroke(new BasicStroke(1.2f));
         face(graphics, quad(projection, x, y, x + w, y + d, z + h), fill, frame);
     }
@@ -221,6 +249,44 @@ public final class IsoBrush {
     static Path2D rightFace(IsoProjection projection, double x, double y, double z, double w, double d, double h) {
         return polygon(projection, new double[][] {{x + w, y, z}, {x + w, y + d, z}, {x + w, y + d, z + h},
                 {x + w, y, z + h}});
+    }
+
+    /** Cara de un lado de una caja, la que mira hacia el lado dado. */
+    private static Path2D sideFace(IsoProjection projection, int[] side, double x, double y, double z, double w,
+                                   double d, double h) {
+        if (side[1] > 0) {
+            return leftFace(projection, x, y, z, w, d, h);
+        }
+        if (side[0] > 0) {
+            return rightFace(projection, x, y, z, w, d, h);
+        }
+        if (side[1] < 0) {
+            return polygon(projection, new double[][] {{x, y, z}, {x + w, y, z}, {x + w, y, z + h}, {x, y, z + h}});
+        }
+        return polygon(projection, new double[][] {{x, y, z}, {x, y + d, z}, {x, y + d, z + h}, {x, y, z + h}});
+    }
+
+    /**
+     * Mezcla dos colores.
+     *
+     * @param from color con parte 0
+     * @param to   color con parte 1
+     * @param share parte del segundo, de 0 a 1
+     * @return la mezcla; con 0 o 1, el color de ese extremo tal cual
+     */
+    static Color mix(Color from, Color to, double share) {
+        if (share <= 0) {
+            return from;
+        }
+        if (share >= 1) {
+            return to;
+        }
+        return new Color(channel(from.getRed(), to.getRed(), share), channel(from.getGreen(), to.getGreen(), share),
+                channel(from.getBlue(), to.getBlue(), share), channel(from.getAlpha(), to.getAlpha(), share));
+    }
+
+    private static int channel(int from, int to, double share) {
+        return (int) Math.round(from + (to - from) * share);
     }
 
     private static void face(Graphics2D graphics, Shape shape, Color fill, Color edge) {
@@ -247,7 +313,7 @@ public final class IsoBrush {
     public static void shadow(Graphics2D graphics, IsoProjection projection, double gx, double gy, double radius) {
         Point2D at = projection.at(gx, gy, 0);
         double rx = screenRadius(radius);
-        double ry = rx * IsoProjection.TILE_H / IsoProjection.TILE_W;
+        double ry = rx * projection.groundRatio();
         graphics.setColor(IsoPalette.SHADOW);
         graphics.fill(new Ellipse2D.Double(at.getX() - rx + 1, at.getY() - ry + 0.5, 2 * rx, 2 * ry));
     }
@@ -266,7 +332,7 @@ public final class IsoBrush {
                             Color color) {
         Point2D at = projection.at(gx, gy, 0);
         double rx = screenRadius(radius);
-        double ry = rx * IsoProjection.TILE_H / IsoProjection.TILE_W;
+        double ry = rx * projection.groundRatio();
         graphics.setStroke(new BasicStroke(2.2f));
         graphics.setColor(color);
         graphics.draw(new Ellipse2D.Double(at.getX() - rx, at.getY() - ry, 2 * rx, 2 * ry));
@@ -291,6 +357,40 @@ public final class IsoBrush {
      */
     public static Point2D person(Graphics2D graphics, IsoProjection projection, double gx, double gy, double z,
                                  double lift, Person person) {
+        return person(graphics, projection, gx, gy, z, lift, person, Double.NaN);
+    }
+
+    /**
+     * Fase del paso de alguien que camina por un punto: avanza media vuelta cada {@value #STEP_LENGTH} m recorridos a
+     * lo largo de las columnas o de las filas, así que las piernas se mueven al ritmo con que avanza la figura.
+     *
+     * @param gx columna de los pies
+     * @param gy fila de los pies
+     * @return la fase, en radianes
+     */
+    public static double stride(double gx, double gy) {
+        return (gx + gy) / STEP_LENGTH * Math.PI;
+    }
+
+    /**
+     * Persona de pie que puede ir caminando: como {@link #person(Graphics2D, IsoProjection, double, double, double,
+     * double, Person)}, pero con la fase del paso las piernas se abren hacia adelante y hacia atrás, los brazos se
+     * mueven al revés que las piernas y el cuerpo sube un poco cuando las piernas se cruzan.
+     *
+     * @param graphics   superficie de dibujo
+     * @param projection proyección de la vista
+     * @param gx         columna de los pies
+     * @param gy         fila de los pies
+     * @param z          altura de la base del cuerpo
+     * @param lift       cuánto sube o baja la figura en pantalla por el movimiento de reposo, en píxeles
+     * @param person     cómo se ve
+     * @param stride     fase del paso, en radianes ({@link #stride}); {@code NaN} si está quieta
+     * @return punto de la pantalla justo encima de la cabeza, donde van las barras
+     */
+    public static Point2D person(Graphics2D graphics, IsoProjection projection, double gx, double gy, double z,
+                                 double lift, Person person, double stride) {
+        boolean walking = !Double.isNaN(stride) && !person.seated();
+        double swing = walking ? Math.sin(stride) : 0.0;
         double scale = person.scale();
         double unit = IsoProjection.Z_SCALE * scale;
         Color clothes = person.body();
@@ -298,7 +398,8 @@ public final class IsoBrush {
         Color sleeve = IsoPalette.darker(clothes, SLEEVE);
         Point2D base = projection.at(gx, gy, z);
         double cx = base.getX();
-        double feet = base.getY() + lift;
+        double ground = base.getY() + lift;
+        double feet = walking ? ground - Math.abs(Math.cos(stride)) * WALK_BOUNCE * scale : ground;
         double halfWidth = TORSO_HALF_WIDTH * unit;
         graphics.setStroke(new BasicStroke(PERSON_STROKE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         double hip;
@@ -307,6 +408,9 @@ public final class IsoBrush {
             box(graphics, projection, gx - 0.09 * scale, gy - 0.02, z, 0.18 * scale, thigh, 0.07 * scale, pants);
             box(graphics, projection, gx - 0.09 * scale, gy + thigh - 0.06, 0, 0.18 * scale, 0.05, z, pants);
             hip = feet - 0.05 * unit;
+        } else if (walking) {
+            hip = feet - LEG_HEIGHT * unit;
+            walkingLegs(graphics, person, cx, hip, ground, halfWidth, unit, swing);
         } else {
             double legs = LEG_HEIGHT * unit;
             hip = feet - legs;
@@ -334,9 +438,10 @@ public final class IsoBrush {
         graphics.draw(new Line2D.Double(cx, shoulders + 3, cx, hip));
         for (int side = -1; side <= 1; side += 2) {
             double sx = cx + side * (halfWidth + 0.6);
+            double hand = -side * swing * ARM_SWING * scale;
             Path2D.Double arm = new Path2D.Double();
             arm.moveTo(sx, shoulders + 2);
-            arm.quadTo(sx + side * 1.4, (shoulders + hip) / 2, sx + side * 0.5, hip - 1);
+            arm.quadTo(sx + side * 1.4 + hand / 2, (shoulders + hip) / 2, sx + side * 0.5 + hand, hip - 1);
             graphics.setStroke(new BasicStroke((float) (0.07 * unit), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             graphics.setColor(IsoPalette.OUTLINE);
             graphics.draw(arm);
@@ -345,7 +450,7 @@ public final class IsoBrush {
             graphics.setColor(sleeve);
             graphics.draw(arm);
             graphics.setColor(Palette.PATIENT_HEAD);
-            graphics.fill(new Ellipse2D.Double(sx + side * 0.5 - 1.7, hip - 2.6, 3.4, 3.4));
+            graphics.fill(new Ellipse2D.Double(sx + side * 0.5 + hand - 1.7, hip - 2.6, 3.4, 3.4));
         }
         graphics.setStroke(new BasicStroke(PERSON_STROKE));
         double head = HEAD_RADIUS * unit;
@@ -354,6 +459,38 @@ public final class IsoBrush {
         graphics.fill(new Rectangle2D.Double(cx - head * 0.35, shoulders - head * 0.4, head * 0.7, head * 0.6));
         head(graphics, cx, headY, head, person.cap(), person.hair());
         return new Point2D.Double(cx, headY - head);
+    }
+
+    /**
+     * Piernas de alguien que camina: cada una va de la cadera al piso con el pie corrido hacia un lado según el paso;
+     * una persona con vestido muestra solo la parte de abajo de las piernas.
+     */
+    private static void walkingLegs(Graphics2D graphics, Person person, double cx, double hip, double ground,
+                                    double halfWidth, double unit, double swing) {
+        Color clothes = person.body();
+        Color pants = IsoPalette.darker(clothes, PANTS);
+        double reach = LEG_SWING * person.scale();
+        boolean dress = person.sex() == Sex.FEMALE;
+        double top = dress ? ground - 0.13 * unit : hip;
+        if (dress) {
+            outlined(graphics, trapezoid(cx, hip, halfWidth * 0.9, top, halfWidth * 1.25),
+                    IsoPalette.lighter(clothes, 0.08));
+        }
+        for (int side = -1; side <= 1; side += 2) {
+            double knee = cx + side * halfWidth * 0.4;
+            double foot = knee + side * swing * reach;
+            double half = halfWidth * 0.3;
+            Path2D.Double leg = new Path2D.Double();
+            leg.moveTo(knee - half, top);
+            leg.lineTo(knee + half, top);
+            leg.lineTo(foot + half, ground);
+            leg.lineTo(foot - half, ground);
+            leg.closePath();
+            outlined(graphics, leg, pants);
+            graphics.setColor(SHOES);
+            graphics.fill(new RoundRectangle2D.Double(foot - halfWidth * 0.42, ground - 1.6, halfWidth * 0.85, 2.6,
+                    1.5, 1.5));
+        }
     }
 
     /**

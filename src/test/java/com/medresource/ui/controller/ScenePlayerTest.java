@@ -1,5 +1,6 @@
 package com.medresource.ui.controller;
 
+import com.medresource.model.Area;
 import com.medresource.model.BloodType;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.Disease;
@@ -828,6 +829,90 @@ class ScenePlayerTest {
 
         assertTrue(patientBreathes);
         assertTrue(staffBreathes);
+    }
+
+    @Test
+    void theStaffAndThePortersSayWhenTheyWalk() {
+        ScenePlayer player = playerOf(HospitalConfig.standard(), Scenario.HIGH_DEMAND, 60);
+        boolean staffWalks = false;
+        boolean porterWalks = false;
+        while (!player.isFinished() && player.getTime() < 3 * 3600 && !(staffWalks && porterWalks)) {
+            player.advanceTo(player.getTime() + 1);
+            for (StaffMarker member : player.staffMarkers()) {
+                if (member.moving()) {
+                    staffWalks = true;
+                    assertEquals(0.0, member.bob(), 0.0, member.code());
+                    assertFalse(member.seated(), member.code());
+                }
+            }
+            porterWalks |= player.porterMarkers().stream().anyMatch(PorterMarker::moving);
+        }
+
+        assertTrue(staffWalks, "el personal camina");
+        assertTrue(porterWalks, "los camilleros caminan");
+    }
+
+    // ---------- ficha del personal y lugares ----------
+
+    @Test
+    void theStaffCardListsThePatientsHeAttendedInOrder() {
+        ScenePlayer player = standard();
+        Map<String, List<String>> seen = new HashMap<>();
+        while (tick(player) && player.getTime() < 3 * 3600) {
+            for (StaffMarker member : player.staffMarkers()) {
+                StaffCard card = player.staffCard(member.code()).orElseThrow();
+                List<String> codes = card.attended().stream().map(StaffCard.Attended::patientCode).toList();
+                List<String> before = seen.getOrDefault(member.code(), List.of());
+                assertEquals(before, codes.subList(0, before.size()), "la lista solo crece: " + member.code());
+                seen.put(member.code(), codes);
+                if (card.currentPatient() != null) {
+                    assertTrue(codes.contains(card.currentPatient()));
+                    assertEquals("Atiende a " + card.currentPatient(), card.activity());
+                }
+                assertEquals(member.isDoctor(), card.isDoctor());
+            }
+        }
+
+        assertTrue(seen.values().stream().anyMatch(codes -> !codes.isEmpty()));
+        assertTrue(player.staffCard("X99").isEmpty());
+    }
+
+    @Test
+    void aBedInUseSaysWhoIsThereSinceWhenAndHowMuchIsLeft() {
+        ScenePlayer player = standard();
+        PlaceInfo busy = null;
+        while (busy == null && tick(player)) {
+            for (String code : player.getState().placements().stream()
+                    .filter(placement -> placement.phase() == Phase.TREATING)
+                    .map(SceneState.Placement::patientCode).toList()) {
+                Position cell = player.getState().positionOf(code).orElseThrow();
+                PlaceInfo info = player.placeInfo(cell).orElse(null);
+                if (info != null && !info.isFree() && info.occupants().get(0).hasTimes()) {
+                    busy = info;
+                }
+            }
+        }
+
+        assertTrue(busy != null, "alguien estuvo en tratamiento");
+        PlaceInfo.Occupant occupant = busy.occupants().get(0);
+        assertTrue(occupant.secondsThere() >= 0 && occupant.secondsRemaining() >= 0);
+        assertEquals("En tratamiento", occupant.activity());
+    }
+
+    @Test
+    void aFreeBedHasNoPatientsAndACorridorHasNoInformation() {
+        ScenePlayer player = standard();
+        HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
+        Position bed = layout.positionOf("H1-C1").orElseThrow();
+
+        PlaceInfo info = player.placeInfo(bed).orElseThrow();
+
+        assertTrue(info.isFree());
+        assertTrue(info.place().endsWith("H1-C1"));
+        Area hall = layout.areasOf(ZoneType.CORRIDOR).get(0);
+        Position corridor = new Position(hall.col(), hall.row());
+        assertTrue(player.placeInfo(corridor).isEmpty());
+        assertTrue(player.placeInfo(null).isEmpty());
     }
 
     // ---------- ficha del paciente ----------

@@ -82,4 +82,15 @@ class SimulationTopBarTest {
         assertThrows(IllegalArgumentException.class, () -> bar.setSpeed(3));
         assertThrows(IllegalArgumentException.class, () -> bar.onSpeed(null));
     }
+
+    @Test
+    void theReplayButtonSaysHowToGoBackToThePresent() {
+        assertEquals(SimulationTopBar.REPLAY_TEXT, bar.replayButton().getText());
+
+        bar.setReplaying(true);
+        assertEquals(SimulationTopBar.LIVE_TEXT, bar.replayButton().getText());
+
+        bar.setReplaying(false);
+        assertEquals(SimulationTopBar.REPLAY_TEXT, bar.replayButton().getText());
+    }
 }

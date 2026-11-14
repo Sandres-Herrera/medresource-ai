@@ -19,7 +19,8 @@ import java.util.function.IntConsumer;
  *
  * <p>A la izquierda, el título «Plano del hospital», la etiqueta «Siguiendo a P003» mientras la cámara sigue a
  * alguien y una ayuda corta. A la derecha, los controles de la simulación: reproducir o pausar, «Siguiente evento»,
- * las velocidades, el reloj y el botón para salir de la pantalla completa.</p>
+ * «Seguir» (la cámara sigue al paciente elegido; solo se puede con un paciente elegido), «Repetir 30 s», las
+ * velocidades, el reloj y el botón para salir de la pantalla completa.</p>
  *
  * <p>No tiene reglas: quien la usa les pone acción a los botones y le dice qué mostrar.</p>
  */
@@ -28,10 +29,18 @@ public final class FullscreenBar extends JPanel {
     private static final long serialVersionUID = 1L;
 
     /** Ayuda que se ve junto al título. */
-    public static final String HINT = "Rueda para acercar · arrastra para mover · Esc para salir";
+    public static final String HINT = "Rueda para acercar · arrastra para mover · clic derecho para girar · "
+            + "Esc para salir";
+    /** Texto del botón para seguir al paciente elegido. */
+    public static final String FOLLOW_TEXT = "Seguir";
+    /** Texto del mismo botón mientras la cámara lo sigue. */
+    public static final String UNFOLLOW_TEXT = "Dejar de seguir";
 
     private final IconButton play = new IconButton(HomeIcon.PLAY, "Reproducir", SimulationTopBar.BUTTON_SIZE);
     private final HomeButton skip = new HomeButton(HomeButton.Style.OUTLINE, "Siguiente evento", HomeIcon.SKIP);
+    private final HomeButton follow = new HomeButton(HomeButton.Style.OUTLINE, FOLLOW_TEXT, HomeIcon.TARGET);
+    private final HomeButton replay = new HomeButton(HomeButton.Style.OUTLINE, SimulationTopBar.REPLAY_TEXT,
+            HomeIcon.CLOCK);
     private final SpeedSegment speeds = new SpeedSegment();
     private final IconButton exit = new IconButton(HomeIcon.COLLAPSE, "Salir de pantalla completa",
             SimulationTopBar.BUTTON_SIZE);
@@ -77,6 +86,8 @@ public final class FullscreenBar extends JPanel {
         controls.setOpaque(false);
         controls.add(play);
         controls.add(skip);
+        controls.add(follow);
+        controls.add(replay);
         controls.add(speeds);
         controls.add(clockColumn());
         controls.add(exit);
@@ -160,10 +171,39 @@ public final class FullscreenBar extends JPanel {
      * @param patientCode código del paciente que se sigue, o nulo si la cámara no sigue a nadie
      */
     public void showFollowing(String patientCode) {
+        follow.setText(patientCode != null ? UNFOLLOW_TEXT : FOLLOW_TEXT);
         followTag.setVisible(patientCode != null);
         if (patientCode != null) {
             followTag.setText("Siguiendo a " + patientCode);
         }
+    }
+
+    /**
+     * Habilita el botón «Seguir»: solo se puede seguir a un paciente elegido.
+     *
+     * @param enabled {@code true} si hay un paciente elegido
+     */
+    public void setFollowEnabled(boolean enabled) {
+        follow.setEnabled(enabled);
+    }
+
+    /** Botón «Seguir» o «Dejar de seguir». */
+    public HomeButton followButton() {
+        return follow;
+    }
+
+    /** Botón «Repetir 30 s»; durante la repetición dice «Volver al presente». */
+    public HomeButton replayButton() {
+        return replay;
+    }
+
+    /**
+     * Cambia el botón de la repetición según si se está viendo una.
+     *
+     * @param replaying {@code true} mientras se ve la repetición
+     */
+    public void setReplaying(boolean replaying) {
+        replay.setText(replaying ? SimulationTopBar.LIVE_TEXT : SimulationTopBar.REPLAY_TEXT);
     }
 
     public IconButton playButton() {

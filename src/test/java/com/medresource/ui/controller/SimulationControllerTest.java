@@ -11,6 +11,7 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.MetricsCalculator;
 import com.medresource.services.simulation.SimulationEngine;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.Renderer2D;
 import org.junit.jupiter.api.Test;
 
@@ -206,6 +207,31 @@ class SimulationControllerTest {
 
         assertFalse(first.isEmpty());
         assertTrue(controller.drainNewEvents().isEmpty());
+    }
+
+    @Test
+    void aDeathSeenInTheLogLeavesItsAlertOverThePlan() {
+        SimulationController controller = new SimulationController(new SimulationSetup(HospitalConfig.standard(),
+                new CaseConfig(1L, Scenario.CATASTROPHE, 120, 480), StrategyOption.CLINICAL_PRIORITY),
+                new Renderer2D());
+        boolean deathAlert = false;
+        while (!deathAlert && !controller.isFinished()) {
+            controller.skipToNextEvent();
+            boolean died = controller.drainNewEvents().stream().anyMatch(event -> event.type() == EventType.DEATH);
+            deathAlert = controller.alerts().stream().anyMatch(alert -> alert.kind() == PlanAlert.Kind.DEATH);
+            assertTrue(!died || deathAlert, "cada muerte deja su aviso");
+        }
+
+        assertTrue(deathAlert);
+    }
+
+    @Test
+    void theCardsOfTheStaffAndThePlacesComeFromTheScene() {
+        SimulationController controller = controller();
+
+        assertTrue(controller.staffCard("D01").isPresent());
+        assertTrue(controller.staffCard("X99").isEmpty());
+        assertTrue(controller.placeInfo(controller.getLayout().positionOf("H1-C1").orElseThrow()).isPresent());
     }
 
     @Test

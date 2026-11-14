@@ -58,7 +58,7 @@ public final class HomeButton extends Clickable {
     private static final int ARC = 14;
 
     private final Style style;
-    private final String text;
+    private String text;
     private final HomeIcon icon;
 
     /**
@@ -87,6 +87,24 @@ public final class HomeButton extends Clickable {
     /** Texto del botón. */
     public String getText() {
         return text;
+    }
+
+    /**
+     * Cambia el texto del botón; el botón toma el ancho del texto nuevo.
+     *
+     * @param text texto nuevo
+     * @throws IllegalArgumentException si está vacío
+     */
+    public void setText(String text) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("El texto del botón es obligatorio.");
+        }
+        if (!text.equals(this.text)) {
+            this.text = text;
+            getAccessibleContext().setAccessibleName(text);
+            revalidate();
+            repaint();
+        }
     }
 
     @Override

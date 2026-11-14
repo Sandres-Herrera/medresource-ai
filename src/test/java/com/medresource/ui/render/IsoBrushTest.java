@@ -71,6 +71,47 @@ class IsoBrushTest {
     }
 
     @Test
+    void seenFromBehindABoxShowsTheSidesThatWereHidden() {
+        IsoProjection back = projection.withView(180, IsoProjection.DEFAULT_ELEVATION);
+        BufferedImage picture = new BufferedImage(back.size().width, back.size().height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D surface = picture.createGraphics();
+        Color left = new Color(200, 40, 40);
+        Color right = new Color(40, 40, 200);
+
+        IsoBrush.box(surface, back, 1, 1, 0, 1, 1, 1, Color.WHITE, left, right);
+
+        Point2D front = back.at(1.5, 1, 0.5);
+        Point2D side = back.at(1, 1.5, 0.5);
+        assertEquals(left.getRGB(), picture.getRGB((int) Math.round(front.getX()), (int) Math.round(front.getY())));
+        assertEquals(right.getRGB(), picture.getRGB((int) Math.round(side.getX()), (int) Math.round(side.getY())));
+        surface.dispose();
+    }
+
+    @Test
+    void aSideThatLooksStraightDownMixesBothColors() {
+        Color mixed = IsoBrush.mix(Color.BLACK, Color.WHITE, 0.5);
+
+        assertEquals(new Color(128, 128, 128), mixed);
+        assertEquals(Color.RED, IsoBrush.mix(Color.RED, Color.BLUE, 0));
+        assertEquals(Color.BLUE, IsoBrush.mix(Color.RED, Color.BLUE, 1));
+    }
+
+    @Test
+    void seenFromAboveOnlyTheTopOfABoxIsDrawn() {
+        IsoProjection above = projection.withView(0, IsoProjection.MAX_ELEVATION);
+        BufferedImage picture = new BufferedImage(above.size().width, above.size().height,
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D surface = picture.createGraphics();
+
+        IsoBrush.box(surface, above, 1, 1, 0, 1, 1, 1, Color.WHITE, Color.RED, Color.BLUE);
+
+        Point2D center = above.at(1.5, 1.5, 1);
+        assertEquals(Color.WHITE.getRGB(), picture.getRGB((int) Math.round(center.getX()),
+                (int) Math.round(center.getY())));
+        surface.dispose();
+    }
+
+    @Test
     void theGlassLetsWhatIsBehindItBeSeen() {
         graphics.setColor(Color.RED);
         graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
@@ -108,6 +149,34 @@ class IsoBrushTest {
 
         assertTrue(seated.getY() > standing.getY());
         assertTrue(minor.getY() > standing.getY());
+    }
+
+    @Test
+    void theStepAdvancesHalfARoundEveryStepLength() {
+        assertEquals(0.0, IsoBrush.stride(0, 0), 1e-12);
+        assertEquals(Math.PI, IsoBrush.stride(IsoBrush.STEP_LENGTH, 0), 1e-9);
+        assertEquals(IsoBrush.stride(1, 2), IsoBrush.stride(2, 1), 1e-12);
+    }
+
+    @Test
+    void whoeverWalksOpensTheLegsAndRisesWhenTheyCross() {
+        IsoBrush.Person person = new IsoBrush.Person(Palette.NURSE_UNIFORM, null, Sex.MALE, 1.0, false);
+        Point2D still = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person);
+        Point2D crossing = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, 0.0);
+        Point2D open = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, Math.PI / 2);
+        Point2D notWalking = IsoBrush.person(graphics, projection, 2, 2, 0, 0, person, Double.NaN);
+
+        assertEquals(still.getY() - IsoBrush.WALK_BOUNCE, crossing.getY(), 1e-9);
+        assertEquals(still.getY(), open.getY(), 1e-9);
+        assertEquals(still, notWalking);
+    }
+
+    @Test
+    void aSeatedPersonDoesNotWalk() {
+        IsoBrush.Person seated = new IsoBrush.Person(Palette.DOCTOR_COAT, null, Sex.FEMALE, 1.0, true);
+
+        assertEquals(IsoBrush.person(graphics, projection, 2, 2, 0, 0, seated),
+                IsoBrush.person(graphics, projection, 2, 2, 0, 0, seated, 0.0));
     }
 
     @Test

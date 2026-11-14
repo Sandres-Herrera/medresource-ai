@@ -13,7 +13,9 @@ import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -28,7 +30,15 @@ import java.util.Optional;
  *
  * <p>Dibuja de atrás hacia adelante ({@link IsoItem#BACK_TO_FRONT}): primero el piso, después los muros, los
  * muebles, los letreros y las personas en orden de profundidad. El edificio y los muebles de cada plano se arman una
- * sola vez por tema y se reutilizan en cada cuadro.</p>
+ * sola vez por tema y por ángulo de la cámara, y se reutilizan en cada cuadro.</p>
+ *
+ * <p>La cámara puede girar el hospital y levantar la mirada ({@link #setView}): el giro va de 0 a 360 grados y la
+ * elevación, de la diagonal de siempre hasta verlo desde arriba. Cambiar el ángulo vuelve a armar el edificio en el
+ * cuadro siguiente; las personas no cambian de lugar.</p>
+ *
+ * <p>En cada cuadro las puertas se abren para quien se acerca a ellas, sea paciente, médico, enfermero o camillero, y
+ * los monitores de la UCI y del quirófano muestran los latidos del paciente acostado en su cama o en su mesa. El
+ * trazo corre con el reloj de la animación ({@link #setClock}), que no es el de la simulación.</p>
  */
 public final class IsometricRenderer implements SceneRenderer {
 
@@ -37,9 +47,13 @@ public final class IsometricRenderer implements SceneRenderer {
 
     private final SceneRenderer flat;
     private IsoTheme theme = IsoTheme.LIGHT;
+    private double yaw;
+    private double elevation = IsoProjection.DEFAULT_ELEVATION;
     private HospitalLayout cachedLayout;
     private IsoProjection projection;
     private IsoStructure structure;
+    private IsoFurniture furniture;
+    private double clock;
     private IsoFigures figures;
     private List<IsoItem> fixedItems = List.of();
 
@@ -71,6 +85,33 @@ public final class IsometricRenderer implements SceneRenderer {
             this.theme = theme;
             cachedLayout = null;
         }
+    }
+
+    /**
+     * Cambia el ángulo de la cámara. El edificio se vuelve a armar en el próximo cuadro si el ángulo cambió.
+     *
+     * @param yaw       giro del hospital alrededor de su centro, en grados (se lleva a una vuelta)
+     * @param elevation ángulo de la mirada sobre el piso, en grados, de {@value IsoProjection#DEFAULT_ELEVATION} a
+     *                  {@value IsoProjection#MAX_ELEVATION}
+     * @throws IllegalArgumentException si el giro no es un número o la elevación está fuera de su rango
+     */
+    public void setView(double yaw, double elevation) {
+        IsoProjection check = new IsoProjection(1, 1, 1, 1, yaw, elevation);
+        if (check.yaw() != this.yaw || elevation != this.elevation) {
+            this.yaw = check.yaw();
+            this.elevation = elevation;
+            cachedLayout = null;
+        }
+    }
+
+    /** Giro de la cámara, en grados: 0 en la vista de siempre. */
+    public double getYaw() {
+        return yaw;
+    }
+
+    /** Elevación de la cámara, en grados: {@value IsoProjection#DEFAULT_ELEVATION} en la vista de siempre. */
+    public double getElevation() {
+        return elevation;
     }
 
     /** Tema de colores con que se dibuja: el claro, si nadie lo cambia. */
@@ -128,6 +169,8 @@ public final class IsometricRenderer implements SceneRenderer {
             throw new IllegalArgumentException("El sobrante de la sala de espera no puede ser negativo.");
         }
         prepare(layout);
+        openDoors(patients, staff, porters);
+        showVitals(patients);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
@@ -139,6 +182,60 @@ public final class IsometricRenderer implements SceneRenderer {
             item.paint(graphics);
         }
         paintOverflow(graphics, layout, overflow);
+    }
+
+    /**
+     * Cambia el momento de la animación: mueve el trazo de los monitores y el parpadeo de las alarmas.
+     *
+     * @param seconds segundos desde cualquier origen; el panel le pasa el reloj real
+     * @throws IllegalArgumentException si no es un número
+     */
+    public void setClock(double seconds) {
+        if (!Double.isFinite(seconds)) {
+            throw new IllegalArgumentException("El momento de la animación debe ser un número.");
+        }
+        this.clock = seconds;
+    }
+
+    /**
+     * Indica si la luz de alarma del monitor de una cama o mesa se ve encendida en el último cuadro dibujado.
+     *
+     * @param layout plano del hospital
+     * @param spot   casilla de la cama o de la mesa
+     * @return {@code true} si se ve encendida
+     */
+    public boolean alarmOn(HospitalLayout layout, Position spot) {
+        prepare(layout);
+        return furniture.alarmOn(spot);
+    }
+
+    /** Pasa a los monitores la salud de cada paciente acostado en una cama o en una mesa de operaciones. */
+    private void showVitals(List<PatientMarker> patients) {
+        Map<Position, Double> health = new HashMap<>();
+        for (PatientMarker marker : patients) {
+            IsoFigures.Pose pose = figures.poseOf(marker);
+            if (pose == IsoFigures.Pose.IN_BED || pose == IsoFigures.Pose.ON_TABLE) {
+                health.put(new Position((int) Math.floor(projection.gridX(marker.x())),
+                        (int) Math.floor(projection.gridY(marker.y()))), marker.deceased() ? 0.0 : marker.health());
+            }
+        }
+        furniture.showVitals(clock, health);
+    }
+
+    /** Abre las puertas a las que se acerca alguien: pacientes, personal o camilleros. */
+    private void openDoors(List<PatientMarker> patients, List<StaffMarker> staff, List<PorterMarker> porters) {
+        if (patients == null || staff == null || porters == null) {
+            throw new IllegalArgumentException("Las listas de personas son obligatorias.");
+        }
+        List<Point2D> people = new ArrayList<>();
+        patients.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        staff.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        porters.forEach(marker -> people.add(gridOf(marker.x(), marker.y())));
+        structure.openDoorsNear(people);
+    }
+
+    private Point2D gridOf(double planX, double planY) {
+        return new Point2D.Double(projection.gridX(planX), projection.gridY(planY));
     }
 
     /**
@@ -182,6 +279,53 @@ public final class IsometricRenderer implements SceneRenderer {
     }
 
     /**
+     * Busca al médico o enfermero que se ve en un punto de esta vista: el más cercano cuyo pecho queda a menos de
+     * {@value #PICK_RADIUS} píxeles.
+     *
+     * @param layout plano del hospital
+     * @param staff  médicos y enfermeros
+     * @param viewX  coordenada x en esta vista
+     * @param viewY  coordenada y en esta vista
+     * @return código del más cercano, o vacío si no hay ninguno
+     * @throws IllegalArgumentException si falta el plano o la lista
+     */
+    public Optional<String> pickStaff(HospitalLayout layout, List<StaffMarker> staff, double viewX, double viewY) {
+        if (staff == null) {
+            throw new IllegalArgumentException("La lista del personal es obligatoria.");
+        }
+        prepare(layout);
+        String best = null;
+        double bestDistance = PICK_RADIUS;
+        for (StaffMarker marker : staff) {
+            double base = marker.seated() ? IsoFurniture.SEAT_TOP : 0.0;
+            Point2D chest = projection.fromPlan(marker.x(), marker.y(), base + IsoBrush.chestHeight(marker.seated()));
+            double distance = chest.distance(viewX, viewY);
+            if (distance <= bestDistance) {
+                best = marker.code();
+                bestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    /**
+     * Punto de esta vista que queda sobre el centro de una casilla, a cierta altura: donde va un aviso.
+     *
+     * @param layout   plano del hospital
+     * @param position casilla
+     * @param height   altura sobre el piso, en metros
+     * @return el punto de esta vista
+     * @throws IllegalArgumentException si falta el plano o la casilla
+     */
+    public Point2D pointOver(HospitalLayout layout, Position position, double height) {
+        if (position == null) {
+            throw new IllegalArgumentException("La casilla es obligatoria.");
+        }
+        prepare(layout);
+        return projection.at(position.col() + 0.5, position.row() + 0.5, height);
+    }
+
+    /**
      * Proyección que usa esta vista para un plano.
      *
      * @param layout plano del hospital
@@ -201,9 +345,9 @@ public final class IsometricRenderer implements SceneRenderer {
             throw new IllegalArgumentException("El plano es obligatorio.");
         }
         if (layout != cachedLayout) {
-            projection = IsoProjection.of(layout, flat);
+            projection = IsoProjection.of(layout, flat).withView(yaw, elevation);
             structure = new IsoStructure(layout, projection, theme);
-            IsoFurniture furniture = new IsoFurniture(layout, projection, flat, theme);
+            furniture = new IsoFurniture(layout, projection, flat, theme);
             figures = new IsoFigures(projection, furniture);
             List<IsoItem> items = new ArrayList<>(structure.items());
             items.addAll(furniture.items());

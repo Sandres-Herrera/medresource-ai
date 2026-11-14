@@ -111,6 +111,18 @@ class IsoFiguresTest {
     }
 
     @Test
+    void seenFromBehindTheCloserPeopleAreDrawnLast() {
+        IsoProjection back = projection.withView(180, IsoProjection.DEFAULT_ELEVATION);
+        IsoFigures turned = new IsoFigures(back, new IsoFurniture(layout, back, flat));
+        PatientMarker near = at(new Position(1, 1), false, true, false);
+        PatientMarker far = at(new Position(layout.getCols() - 2, layout.getRows() - 2), false, true, false);
+
+        List<IsoItem> items = turned.items(List.of(near, far), List.of(), List.of(), null);
+
+        assertTrue(items.get(0).depth() > items.get(1).depth());
+    }
+
+    @Test
     void eachPatientKeepsTheSameHairColor() {
         assertEquals(IsoFigures.hairOf("P001"), IsoFigures.hairOf("P001"));
         assertNotNull(IsoFigures.hairOf(null));
