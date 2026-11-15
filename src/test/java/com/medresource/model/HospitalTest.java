@@ -3,6 +3,7 @@ package com.medresource.model;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HospitalTest {
 
     private static final Disease FLU = DiseaseCatalog.findById(1).orElseThrow();
+    private static final Disease PNEUMONIA = DiseaseCatalog.findById(4).orElseThrow();
+    private static final Disease OPEN_FRACTURE = DiseaseCatalog.findById(7).orElseThrow();
+    private static final Disease APPENDICITIS = DiseaseCatalog.findById(8).orElseThrow();
+    private static final Disease HEART_ATTACK = DiseaseCatalog.findById(9).orElseThrow();
+    private static final int BLOOD_UNITS = 2;
 
     private Patient newPatient() {
         return new Patient(1, 40, Sex.FEMALE, BloodType.A_POSITIVE, FLU,
@@ -235,5 +241,87 @@ class HospitalTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> hospital.getDoctors().add(new Doctor(9, Specialty.SURGERY, 40, Sex.MALE)));
         assertTrue(hospital.getDoctors().size() == 2);
+    }
+
+    @Test
+    void nothingIsMissingWhenThePatientCanBeAttendedRightAway() {
+        Hospital hospital = newHospital();
+
+        assertTrue(hospital.missingFor(FLU, 40, BloodType.A_POSITIVE, BLOOD_UNITS).isEmpty());
+    }
+
+    @Test
+    void aBusyDoctorIsAMissingDoctor() {
+        Hospital hospital = newHospital();
+        hospital.getDoctors().forEach(doctor -> doctor.assign(newPatient(), 600));
+
+        assertEquals(EnumSet.of(MissingResource.DOCTOR),
+                hospital.missingFor(FLU, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void aSurgeryNeedsTwoFreeNurses() {
+        Hospital hospital = newHospital();
+        hospital.getNurses().get(0).assign(newPatient(), 600);
+
+        assertEquals(EnumSet.of(MissingResource.NURSE),
+                hospital.missingFor(APPENDICITIS, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void aSurgeryNeedsAFreeOperatingRoom() {
+        Hospital hospital = newHospital();
+        hospital.getOperatingRooms().forEach(room -> room.assign(newPatient(), 600));
+
+        assertEquals(EnumSet.of(MissingResource.OPERATING_ROOM),
+                hospital.missingFor(APPENDICITIS, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void aPatientCanWaitForSeveralResourcesAtOnce() {
+        Hospital hospital = newHospital();
+        hospital.getIcuBeds().forEach(bed -> bed.assign(newPatient(), 600));
+
+        assertEquals(EnumSet.of(MissingResource.DOCTOR, MissingResource.ICU_BED),
+                hospital.missingFor(HEART_ATTACK, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void withFreeBedsButNoNursingTheNursingIsMissing() {
+        Hospital hospital = hospitalWithNurses(1);
+        for (int i = 0; i < 4; i++) {
+            hospital.getBeds().get(i).assign(newPatient(), 600);
+        }
+
+        assertEquals(EnumSet.of(MissingResource.NURSING_CAPACITY),
+                hospital.missingFor(PNEUMONIA, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void withoutFreeBedsTheBedIsMissingAndNotTheNursing() {
+        Hospital hospital = hospitalWithNurses(1);
+        hospital.getBeds().forEach(bed -> bed.assign(newPatient(), 600));
+
+        assertEquals(EnumSet.of(MissingResource.BED),
+                hospital.missingFor(PNEUMONIA, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void aTransfusionNeedsCompatibleBlood() {
+        Hospital hospital = newHospital();
+
+        assertTrue(hospital.missingFor(OPEN_FRACTURE, 40, BloodType.A_POSITIVE, BLOOD_UNITS).isEmpty());
+        assertEquals(EnumSet.of(MissingResource.BLOOD),
+                hospital.missingFor(OPEN_FRACTURE, 40, BloodType.O_NEGATIVE, BLOOD_UNITS));
+    }
+
+    @Test
+    void theMissingResourcesNeedADiagnosisABloodTypeAndAtLeastOneUnit() {
+        Hospital hospital = newHospital();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> hospital.missingFor(null, 40, BloodType.A_POSITIVE, BLOOD_UNITS));
+        assertThrows(IllegalArgumentException.class, () -> hospital.missingFor(FLU, 40, null, BLOOD_UNITS));
+        assertThrows(IllegalArgumentException.class, () -> hospital.missingFor(FLU, 40, BloodType.A_POSITIVE, 0));
     }
 }

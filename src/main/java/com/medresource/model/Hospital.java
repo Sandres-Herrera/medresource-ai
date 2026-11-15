@@ -2,8 +2,10 @@ package com.medresource.model;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Hospital de una simulación: reúne todos los recursos finitos y responde
@@ -131,6 +133,58 @@ public class Hospital {
         int intensive = livingPatientsIn(icu.getBeds()) + (toIcu ? 1 : 0);
         return ward * ICU_PATIENTS_PER_NURSE + intensive * WARD_PATIENTS_PER_NURSE
                 <= nurses.size() * WARD_PATIENTS_PER_NURSE * ICU_PATIENTS_PER_NURSE;
+    }
+
+    /**
+     * Dice qué recursos libres le faltan ahora a un paciente para empezar su tratamiento. Es la misma revisión
+     * que hacen las estrategias antes de atender a alguien.
+     *
+     * <p>Revisa, en este orden: un médico libre que pueda tratar el diagnóstico; los enfermeros libres que pide
+     * el tratamiento; una cama libre si la necesita (de UCI si el diagnóstico la requiere, también para
+     * recuperarse de una cirugía) y la enfermería para vigilarla; un quirófano libre si es una cirugía; y las
+     * unidades de sangre compatible si el diagnóstico la requiere. Si falta la cama no se revisa la
+     * enfermería, porque sin cama no hay a quién vigilar.</p>
+     *
+     * @param diagnosis  diagnóstico del paciente
+     * @param patientAge edad del paciente
+     * @param bloodType  tipo de sangre del paciente
+     * @param bloodUnits unidades de sangre que consume el tratamiento si el diagnóstico la requiere, al menos 1
+     * @return recursos que faltan; vacío si se le puede atender ya
+     * @throws IllegalArgumentException si falta el diagnóstico o el tipo de sangre, o si las unidades son
+     *                                  menos de 1
+     */
+    public Set<MissingResource> missingFor(Disease diagnosis, int patientAge, BloodType bloodType, int bloodUnits) {
+        if (diagnosis == null || bloodType == null) {
+            throw new IllegalArgumentException("El diagnóstico y el tipo de sangre son obligatorios.");
+        }
+        if (bloodUnits < 1) {
+            throw new IllegalArgumentException("Las unidades de sangre deben ser al menos 1.");
+        }
+        Set<MissingResource> missing = EnumSet.noneOf(MissingResource.class);
+        TreatmentType treatment = diagnosis.getTreatment();
+        boolean someDoctor = freeDoctors().stream()
+                .anyMatch(doctor -> doctor.compatibilityWith(diagnosis, patientAge).isSuitable());
+        if (!someDoctor) {
+            missing.add(MissingResource.DOCTOR);
+        }
+        if (freeNurses().size() < treatment.getRequiredNurses()) {
+            missing.add(MissingResource.NURSE);
+        }
+        if (diagnosis.requiresIcu() || treatment.requiresBed() || treatment.hasRecovery()) {
+            boolean icuBed = diagnosis.requiresIcu();
+            if ((icuBed ? freeIcuBeds() : freeBeds()).isEmpty()) {
+                missing.add(icuBed ? MissingResource.ICU_BED : MissingResource.BED);
+            } else if (!hasNursingCapacityFor(icuBed)) {
+                missing.add(MissingResource.NURSING_CAPACITY);
+            }
+        }
+        if (treatment.requiresOperatingRoom() && freeOperatingRooms().isEmpty()) {
+            missing.add(MissingResource.OPERATING_ROOM);
+        }
+        if (diagnosis.requiresBlood() && !bloodBank.hasCompatibleUnits(bloodType, bloodUnits)) {
+            missing.add(MissingResource.BLOOD);
+        }
+        return missing;
     }
 
     public List<Room> getRooms() {
