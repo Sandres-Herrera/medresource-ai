@@ -1,20 +1,43 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.ApaDocument;
+import com.medresource.model.DocumentInfo;
+import com.medresource.model.ExportFormat;
 import com.medresource.model.GeneratedReport;
 import com.medresource.model.ReportProgress;
+import com.medresource.persistence.CoverPreferences;
+import com.medresource.persistence.DocxReportWriter;
+import com.medresource.persistence.PdfReportWriter;
+import com.medresource.persistence.ReportWriter;
 import com.medresource.services.management.ReportGenerator;
 import com.medresource.services.management.ReportRequest;
+import com.medresource.ui.view.DownloadPanel.Choice;
 
 import javax.swing.BorderFactory;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.Timer;
 import javax.swing.WindowConstants;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Desktop;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Graphics;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -28,6 +51,12 @@ import java.util.function.Consumer;
  *
  * <p>Cerrar la ventana o pulsar «Cancelar» detiene la generación. Un reporte ya generado se puede volver a abrir
  * sin generarlo de nuevo ({@link #showing(GeneratedReport, Consumer)}).</p>
+ *
+ * <p>Arriba del reporte va la barra de descarga: «Descargar» pide el formato y la portada ({@link DownloadDialog}),
+ * propone dónde guardarlo con un nombre como «Reporte_catastrofe_semilla7_2026-11-15.pdf» y lo escribe en segundo
+ * plano ({@link ExportWorker}) en normas APA ({@link ApaReportBuilder}). Al terminar, la barra dice dónde quedó y
+ * ofrece «Abrir archivo» y «Abrir carpeta». Los datos de la portada se recuerdan para la próxima vez
+ * ({@link CoverPreferences}).</p>
  */
 public final class ReportWindow extends JFrame {
 
@@ -37,6 +66,10 @@ public final class ReportWindow extends JFrame {
     public static final String TITLE = "MedResource AI — Reporte de la simulación";
     /** Mensaje cuando la generación falla, antes del detalle. */
     public static final String ERROR_TEXT = "No se pudo generar el reporte: ";
+    /** Texto del botón para descargar el reporte. */
+    public static final String DOWNLOAD = "Descargar";
+    /** Mensaje cuando no se pudo guardar el archivo, antes del detalle. */
+    public static final String SAVE_ERROR_TEXT = "No se pudo guardar el reporte: ";
 
     private static final int TICK_MILLIS = 250;
     private static final Dimension SIZE = new Dimension(1100, 760);
@@ -53,6 +86,13 @@ public final class ReportWindow extends JFrame {
     private long lastProgressNanos;
     private final Timer ticker = new Timer(TICK_MILLIS, event -> tick());
     private transient GeneratedReport generated;
+    private final HomeButton download = new HomeButton(HomeButton.Style.OUTLINE, DOWNLOAD, HomeIcon.DOWNLOAD);
+    private final HomeButton openFile = new HomeButton(HomeButton.Style.LINK, "Abrir archivo", null);
+    private final HomeButton openFolder = new HomeButton(HomeButton.Style.LINK, "Abrir carpeta", null);
+    private final JLabel saveStatus = new JLabel("Descarga el reporte en Word o PDF, en normas APA.");
+    private final transient CoverPreferences coverMemory = CoverPreferences.forUser();
+    private transient Path savedFile;
+    private File lastFolder;
 
     private ReportWindow(Consumer<String> onShowCase) {
         super(TITLE);
@@ -160,13 +200,128 @@ public final class ReportWindow extends JFrame {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(HomeTheme.BACKGROUND);
         DarkScrollBarUI.apply(scroll);
-        content.add(scroll, REPORT_CARD);
+        JPanel withBar = new JPanel(new BorderLayout());
+        withBar.setOpaque(false);
+        withBar.add(buildDownloadBar(), BorderLayout.NORTH);
+        withBar.add(scroll, BorderLayout.CENTER);
+        content.add(withBar, REPORT_CARD);
         cards.show(content, REPORT_CARD);
         content.revalidate();
         content.repaint();
     }
 
     /** Además de cerrar la ventana, detiene la generación si todavía no terminó. */
+    // ---------- descarga ----------
+
+    /** Barra de arriba del reporte: el estado de la descarga con sus enlaces a la izquierda y «Descargar». */
+    private JPanel buildDownloadBar() {
+        JPanel bar = new JPanel(new BorderLayout(12, 0)) {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                graphics.setColor(HomeTheme.CARD);
+                graphics.fillRect(0, 0, getWidth(), getHeight());
+                graphics.setColor(HomeTheme.DIVIDER);
+                graphics.fillRect(0, getHeight() - 1, getWidth(), 1);
+            }
+        };
+        bar.setBorder(BorderFactory.createEmptyBorder(8, 20, 8, 20));
+        saveStatus.setFont(HomeTheme.font(Font.PLAIN, 12.5f));
+        showStatus(saveStatus.getText(), HomeTheme.MUTED);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        left.setOpaque(false);
+        left.add(saveStatus);
+        left.add(openFile);
+        left.add(openFolder);
+        openFile.setVisible(false);
+        openFolder.setVisible(false);
+        bar.add(left, BorderLayout.CENTER);
+        bar.add(download, BorderLayout.EAST);
+        download.addActionListener(event -> download());
+        openFile.addActionListener(event -> open(savedFile));
+        openFolder.addActionListener(event -> open(savedFile.getParent()));
+        return bar;
+    }
+
+    /** Pide el formato y la portada, luego dónde guardarlo, y lo escribe en segundo plano. */
+    private void download() {
+        if (generated == null) {
+            return;
+        }
+        DocumentInfo draft = coverMemory.apply(DocumentInfo.draft(ApaReportBuilder.defaultTitle(generated),
+                LocalDate.now()));
+        Optional<Choice> choice = DownloadDialog.ask(this, draft, coverMemory.format(ExportFormat.PDF));
+        if (choice.isEmpty()) {
+            return;
+        }
+        ExportFormat format = choice.get().format();
+        DocumentInfo info = choice.get().info();
+        coverMemory.save(info, format);
+        Optional<Path> file = askFile(format, info.date());
+        if (file.isEmpty()) {
+            return;
+        }
+        ApaDocument document = ApaReportBuilder.build(generated, info);
+        ReportWriter writer = format == ExportFormat.WORD ? new DocxReportWriter() : new PdfReportWriter();
+        download.setEnabled(false);
+        openFile.setVisible(false);
+        openFolder.setVisible(false);
+        showStatus("Guardando el reporte en " + format.getLabel() + "…", HomeTheme.MUTED);
+        new ExportWorker(writer, document, file.get(), this::onSaved, this::onSaveError).execute();
+    }
+
+    /** Muestra el selector de archivos con un nombre propuesto; si el archivo ya existe, pide confirmar. */
+    private Optional<Path> askFile(ExportFormat format, LocalDate date) {
+        JFileChooser chooser = new JFileChooser(lastFolder);
+        chooser.setDialogTitle("Guardar el reporte en " + format.getLabel());
+        chooser.setFileFilter(new FileNameExtensionFilter(format.getLabel(), format.getExtension()));
+        String name = format.fileName(generated.report().config().scenario(), generated.report().config().seed(),
+                date);
+        chooser.setSelectedFile(new File(chooser.getCurrentDirectory(), name));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return Optional.empty();
+        }
+        File chosen = chooser.getSelectedFile();
+        Path file = chosen.toPath().resolveSibling(format.withExtension(chosen.getName()));
+        lastFolder = file.toFile().getParentFile();
+        if (Files.exists(file) && JOptionPane.showConfirmDialog(this, "Ya existe «" + file.getFileName()
+                        + "». ¿Quieres reemplazarlo?", "Reemplazar el archivo", JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
+            return Optional.empty();
+        }
+        return Optional.of(file);
+    }
+
+    private void onSaved(Path file) {
+        savedFile = file;
+        download.setEnabled(true);
+        showStatus("Reporte guardado: " + file.getFileName(), HomeTheme.ACCENT);
+        boolean canOpen = Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN);
+        openFile.setVisible(canOpen);
+        openFolder.setVisible(canOpen);
+    }
+
+    private void onSaveError(Throwable error) {
+        download.setEnabled(true);
+        String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+        showStatus(SAVE_ERROR_TEXT + detail, HomeTheme.DANGER);
+    }
+
+    /** Abre un archivo o una carpeta con el programa que el sistema tenga para eso. */
+    private void open(Path path) {
+        try {
+            Desktop.getDesktop().open(path.toFile());
+        } catch (IOException | RuntimeException error) {
+            showStatus("No se pudo abrir «" + path.getFileName() + "».", HomeTheme.DANGER);
+        }
+    }
+
+    private void showStatus(String text, Color color) {
+        saveStatus.setText(text);
+        saveStatus.setForeground(color);
+    }
+
     @Override
     public void dispose() {
         ticker.stop();

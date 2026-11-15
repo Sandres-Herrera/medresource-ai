@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import org.junit.jupiter.api.Test;
 
+import javax.swing.JComponent;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -11,6 +12,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas de la gráfica de barras del reporte, sin ventana.
@@ -64,6 +66,52 @@ class BarChartTest {
 
         assertDoesNotThrow(() -> chart.paint(surface));
         surface.dispose();
+    }
+
+    @Test
+    void startsWithTheScreenColorsAndCanBeDrawnForPaper() {
+        BarChart chart = new BarChart(List.of(bar("Sin espera", 0), bar("Triage II", 1)), 0);
+        chart.setSize(700, chart.getPreferredSize().height);
+
+        assertEquals(ChartColors.SCREEN, chart.getColors());
+        assertTrue(brightness(paintOnWhite(chart), BarChart.LABEL_WIDTH + 30, BarChart.ROW_HEIGHT / 2) < 80);
+
+        chart.setColors(ChartColors.PAPER);
+        BufferedImage paper = paintOnWhite(chart);
+
+        assertEquals(ChartColors.PAPER, chart.getColors());
+        assertTrue(brightness(paper, BarChart.LABEL_WIDTH + 30, BarChart.ROW_HEIGHT / 2) > 200);
+        assertTrue(darkPixels(paper) > 20);
+        assertThrows(IllegalArgumentException.class, () -> chart.setColors(null));
+    }
+
+    private static BufferedImage paintOnWhite(JComponent component) {
+        BufferedImage image = new BufferedImage(component.getWidth(), component.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D surface = image.createGraphics();
+        surface.setColor(Color.WHITE);
+        surface.fillRect(0, 0, image.getWidth(), image.getHeight());
+        component.paint(surface);
+        surface.dispose();
+        return image;
+    }
+
+    private static int brightness(BufferedImage image, int x, int y) {
+        Color pixel = new Color(image.getRGB(x, y));
+        return (pixel.getRed() + pixel.getGreen() + pixel.getBlue()) / 3;
+    }
+
+    /** Cuenta los píxeles oscuros: los textos que se leen sobre el papel. */
+    private static int darkPixels(BufferedImage image) {
+        int dark = 0;
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                if (brightness(image, x, y) < 110) {
+                    dark++;
+                }
+            }
+        }
+        return dark;
     }
 
     @Test

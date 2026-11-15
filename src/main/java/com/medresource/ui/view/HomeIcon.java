@@ -72,7 +72,11 @@ public enum HomeIcon {
     /** Cuatro flechas hacia las esquinas: ver a pantalla completa. */
     EXPAND,
     /** Cuatro flechas hacia el centro: salir de la pantalla completa. */
-    COLLAPSE;
+    COLLAPSE,
+    /** Flecha hacia abajo sobre una bandeja: descargar un archivo. */
+    DOWNLOAD,
+    /** Hoja con la esquina doblada y renglones: un documento. */
+    DOCUMENT;
 
     /**
      * Dibuja el icono.
@@ -154,6 +158,10 @@ public enum HomeIcon {
             case COLLAPSE -> new Shape[]{polyline(4, 9, 9, 9, 9, 4), new Line2D.Double(9, 9, 4, 4),
                 polyline(15, 4, 15, 9, 20, 9), new Line2D.Double(15, 9, 20, 4), polyline(20, 15, 15, 15, 15, 20),
                 new Line2D.Double(15, 15, 20, 20), polyline(9, 20, 9, 15, 4, 15), new Line2D.Double(9, 15, 4, 20)};
+            case DOWNLOAD -> new Shape[]{new Line2D.Double(12, 3, 12, 15), polyline(7, 10, 12, 15, 17, 10),
+                polyline(4, 15, 4, 20, 20, 20, 20, 15)};
+            case DOCUMENT -> new Shape[]{polyline(6, 3, 14, 3, 19, 8, 19, 21, 6, 21, 6, 3), polyline(14, 3, 14, 8, 19, 8),
+                new Line2D.Double(9, 13, 16, 13), new Line2D.Double(9, 17, 16, 17)};
         };
     }
 

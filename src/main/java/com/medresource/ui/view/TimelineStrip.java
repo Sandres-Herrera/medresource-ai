@@ -43,6 +43,7 @@ public final class TimelineStrip extends JComponent {
     private final int totalMinutes;
     private final int arrivalsEndMinute;
     private final transient List<CollapsePeriod> collapses;
+    private transient ChartColors colors = ChartColors.SCREEN;
 
     /**
      * Crea la línea de tiempo.
@@ -72,6 +73,24 @@ public final class TimelineStrip extends JComponent {
 
     public List<CollapsePeriod> getCollapses() {
         return collapses;
+    }
+
+    public ChartColors getColors() {
+        return colors;
+    }
+
+    /**
+     * Cambia los colores de las horas, del fondo de la línea y de la marca, por ejemplo para dibujarla en papel.
+     *
+     * @param colors colores nuevos
+     * @throws IllegalArgumentException si son nulos
+     */
+    public void setColors(ChartColors colors) {
+        if (colors == null) {
+            throw new IllegalArgumentException("Los colores son obligatorios.");
+        }
+        this.colors = colors;
+        repaint();
     }
 
     /**
@@ -117,7 +136,7 @@ public final class TimelineStrip extends JComponent {
         FontMetrics metrics = surface.getFontMetrics();
         int margin = metrics.stringWidth("00:00") / 2 + 2;
         double width = Math.max(1, getWidth() - 2.0 * margin);
-        surface.setColor(MeterBar.TRACK);
+        surface.setColor(colors.track());
         surface.fill(new RoundRectangle2D.Double(margin, TRACK_TOP, width, TRACK_HEIGHT, 6, 6));
         surface.setColor(COLLAPSE);
         for (CollapsePeriod collapse : collapses) {
@@ -126,7 +145,7 @@ public final class TimelineStrip extends JComponent {
             surface.fill(new RoundRectangle2D.Double(from, TRACK_TOP, Math.max(3, to - from), TRACK_HEIGHT, 4, 4));
         }
         double end = margin + width * fractionAt(arrivalsEndMinute);
-        surface.setColor(HomeTheme.AMBER);
+        surface.setColor(colors.marker());
         surface.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
                 new float[]{4f, 3f}, 0f));
         surface.draw(new Line2D.Double(end, 4, end, TRACK_TOP + TRACK_HEIGHT + 4));
@@ -136,19 +155,20 @@ public final class TimelineStrip extends JComponent {
         int labelY = TRACK_TOP + TRACK_HEIGHT + 8 + metrics.getAscent();
         int step = tickMinutes();
         for (int minute = 0; minute <= totalMinutes; minute += step) {
-            drawTick(surface, metrics, margin + width * fractionAt(minute), labelY, minute);
+            drawTick(surface, metrics, margin + width * fractionAt(minute), labelY, minute, colors);
         }
         if (totalMinutes % step != 0) {
-            drawTick(surface, metrics, margin + width, labelY, totalMinutes);
+            drawTick(surface, metrics, margin + width, labelY, totalMinutes, colors);
         }
         surface.dispose();
     }
 
-    private static void drawTick(Graphics2D surface, FontMetrics metrics, double x, int labelY, int minute) {
-        surface.setColor(HomeTheme.FAINT);
+    private static void drawTick(Graphics2D surface, FontMetrics metrics, double x, int labelY, int minute,
+                                 ChartColors colors) {
+        surface.setColor(colors.faint());
         surface.draw(new Line2D.Double(x, TRACK_TOP + TRACK_HEIGHT + 1, x, TRACK_TOP + TRACK_HEIGHT + 5));
         String text = ReportFormat.clock(minute);
-        surface.setColor(HomeTheme.MUTED);
+        surface.setColor(colors.muted());
         surface.drawString(text, (float) (x - metrics.stringWidth(text) / 2.0), labelY);
     }
 }

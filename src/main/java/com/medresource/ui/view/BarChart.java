@@ -62,6 +62,7 @@ public final class BarChart extends JComponent {
 
     private final transient List<Bar> bars;
     private final double scale;
+    private transient ChartColors colors = ChartColors.SCREEN;
 
     /**
      * Crea la gráfica.
@@ -88,6 +89,24 @@ public final class BarChart extends JComponent {
 
     public double getScale() {
         return scale;
+    }
+
+    public ChartColors getColors() {
+        return colors;
+    }
+
+    /**
+     * Cambia los colores de los textos y del fondo de las barras, por ejemplo para dibujarla en papel.
+     *
+     * @param colors colores nuevos
+     * @throws IllegalArgumentException si son nulos
+     */
+    public void setColors(ChartColors colors) {
+        if (colors == null) {
+            throw new IllegalArgumentException("Los colores son obligatorios.");
+        }
+        this.colors = colors;
+        repaint();
     }
 
     /**
@@ -127,11 +146,11 @@ public final class BarChart extends JComponent {
             int middle = top + ROW_HEIGHT / 2;
             surface.setFont(labelFont);
             FontMetrics labelMetrics = surface.getFontMetrics();
-            surface.setColor(HomeTheme.MUTED);
+            surface.setColor(colors.muted());
             surface.drawString(fit(bar.label(), labelMetrics, LABEL_WIDTH), 0,
                     middle + labelMetrics.getAscent() / 2 - 2);
             double y = middle - BAR_HEIGHT / 2.0;
-            surface.setColor(MeterBar.TRACK);
+            surface.setColor(colors.track());
             surface.fill(new RoundRectangle2D.Double(barX, y, barWidth, BAR_HEIGHT, BAR_HEIGHT, BAR_HEIGHT));
             double filled = barWidth * fractionOf(i);
             if (filled > 0) {
@@ -141,7 +160,7 @@ public final class BarChart extends JComponent {
             }
             surface.setFont(valueFont);
             FontMetrics valueMetrics = surface.getFontMetrics();
-            surface.setColor(HomeTheme.TEXT);
+            surface.setColor(colors.text());
             surface.drawString(fit(bar.valueText(), valueMetrics, VALUE_WIDTH), barX + barWidth + GAP,
                     middle + valueMetrics.getAscent() / 2 - 2);
         }
