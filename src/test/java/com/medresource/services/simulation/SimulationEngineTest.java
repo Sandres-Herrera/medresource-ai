@@ -2,6 +2,7 @@ package com.medresource.services.simulation;
 
 import com.medresource.model.BloodBank;
 import com.medresource.model.BloodType;
+import com.medresource.model.CareRecord;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.CauseOfDeath;
 import com.medresource.model.CompatibilityLevel;
@@ -11,6 +12,7 @@ import com.medresource.model.Doctor;
 import com.medresource.model.EventType;
 import com.medresource.model.HealthModel;
 import com.medresource.model.Hospital;
+import com.medresource.model.MissingResource;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Morgue;
 import com.medresource.model.Nurse;
@@ -26,6 +28,7 @@ import com.medresource.model.Sex;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.SimulationTrace;
 import com.medresource.model.Specialty;
 import com.medresource.model.StaffMember;
 import com.medresource.model.Symptom;
@@ -42,6 +45,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1152,5 +1156,76 @@ class SimulationEngineTest {
         assertEquals(icuBed, eventOf(result, "P002", EventType.DEATH).resourceCode());
         assertEquals(icuBed, eventOf(result, "P002", EventType.MORGUE_ADMISSION).resourceCode());
         assertTrue(hospital.getIcuBeds().get(0).isAvailable());
+    }
+
+    // ---------- traza para el reporte ----------
+
+    @Test
+    void theTraceHasOneSamplePerSimulatedMinute() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), new FifoStrategy());
+        SimulationResult result = engine.run();
+
+        SimulationTrace trace = engine.getTrace();
+        assertEquals(result.totalMinutes(), trace.samples().size());
+        assertEquals(0, trace.samples().get(0).minute());
+    }
+
+    @Test
+    void theTraceKeepsTheHealthOnArrivalAndWhoAttendedThePatient() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, FLU, 30, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), new FifoStrategy());
+        engine.run();
+
+        SimulationTrace trace = engine.getTrace();
+        assertEquals(80.0, trace.arrivalHealthOf("P001"), 0.0);
+        CareRecord care = trace.careOf("P001").orElseThrow();
+        assertEquals("D01", care.doctorCode());
+        assertEquals(Specialty.GENERAL_MEDICINE, care.doctorSpecialty());
+        assertTrue(care.healthAtStart() <= 80.0);
+        assertTrue(trace.busyMinutesOf("D01") > 0);
+    }
+
+    @Test
+    void aPatientWhoseDoctorIsBusyWaitsForADoctor() {
+        SimulationEngine engine = new SimulationEngine(
+                caseOf(60, profile(1, 0, FLU, 30, 80.0), profile(2, 0, FLU, 31, 80.0)),
+                hospital(Specialty.GENERAL_MEDICINE), new FifoStrategy());
+        engine.run();
+
+        SimulationTrace trace = engine.getTrace();
+        assertTrue(trace.blockedMinutesOf("P001").isEmpty());
+        assertEquals(Set.of(MissingResource.DOCTOR), trace.blockedMinutesOf("P002").keySet());
+        assertTrue(trace.blockedMinutesOf("P002").get(MissingResource.DOCTOR) > 0);
+    }
+
+    @Test
+    void aTransfusionKeepsTheBloodThatWasTaken() {
+        SimulationEngine engine = new SimulationEngine(caseOf(60, profile(1, 0, OPEN_FRACTURE, 30, 70.0)),
+                hospital(Specialty.TRAUMATOLOGY), new FifoStrategy());
+        engine.run();
+
+        CareRecord care = engine.getTrace().careOf("P001").orElseThrow();
+        assertEquals(Map.of(BloodType.O_POSITIVE, 2), care.bloodTaken());
+        assertEquals("Q1", care.operatingRoomCode());
+        assertEquals(3, engine.getTrace().samples().get(care.startMinute()).bloodOf(BloodType.O_POSITIVE));
+    }
+
+    @Test
+    void readingTheTraceInTheMiddleDoesNotChangeTheResult() {
+        SimulationCase simulationCase = new CaseGenerator().generate(CaseConfig.of(7L, Scenario.HIGH_DEMAND));
+        SimulationResult plain = new SimulationEngine(simulationCase,
+                new HospitalFactory().create(HospitalConfig.small()), new FifoStrategy()).run();
+
+        SimulationEngine traced = new SimulationEngine(simulationCase,
+                new HospitalFactory().create(HospitalConfig.small()), new FifoStrategy());
+        for (int minute = 0; minute < 120; minute++) {
+            traced.step();
+            traced.getTrace();
+        }
+        SimulationResult result = traced.run();
+
+        assertEquals(plain.outcomes(), result.outcomes());
+        assertEquals(plain.events(), result.events());
     }
 }
