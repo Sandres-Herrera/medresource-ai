@@ -33,7 +33,8 @@ class TemplateNarratorTest {
         ReportNarrative narrative = TemplateNarrator.write(report, null, "Sin IA.");
 
         assertTrue(narrative.summary().contains("fallecieron " + report.metrics().deaths()));
-        assertTrue(narrative.summary().contains("llegaron " + report.config().patientCount() + " pacientes"));
+        assertTrue(narrative.summary().contains("llegaron " + report.config().patientCount()
+                + " pacientes hasta las 02:00."));
     }
 
     @Test

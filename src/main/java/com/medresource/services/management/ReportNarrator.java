@@ -96,6 +96,19 @@ public class ReportNarrator {
         if (cached(key).isPresent()) {
             return 0;
         }
+        return typicalMillis();
+    }
+
+    /**
+     * Dice cuánto suele tardar la IA, para estimar el tiempo total antes de tener el análisis «¿y si…?» y poder
+     * saber si la respuesta ya está en la caché.
+     *
+     * @return milisegundos: 0 si no hay IA; si no, el promedio de las últimas llamadas
+     */
+    public long typicalMillis() {
+        if (client == null) {
+            return 0;
+        }
         try {
             return cache == null ? NarrativeCache.DEFAULT_CALL_MILLIS : cache.averageCallMillis();
         } catch (DataAccessException e) {

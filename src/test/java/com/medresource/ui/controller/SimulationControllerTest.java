@@ -6,10 +6,13 @@ import com.medresource.model.HospitalConfig;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.Scenario;
 import com.medresource.model.SimulationEvent;
+import com.medresource.model.SimulationReport;
+import com.medresource.services.management.ReportRequest;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.MetricsCalculator;
 import com.medresource.services.simulation.SimulationEngine;
+import com.medresource.services.simulation.SimulationReportBuilder;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
 import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.Renderer2D;
@@ -192,6 +195,38 @@ class SimulationControllerTest {
     @Test
     void metricsAreEmptyUntilTheEnd() {
         assertTrue(controller().metrics().isEmpty());
+    }
+
+    @Test
+    void theDataOfTheReportAreReadyOnlyAtTheEnd() {
+        SimulationController controller = controller();
+
+        assertTrue(controller.reportRequest().isEmpty());
+
+        while (!controller.isFinished()) {
+            controller.skipToNextEvent();
+        }
+        ReportRequest request = controller.reportRequest().orElseThrow();
+
+        assertEquals(SMALL_CASE, request.caseConfig());
+        assertEquals(HospitalConfig.standard(), request.hospitalConfig());
+        assertEquals(controller.metrics().orElseThrow(), new MetricsCalculator().calculate(request.result()));
+        assertEquals(controller.getStrategyName(), request.strategy().get().getName());
+    }
+
+    @Test
+    void theReportIsMadeWithWhatWasSeen() {
+        SimulationController controller = controller();
+        while (!controller.isFinished()) {
+            controller.skipToNextEvent();
+        }
+        ReportRequest request = controller.reportRequest().orElseThrow();
+
+        SimulationReport report = new SimulationReportBuilder().build(request.result(), request.trace(),
+                request.hospital());
+
+        assertEquals(controller.metrics().orElseThrow(), report.metrics());
+        assertEquals(request.result().outcomes().size(), report.metrics().patients());
     }
 
     @Test

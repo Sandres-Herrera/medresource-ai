@@ -81,8 +81,8 @@ public final class TemplateNarrator {
     }
 
     private static String summary(SimulationReport report) {
-        String text = format("En el escenario %s llegaron %d pacientes en %s. Se atendió a %d y fallecieron %d"
-                        + " (%s %%). La espera promedio fue de %s min y la más larga, de %d min.",
+        String text = format("En el escenario %s llegaron %d pacientes hasta las %s. Se atendió a %d y"
+                        + " fallecieron %d (%s %%). La espera promedio fue de %s min y la más larga, de %d min.",
                 report.config().scenario().getDisplayName(), report.config().patientCount(),
                 ReportFacts.clock(report.config().durationMinutes()), report.treated(), report.metrics().deaths(),
                 decimal(100 * report.metrics().mortalityRate()), decimal(report.metrics().averageWaitMinutes()),
