@@ -29,7 +29,7 @@ class HomePanelTest {
     private final List<String> done = new ArrayList<>();
     private final HomePanel panel = new HomePanel(HospitalConfig.standard(), QUICK, DEMO, 10,
             new HomePanel.Actions(() -> done.add("nueva"), () -> done.add("rápida"), () -> done.add("demo"),
-                    () -> done.add("salir")));
+                    () -> done.add("reportes"), () -> done.add("salir")));
 
     /** Acomoda el panel y todo lo que tiene dentro a un tamaño, como lo haría una ventana. */
     private static void layOut(Container container) {
@@ -46,9 +46,11 @@ class HomePanelTest {
         panel.newSimulationButton().doClick();
         panel.quickCard().doClick();
         panel.demoCard().doClick();
+        panel.savedReportsLink().doClick();
         panel.exitLink().doClick();
 
-        assertEquals(List.of("nueva", "rápida", "demo", "salir"), done);
+        assertEquals(List.of("nueva", "rápida", "demo", "reportes", "salir"), done);
+        assertEquals("Reportes guardados", panel.savedReportsLink().getText());
     }
 
     @Test
@@ -101,7 +103,7 @@ class HomePanelTest {
 
     @Test
     void rejectsMissingData() {
-        HomePanel.Actions actions = new HomePanel.Actions(() -> { }, () -> { }, () -> { }, () -> { });
+        HomePanel.Actions actions = new HomePanel.Actions(() -> { }, () -> { }, () -> { }, () -> { }, () -> { });
 
         assertThrows(IllegalArgumentException.class, () -> new HomePanel(null, QUICK, DEMO, 10, actions));
         assertThrows(IllegalArgumentException.class,
@@ -109,7 +111,9 @@ class HomePanelTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new HomePanel(HospitalConfig.standard(), QUICK, DEMO, 10, null));
         assertThrows(IllegalArgumentException.class, () -> new HomePanel.Actions(null, () -> { }, () -> { },
-                () -> { }));
+                () -> { }, () -> { }));
+        assertThrows(IllegalArgumentException.class, () -> new HomePanel.Actions(() -> { }, () -> { }, () -> { },
+                null, () -> { }));
         assertThrows(IllegalArgumentException.class, () -> HomePanel.describe(null, 1));
     }
 

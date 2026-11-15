@@ -22,6 +22,7 @@ import com.medresource.model.CauseOfDeath;
 import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.NarrativeSource;
 import com.medresource.model.PatientStatus;
 import com.medresource.model.TriageLevel;
 import java.util.Arrays;
@@ -278,9 +279,38 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesNineTablesAndOneIndex() throws IOException {
-        assertEquals(9, createdTables().size());
-        assertEquals(10, statements().size());
+    void theScriptCreatesTenTablesAndOneIndex() throws IOException {
+        assertEquals(10, createdTables().size());
+        assertEquals(11, statements().size());
+    }
+
+    // ---------- reportes ----------
+
+    @Test
+    void theReportTableIsCreatedAfterTheResults() throws IOException {
+        List<String> tables = createdTables();
+
+        assertTrue(tables.indexOf("sim_report") > tables.indexOf("sim_result"));
+        assertTrue(reportTable().contains("REFERENCES sim_result (id) ON DELETE CASCADE"));
+        assertTrue(reportTable().contains("CONSTRAINT uq_sim_report_result UNIQUE (result_id)"));
+    }
+
+    @Test
+    void theReportSourcesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_sim_report_source", NarrativeSource.values());
+    }
+
+    @Test
+    void theScriptForExistingDatabasesCreatesTheSameReportTable() throws IOException {
+        List<String> migration = SchemaInstaller.statementsFrom(read("/db/add_report_table.sql"));
+
+        assertEquals(List.of(reportTable()), migration);
+        assertFalse(read("/db/add_report_table.sql").contains("&"));
+    }
+
+    private static String reportTable() throws IOException {
+        return statements().stream().filter(statement -> statement.startsWith("CREATE TABLE sim_report "))
+                .findFirst().orElseThrow();
     }
 
     // ---------- borrado ----------

@@ -5,6 +5,7 @@
 -- existe, Oracle muestra ORA-00942: es normal y se puede ignorar.
 -- ============================================================================
 
+DROP TABLE sim_report CASCADE CONSTRAINTS PURGE;
 DROP TABLE sim_event CASCADE CONSTRAINTS PURGE;
 DROP TABLE patient_result CASCADE CONSTRAINTS PURGE;
 DROP TABLE sim_result CASCADE CONSTRAINTS PURGE;

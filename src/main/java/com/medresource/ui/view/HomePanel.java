@@ -28,7 +28,8 @@ import java.util.List;
 
 /**
  * Contenido de la pantalla de inicio: el logo que late, el nombre de la aplicación, la acción principal (nueva
- * simulación), las dos opciones rápidas como tarjetas, los datos del hospital estándar y el enlace para salir.
+ * simulación), las dos opciones rápidas como tarjetas, los datos del hospital estándar y, abajo, los enlaces a los
+ * reportes guardados y para salir.
  *
  * <p>El contenido queda centrado: si la ventana crece (por ejemplo, maximizada), el espacio sobrante se reparte
  * arriba y abajo y a los lados, y el fondo llena toda la ventana.</p>
@@ -43,7 +44,8 @@ public final class HomePanel extends JPanel {
     private static final long serialVersionUID = 1L;
 
     /** Lo que hace cada opción de la pantalla de inicio. */
-    public record Actions(Runnable newSimulation, Runnable quickSimulation, Runnable demo, Runnable exit) {
+    public record Actions(Runnable newSimulation, Runnable quickSimulation, Runnable demo, Runnable savedReports,
+                          Runnable exit) {
 
         /**
          * Valida las acciones.
@@ -51,7 +53,8 @@ public final class HomePanel extends JPanel {
          * @throws IllegalArgumentException si falta alguna
          */
         public Actions {
-            if (newSimulation == null || quickSimulation == null || demo == null || exit == null) {
+            if (newSimulation == null || quickSimulation == null || demo == null || savedReports == null
+                    || exit == null) {
                 throw new IllegalArgumentException("Todas las acciones de la pantalla de inicio son obligatorias.");
             }
         }
@@ -60,6 +63,7 @@ public final class HomePanel extends JPanel {
     private final HomeButton newSimulation;
     private final ActionCard quick;
     private final ActionCard demo;
+    private final HomeButton savedReports;
     private final HomeButton exit;
     private final List<String> chips = new ArrayList<>();
 
@@ -93,6 +97,8 @@ public final class HomePanel extends JPanel {
                 "Demostración: " + demoCase.scenario().getDisplayName().toLowerCase(), describe(demoCase, speed),
                 "DEMO");
         demo.addActionListener(event -> actions.demo().run());
+        savedReports = new HomeButton(HomeButton.Style.LINK, "Reportes guardados", null);
+        savedReports.addActionListener(event -> actions.savedReports().run());
         exit = new HomeButton(HomeButton.Style.LINK, "Salir", null);
         exit.addActionListener(event -> actions.exit().run());
 
@@ -114,7 +120,7 @@ public final class HomePanel extends JPanel {
         add(Box.createVerticalStrut(8));
         add(centered(chipsOf(hospital)));
         add(Box.createVerticalStrut(22));
-        add(centered(exit));
+        add(centered(links()));
         add(Box.createVerticalStrut(4));
         add(centered(label("Universidad Popular del Cesar · Ingeniería de Sistemas", Font.PLAIN, 11f,
                 HomeTheme.FAINT)));
@@ -152,6 +158,21 @@ public final class HomePanel extends JPanel {
     /** Tarjeta de la demostración. */
     ActionCard demoCard() {
         return demo;
+    }
+
+    /** Enlaces de abajo: los reportes guardados y salir, separados por un punto. */
+    private JPanel links() {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 0));
+        row.setOpaque(false);
+        row.add(savedReports);
+        row.add(label("·", Font.PLAIN, 13f, HomeTheme.FAINT));
+        row.add(exit);
+        return row;
+    }
+
+    /** Enlace a los reportes guardados. */
+    HomeButton savedReportsLink() {
+        return savedReports;
     }
 
     /** Enlace para salir. */
