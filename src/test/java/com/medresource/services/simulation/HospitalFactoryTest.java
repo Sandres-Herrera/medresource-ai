@@ -220,4 +220,34 @@ class HospitalFactoryTest {
     void rejectsAMissingConfiguration() {
         assertThrows(IllegalArgumentException.class, () -> factory.create(null));
     }
+
+    @Test
+    void addsExtraDoctorsOfTheChosenSpecialtiesAfterTheOthers() {
+        Hospital hospital = factory.create(HospitalConfig.standard(), List.of(Specialty.SURGERY, Specialty.PEDIATRICS));
+
+        List<Doctor> doctors = hospital.getDoctors();
+        assertEquals(18, doctors.size());
+        assertEquals("D17", doctors.get(16).getCode());
+        assertEquals(Specialty.SURGERY, doctors.get(16).getSpecialty());
+        assertEquals(Specialty.PEDIATRICS, doctors.get(17).getSpecialty());
+    }
+
+    @Test
+    void withoutExtraDoctorsTheHospitalIsTheSame() {
+        Hospital plain = factory.create(HospitalConfig.standard());
+        Hospital none = factory.create(HospitalConfig.standard(), List.of());
+
+        assertEquals(plain.getDoctors().stream().map(Doctor::describe).toList(),
+                none.getDoctors().stream().map(Doctor::describe).toList());
+    }
+
+    @Test
+    void everyExtraDoctorNeedsASpecialty() {
+        List<Specialty> withNull = new ArrayList<>();
+        withNull.add(null);
+
+        assertThrows(IllegalArgumentException.class, () -> factory.create(HospitalConfig.standard(), null));
+        assertThrows(IllegalArgumentException.class, () -> factory.create(HospitalConfig.standard(), withNull));
+        assertThrows(IllegalArgumentException.class, () -> factory.create(null, List.of()));
+    }
 }

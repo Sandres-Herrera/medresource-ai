@@ -13,18 +13,22 @@ import com.medresource.model.SimulationReport;
 import com.medresource.model.SpecialtyLoad;
 import com.medresource.model.StaffLoad;
 import com.medresource.model.TriageLevelStats;
+import com.medresource.model.WhatIfReport;
+import com.medresource.model.WhatIfResult;
 import com.medresource.services.strategy.ClinicalPriorityStrategy;
+import com.medresource.services.strategy.FifoStrategy;
 
 import java.util.List;
 import java.util.Locale;
 
 /**
  * Programa de consola que simula un caso en el hospital estándar con la prioridad clínica y escribe su reporte
- * de fin de simulación, para revisar los números antes de verlos en la interfaz.
+ * de fin de simulación, con el análisis «¿y si…?», para revisar los números antes de verlos en la interfaz.
  *
  * <p>Argumentos opcionales: el escenario ({@code NORMAL}, {@code HIGH_DEMAND}, {@code CATASTROPHE} o
- * {@code UNEXPECTED_EMERGENCIES}; por defecto {@code CATASTROPHE}) y la semilla (por defecto
- * {@value #DEFAULT_SEED}).</p>
+ * {@code UNEXPECTED_EMERGENCIES}; por defecto {@code CATASTROPHE}), la semilla (por defecto
+ * {@value #DEFAULT_SEED}) y los casos del análisis «¿y si…?» (por defecto
+ * {@value WhatIfAnalyzer#DEFAULT_CASES}). Mientras analiza escribe el avance en la salida de errores.</p>
  */
 public final class ReportPreview {
 
@@ -44,7 +48,22 @@ public final class ReportPreview {
     public static void main(String[] args) {
         Scenario scenario = args.length > 0 ? Scenario.valueOf(args[0]) : Scenario.CATASTROPHE;
         long seed = args.length > 1 ? Long.parseLong(args[1]) : DEFAULT_SEED;
-        System.out.println(render(simulate(scenario, seed, HospitalConfig.standard())));
+        int cases = args.length > 2 ? Integer.parseInt(args[2]) : WhatIfAnalyzer.DEFAULT_CASES;
+        HospitalConfig hospital = HospitalConfig.standard();
+        System.out.println(render(simulate(scenario, seed, hospital)));
+        WhatIfReport whatIf = new WhatIfAnalyzer().analyze(CaseConfig.of(seed, scenario), hospital,
+                ClinicalPriorityStrategy::new, List.of(FifoStrategy::new), cases, ReportPreview::printProgress);
+        System.out.println(renderWhatIf(whatIf));
+    }
+
+    /** Escribe el avance cada vez que se completa otro 10 % de las simulaciones. */
+    private static void printProgress(WhatIfProgress progress) {
+        int step = Math.max(1, progress.total() / 10);
+        if (progress.done() % step == 0 || progress.isFinished()) {
+            long seconds = Math.max(0, progress.estimatedRemainingMillis()) / 1000;
+            System.err.println(String.format(SPANISH, "Analizando alternativas: %d de %d (%.0f %%), faltan unos %d s",
+                    progress.done(), progress.total(), 100 * progress.fraction(), seconds));
+        }
     }
 
     /**
@@ -85,6 +104,59 @@ public final class ReportPreview {
         title("Supuestos y límites", text);
         report.assumptions().forEach(assumption -> line(text, "- %s", assumption));
         return text.toString();
+    }
+
+    /**
+     * Escribe el análisis «¿y si…?»: los recursos que faltaron, la comparación de estrategias y las
+     * recomendaciones.
+     *
+     * @param whatIf resultado del análisis
+     * @return texto de las tres secciones
+     * @throws IllegalArgumentException si falta el análisis
+     */
+    static String renderWhatIf(WhatIfReport whatIf) {
+        if (whatIf == null) {
+            throw new IllegalArgumentException("El análisis «¿y si…?» es obligatorio.");
+        }
+        StringBuilder text = new StringBuilder();
+        title("Recursos que faltaron", text);
+        line(text, "Se simularon %d casos de este escenario con cada alternativa. Hospital tal como está: mortalidad"
+                        + " %s (± %s) y espera promedio %s min.", whatIf.cases(), percent(whatIf.mortality().mean()),
+                percent(whatIf.mortality().confidenceHalfWidth()), decimal(whatIf.waitMinutes().mean()));
+        if (whatIf.missingResources().isEmpty()) {
+            line(text, "Ningún recurso extra evita muertes con claridad.");
+        }
+        whatIf.missingResources().forEach(result -> line(text, "- %s: %s", result.label(), effect(result)));
+        line(text, "Todas las alternativas probadas:");
+        whatIf.resources().forEach(result -> line(text, "  · %s: %s", result.label(), effect(result)));
+        title("Política de atención", text);
+        line(text, "Estrategia actual: %s.", whatIf.strategyName());
+        whatIf.policies().forEach(result -> line(text, "- %s: %s", result.strategyName(), effect(result)));
+        line(text, "%s", whatIf.betterPolicy()
+                .map(result -> "Conviene cambiar a " + result.strategyName() + ".")
+                .orElse("La estrategia actual es la mejor de las probadas."));
+        title("Recomendaciones", text);
+        List<WhatIfResult> recommendations = whatIf.recommendations();
+        if (recommendations.isEmpty()) {
+            line(text, "El hospital no necesita cambios: ninguna alternativa lo mejora con claridad.");
+        }
+        for (int i = 0; i < recommendations.size(); i++) {
+            line(text, "%d. %s: %s", i + 1, recommendations.get(i).label(), effect(recommendations.get(i)));
+        }
+        return text.toString();
+    }
+
+    /** Efecto de una alternativa en la mortalidad y la espera, con el margen de la mortalidad. */
+    private static String effect(WhatIfResult result) {
+        double margin = 100 * result.mortalityChange().confidenceHalfWidth();
+        String deaths = String.format(SPANISH, "%s %s muertes por cada 100 pacientes (± %s)",
+                result.deathsAvoidedPer100() >= 0 ? "evita" : "suma", decimal(Math.abs(result.deathsAvoidedPer100())),
+                decimal(margin));
+        double wait = result.waitChange().mean();
+        String waitText = String.format(SPANISH, "%s la espera %s min", wait <= 0 ? "acorta" : "alarga",
+                decimal(Math.abs(wait)));
+        String verdict = result.isImprovement() ? " · mejora" : "";
+        return deaths + ", " + waitText + verdict;
     }
 
     private static void summary(SimulationReport report, StringBuilder text) {
