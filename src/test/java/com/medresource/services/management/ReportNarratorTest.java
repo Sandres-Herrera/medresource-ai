@@ -109,6 +109,22 @@ class ReportNarratorTest {
     }
 
     @Test
+    void tellsHowLongTheAiUsuallyTakes() throws IOException {
+        NarrativeCache cache = newCache();
+        ReportNarrator narrator = new ReportNarrator(new FakeAi(() -> goodAnswer(0)), cache);
+
+        assertEquals(0, new ReportNarrator(null, null).typicalMillis());
+        assertEquals(NarrativeCache.DEFAULT_CALL_MILLIS, narrator.typicalMillis());
+        assertEquals(NarrativeCache.DEFAULT_CALL_MILLIS,
+                new ReportNarrator(new FakeAi(() -> goodAnswer(0)), null).typicalMillis());
+
+        cache.recordCallMillis(3000);
+        cache.recordCallMillis(5000);
+
+        assertEquals(4000, narrator.typicalMillis());
+    }
+
+    @Test
     void anErrorOfTheAiUsesTheTemplatesWithTheReason() throws IOException {
         FakeAi ai = new FakeAi(() -> {
             throw new AiClientException(AiClientException.Reason.QUOTA, null);
