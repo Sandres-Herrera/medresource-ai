@@ -2,12 +2,14 @@ package com.medresource.services.simulation;
 
 import com.medresource.model.Assignable;
 import com.medresource.model.Bed;
+import com.medresource.model.BloodType;
 import com.medresource.model.CauseOfDeath;
 import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.Disease;
 import com.medresource.model.EventType;
 import com.medresource.model.HealthModel;
 import com.medresource.model.Hospital;
+import com.medresource.model.MissingResource;
 import com.medresource.model.Morgue;
 import com.medresource.model.Patient;
 import com.medresource.model.PatientOutcome;
@@ -16,16 +18,19 @@ import com.medresource.model.PatientStatus;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.SimulationTrace;
 import com.medresource.model.StaffMember;
 import com.medresource.model.TreatmentType;
 import com.medresource.model.TriageLevel;
 import com.medresource.model.TriageStation;
 import com.medresource.services.strategy.AllocationStrategy;
 import com.medresource.services.strategy.Assignment;
+import com.medresource.services.strategy.PriorityBasedStrategy;
 import com.medresource.services.strategy.WaitingPatient;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -88,6 +93,10 @@ import java.util.Set;
  *
  * <p>Los pacientes que siguen esperando {@value #EXTRA_MINUTES} minutos después
  * de la última hora de llegada se registran como sin atender.</p>
+ *
+ * <p>Mientras simula, el motor guarda también una {@link SimulationTrace} (salud al llegar, cada atención,
+ * una foto del hospital por minuto y qué le faltaba a cada paciente que esperaba) para el reporte de fin de
+ * simulación. Guardarla no cambia ninguna decisión.</p>
  */
 public class SimulationEngine {
 
@@ -149,6 +158,7 @@ public class SimulationEngine {
     private final Map<Patient, FirstAid> firstAid = new LinkedHashMap<>();
     private Map<Patient, FirstAid> pausedFirstAid = Map.of();
     private final int endLimit;
+    private final TraceRecorder recorder;
 
     private int minute;
     private int nextArrival;
@@ -170,6 +180,7 @@ public class SimulationEngine {
         this.strategy = strategy;
         this.patients = simulationCase.createPatients();
         this.endLimit = simulationCase.config().durationMinutes() + EXTRA_MINUTES;
+        this.recorder = new TraceRecorder(hospital);
     }
 
     /**
@@ -195,6 +206,8 @@ public class SimulationEngine {
         }
         assignResources();
         moveBodiesToMorgue();
+        recorder.minuteEnded(minute, triageQueue, inTriage.stream().map(TriageInProgress::patient).toList(),
+                waiting, active.size(), this::lacksFirstAid);
         minute++;
     }
 
@@ -236,6 +249,15 @@ public class SimulationEngine {
                         careLevels.get(patient)))
                 .toList();
         return new SimulationResult(strategy.getName(), simulationCase.config(), minute, outcomes, events);
+    }
+
+    /**
+     * Entrega la traza de lo simulado hasta ahora: sirve para armar el reporte de fin de simulación.
+     *
+     * @return traza inmutable; si la simulación no ha terminado, llega hasta el último minuto simulado
+     */
+    public SimulationTrace getTrace() {
+        return recorder.toTrace();
     }
 
     /**
@@ -428,6 +450,7 @@ public class SimulationEngine {
      * valoración, pero solo se anuncia cuando la valoración termina.
      */
     private void arrive(Patient patient) {
+        recorder.arrival(patient);
         emit(EventType.ARRIVAL, patient, null,
                 patient.getCode() + " llega al hospital (" + patient.getAge() + " años).");
         patient.assignTriage(triageService.classify(patient));
@@ -520,6 +543,7 @@ public class SimulationEngine {
             }
             startTreatment(keepFirstAidBed(decision.get()));
         }
+        recorder.blockedAfterAssignment(waiting, this::missingFor);
         pausedFirstAid = Map.of();
         giveFirstAid(before);
     }
@@ -638,6 +662,30 @@ public class SimulationEngine {
         }
     }
 
+    /** Unidades que se retiraron de cada tipo de sangre desde la foto del banco que se recibe. */
+    private Map<BloodType, Integer> bloodTakenSince(Map<BloodType, Integer> before) {
+        Map<BloodType, Integer> taken = new EnumMap<>(BloodType.class);
+        hospital.getBloodBank().getUnits().forEach((type, units) -> {
+            int difference = before.get(type) - units;
+            if (difference > 0) {
+                taken.put(type, difference);
+            }
+        });
+        return taken;
+    }
+
+    /** Recursos libres que le faltan a un paciente de la sala de espera, según su diagnóstico. */
+    private Set<MissingResource> missingFor(Patient patient) {
+        return hospital.missingFor(diagnose(patient), patient.getAge(), patient.getBloodType(),
+                PriorityBasedStrategy.BLOOD_UNITS_PER_TREATMENT);
+    }
+
+    /** Un paciente de la sala de espera es crítico y nadie le está dando primeros auxilios. */
+    private boolean lacksFirstAid(Patient patient) {
+        FirstAid aid = firstAid.get(patient);
+        return isCritical(patient) && (aid == null || aid.carer() == null);
+    }
+
     /** Un paciente que espera es crítico si es de triage I o si su salud ya bajó a la salud crítica. */
     private boolean isCritical(Patient patient) {
         return patient.getTriageLevel().skipsTriageStation() || patient.getHealth() <= CRITICAL_HEALTH;
@@ -658,9 +706,13 @@ public class SimulationEngine {
         if (assignment.bed() != null) {
             assignment.bed().assign(patient, endMinute);
         }
+        Map<BloodType, Integer> bloodTaken = Map.of();
         if (assignment.bloodUnits() > 0) {
+            Map<BloodType, Integer> before = hospital.getBloodBank().getUnits();
             hospital.getBloodBank().withdraw(patient.getBloodType(), assignment.bloodUnits());
+            bloodTaken = bloodTakenSince(before);
         }
+        recorder.careStarted(assignment, minute, staffEndMinute, endMinute, bloodTaken, patient.getHealth());
         waiting.remove(patient);
         active.add(new ActiveTreatment(patient, assignment, staffEndMinute, endMinute, effectiveness));
         treatmentStarts.put(patient, minute);
