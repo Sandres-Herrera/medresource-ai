@@ -21,6 +21,9 @@ dist/
 # ── Credenciales locales de la base de datos (nunca se suben) ──
 src/main/resources/db.properties
 
+# ── Clave local de la API de la IA (nunca se sube) ──
+src/main/resources/ai.properties
+
 # ── Registros y resultados generados al ejecutar ──
 *.log
 resultados/
