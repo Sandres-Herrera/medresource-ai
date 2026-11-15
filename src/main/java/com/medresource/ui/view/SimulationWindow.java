@@ -1,8 +1,9 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.GeneratedReport;
 import com.medresource.model.HospitalLayout;
-import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
+import com.medresource.services.management.ReportGenerator;
 import com.medresource.ui.controller.EventCategory;
 import com.medresource.ui.controller.EventFilter;
 import com.medresource.ui.controller.EventLog;
@@ -72,6 +73,11 @@ import java.util.Optional;
  * presente») la simulación sigue donde estaba. A pantalla completa, al pasar el ratón sobre una cama, un quirófano o
  * un consultorio aparece quién está ahí, y el botón «Seguir» hace que la cámara siga al paciente elegido.</p>
  *
+ * <p>Al terminar la simulación se abre la ventana del reporte ({@link ReportWindow}), que primero muestra cómo va su
+ * generación y después el reporte; el botón «Ver reporte», junto al progreso del caso, lo vuelve a abrir sin
+ * generarlo otra vez. «Ver en el plano», en un caso para revisar, selecciona a ese paciente aquí: su ficha y su
+ * registro de eventos cuentan lo que le pasó. Volver a empezar cierra el reporte.</p>
+ *
  * <p>Solo muestra lo que le da el {@link SimulationController} y le pasa las acciones del usuario; no tiene
  * reglas de simulación.</p>
  */
@@ -83,6 +89,8 @@ public final class SimulationWindow extends JFrame {
     public static final String TITLE = "MedResource AI — Simulación";
     /** Cartel que se ve sobre el plano durante la repetición. */
     public static final String REPLAY_BANNER = "Repetición · últimos 30 s";
+    /** Texto del botón que vuelve a abrir el reporte cuando la simulación terminó. */
+    public static final String REPORT_BUTTON = "Ver reporte";
 
     private static final int FRAME_MILLIS = 33;
     private static final int GAP = 10;
@@ -107,10 +115,13 @@ public final class SimulationWindow extends JFrame {
     private final EventLogPanel logPanel = new EventLogPanel();
     private final MeterBar progressBar = new MeterBar(HomeTheme.ACCENT);
     private final JLabel progressText = new JLabel();
+    private final HomeButton reportButton = new HomeButton(HomeButton.Style.OUTLINE, REPORT_BUTTON, HomeIcon.LIST);
     private final transient EventLog eventLog = new EventLog();
     private final Timer timer;
     private long lastFrameNanos;
-    private boolean summaryShown;
+    private boolean reportOpened;
+    private transient ReportWindow reportWindow;
+    private transient GeneratedReport generatedReport;
     private transient MapFullscreen fullscreen;
     private transient FullscreenBar fullscreenBar;
     private final transient ReplayBuffer replayBuffer = new ReplayBuffer();
@@ -149,6 +160,7 @@ public final class SimulationWindow extends JFrame {
             public void windowClosed(WindowEvent event) {
                 timer.stop();
                 closeFullscreen();
+                closeReport();
             }
         });
         topBar.setSpeed(controller.getSpeed());
@@ -232,9 +244,13 @@ public final class SimulationWindow extends JFrame {
         label.setForeground(HomeTheme.MUTED);
         progressText.setFont(HomeTheme.font(Font.PLAIN, 12f));
         progressText.setForeground(HomeTheme.MUTED);
+        JPanel end = new JPanel(new BorderLayout(12, 0));
+        end.setOpaque(false);
+        end.add(progressText, BorderLayout.CENTER);
+        end.add(reportButton, BorderLayout.EAST);
         row.add(label, BorderLayout.WEST);
         row.add(progressBar, BorderLayout.CENTER);
-        row.add(progressText, BorderLayout.EAST);
+        row.add(end, BorderLayout.EAST);
         return row;
     }
 
@@ -252,6 +268,7 @@ public final class SimulationWindow extends JFrame {
         topBar.replayButton().addActionListener(event -> toggleReplay());
         topBar.restartButton().addActionListener(event -> restart());
         topBar.captureButton().addActionListener(event -> saveCapture());
+        reportButton.addActionListener(event -> openReport());
         topBar.onSpeed(this::changeSpeed);
         mapFrame.onFullscreen(this::openFullscreen);
         mapPanel.setSelectionListener(code -> onSelectionChanged());
@@ -445,13 +462,15 @@ public final class SimulationWindow extends JFrame {
         showReplaying(false);
         replayBuffer.clear();
         staffCardPanel.clear();
+        closeReport();
+        generatedReport = null;
         controller.reset();
         mapPanel.showLayout(controller.getLayout());
         mapPanel.select(null);
         eventLog.clear();
         logPanel.showEntries(List.of());
         onSelectionChanged();
-        summaryShown = false;
+        reportOpened = false;
         refresh();
     }
 
@@ -470,11 +489,11 @@ public final class SimulationWindow extends JFrame {
                     controller.markers(), controller.staffMarkers(), controller.porterMarkers(),
                     controller.overflow(), liveAlerts);
         }
-        if (controller.isFinished() && !summaryShown) {
-            summaryShown = true;
+        if (controller.isFinished() && !reportOpened) {
+            reportOpened = true;
             refresh();
             closeFullscreen();
-            showSummary();
+            openReport();
         }
     }
 
@@ -580,6 +599,7 @@ public final class SimulationWindow extends JFrame {
         topBar.skipButton().setEnabled(!finished);
         boolean canReplay = replay != null || replayBuffer.canReplay();
         topBar.replayButton().setEnabled(canReplay);
+        reportButton.setVisible(finished);
         if (fullscreenBar != null) {
             fullscreenBar.setRunning(controller.isRunning());
             fullscreenBar.playButton().setEnabled(!finished);
@@ -588,20 +608,41 @@ public final class SimulationWindow extends JFrame {
         }
     }
 
-    private void showSummary() {
-        controller.metrics().ifPresent(metrics -> JOptionPane.showMessageDialog(this, summaryText(metrics),
-                "Simulación terminada", JOptionPane.INFORMATION_MESSAGE));
+    /**
+     * Abre el reporte: lo trae al frente si ya está abierto, lo vuelve a mostrar si ya se generó o, si no, empieza
+     * a generarlo. Solo hace algo cuando la simulación terminó.
+     */
+    private void openReport() {
+        if (reportWindow != null && reportWindow.isDisplayable()) {
+            reportWindow.toFront();
+            return;
+        }
+        if (generatedReport != null) {
+            reportWindow = ReportWindow.showing(generatedReport, this::showCase);
+            return;
+        }
+        controller.reportRequest().ifPresent(request -> reportWindow = ReportWindow.generating(
+                ReportGenerator.fromConfiguration(), request, this::showCase, report -> generatedReport = report));
     }
 
-    private String summaryText(RunMetrics metrics) {
-        return String.format("Estrategia: %s%n%nPacientes: %d%nSobrevivientes: %d%nFallecidos: %d (%.1f %%)%n"
-                        + "Muertes evitables: %d%nRemitidos: %d%nSin atender: %d%n"
-                        + "Espera promedio: %.1f min%nEspera promedio de urgentes: %.1f min%n"
-                        + "Años de vida salvados: %.0f%nMinutos simulados: %d",
-                metrics.strategyName(), metrics.patients(), metrics.survivors(), metrics.deaths(),
-                100 * metrics.mortalityRate(), metrics.avoidableDeaths(), metrics.referred(), metrics.unattended(),
-                metrics.averageWaitMinutes(), metrics.urgentAverageWaitMinutes(), metrics.lifeYearsSaved(),
-                controller.getMinute());
+    /** Cierra el reporte si está abierto; si todavía se estaba generando, la generación se detiene. */
+    private void closeReport() {
+        if (reportWindow != null) {
+            reportWindow.dispose();
+            reportWindow = null;
+        }
+    }
+
+    /**
+     * Muestra un paciente de los casos para revisar: lo selecciona en el plano, deja en el registro solo su historia
+     * y trae esta ventana al frente.
+     */
+    private void showCase(String patientCode) {
+        toFront();
+        mapPanel.select(patientCode);
+        onSelectionChanged();
+        logPanel.choose(EventCategory.ALL);
+        logPanel.showOnlySelected();
     }
 
     private void saveCapture() {
