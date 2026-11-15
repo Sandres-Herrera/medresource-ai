@@ -7,6 +7,7 @@ import com.medresource.model.PatientStatus;
 import com.medresource.model.Position;
 import com.medresource.model.RunMetrics;
 import com.medresource.model.SimulationEvent;
+import com.medresource.services.management.ReportRequest;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
@@ -231,6 +232,22 @@ public final class SimulationController {
             return Optional.empty();
         }
         return Optional.of(new MetricsCalculator().calculate(engine.getResult()));
+    }
+
+    /**
+     * Datos para generar el reporte de fin de simulación: el resultado, la traza y el hospital de lo que se vio, y
+     * cómo volver a simular el mismo caso con la misma estrategia.
+     *
+     * @return los datos si la simulación terminó; vacío si todavía no
+     */
+    public Optional<ReportRequest> reportRequest() {
+        if (!player.isFinished()) {
+            return Optional.empty();
+        }
+        long seed = setup.caseConfig().seed();
+        StrategyOption option = setup.strategy();
+        return Optional.of(new ReportRequest(engine.getResult(), engine.getTrace(), engine.getHospital(),
+                setup.hospital(), () -> option.create(seed)));
     }
 
     /**
