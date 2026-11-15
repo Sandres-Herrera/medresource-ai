@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Construye hospitales listos para simular.
@@ -66,14 +67,34 @@ public class HospitalFactory {
      * @throws IllegalArgumentException si la configuración es nula
      */
     public Hospital create(HospitalConfig config) {
+        return create(config, List.of());
+    }
+
+    /**
+     * Crea un hospital nuevo con todos sus recursos libres y, además de los médicos de la configuración,
+     * médicos extra de las especialidades indicadas. Sirve para probar qué pasaría con un especialista más.
+     *
+     * <p>Los médicos extra van después de los demás, con los códigos que siguen (con 16 médicos, el primer
+     * extra es {@code D17}).</p>
+     *
+     * @param config       cantidad de recursos de cada tipo
+     * @param extraDoctors especialidad de cada médico extra; vacío si no hay
+     * @return hospital nuevo, independiente de los creados antes
+     * @throws IllegalArgumentException si falta la configuración o la lista, o si algún médico extra no tiene
+     *                                  especialidad
+     */
+    public Hospital create(HospitalConfig config, List<Specialty> extraDoctors) {
         if (config == null) {
             throw new IllegalArgumentException("La configuración del hospital es obligatoria.");
+        }
+        if (extraDoctors == null || extraDoctors.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("Cada médico extra debe tener especialidad.");
         }
         return new Hospital(
                 createRooms(config.hospitalizationBeds()),
                 new Room("UCI", RoomType.ICU, config.icuBeds()),
                 createOperatingRooms(config.operatingRooms()),
-                createDoctors(config.doctors()),
+                createDoctors(config.doctors(), extraDoctors),
                 createNurses(config.nurses()),
                 createBloodBank(config.bloodUnitsPerType()),
                 new Morgue(config.morgueCapacity()));
@@ -100,10 +121,15 @@ public class HospitalFactory {
         return operatingRooms;
     }
 
-    private List<Doctor> createDoctors(int count) {
+    private List<Doctor> createDoctors(int count, List<Specialty> extraDoctors) {
         List<Doctor> doctors = new ArrayList<>();
         for (int id = 1; id <= count; id++) {
             Specialty specialty = DOCTOR_ROTATION.get((id - 1) % DOCTOR_ROTATION.size());
+            doctors.add(new Doctor(id, specialty, 28 + (id * 7) % 25, sexFor(id)));
+        }
+        int id = count;
+        for (Specialty specialty : extraDoctors) {
+            id++;
             doctors.add(new Doctor(id, specialty, 28 + (id * 7) % 25, sexFor(id)));
         }
         return doctors;
