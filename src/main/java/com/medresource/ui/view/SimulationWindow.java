@@ -3,6 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.GeneratedReport;
 import com.medresource.model.HospitalLayout;
 import com.medresource.model.SimulationEvent;
+import com.medresource.services.management.ReportArchive;
 import com.medresource.services.management.ReportGenerator;
 import com.medresource.ui.controller.EventCategory;
 import com.medresource.ui.controller.EventFilter;
@@ -610,7 +611,8 @@ public final class SimulationWindow extends JFrame {
 
     /**
      * Abre el reporte: lo trae al frente si ya está abierto, lo vuelve a mostrar si ya se generó o, si no, empieza
-     * a generarlo. Solo hace algo cuando la simulación terminó.
+     * a generarlo; al terminar se guarda en la base de datos, si está configurada. Solo hace algo cuando la
+     * simulación terminó.
      */
     private void openReport() {
         if (reportWindow != null && reportWindow.isDisplayable()) {
@@ -622,7 +624,8 @@ public final class SimulationWindow extends JFrame {
             return;
         }
         controller.reportRequest().ifPresent(request -> reportWindow = ReportWindow.generating(
-                ReportGenerator.fromConfiguration(), request, this::showCase, report -> generatedReport = report));
+                ReportGenerator.fromConfiguration(), ReportArchive::fromConfiguration, request, this::showCase,
+                report -> generatedReport = report));
     }
 
     /** Cierra el reporte si está abierto; si todavía se estaba generando, la generación se detiene. */
