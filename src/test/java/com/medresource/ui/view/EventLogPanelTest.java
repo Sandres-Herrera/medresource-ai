@@ -89,6 +89,23 @@ class EventLogPanelTest {
     }
 
     @Test
+    void theBoxCanBeCheckedFromOutsideOnlyIfThereIsAPatient() {
+        List<String> heard = new ArrayList<>();
+        panel.onFilterChanged(() -> heard.add("filtro"));
+
+        assertFalse(panel.showOnlySelected());
+        assertFalse(panel.onlySelectedBox().isSelected());
+        assertTrue(heard.isEmpty());
+
+        panel.setOnlySelectedEnabled(true);
+
+        assertTrue(panel.showOnlySelected());
+        assertTrue(panel.onlySelectedBox().isSelected());
+        assertEquals(List.of("filtro"), heard);
+        assertEquals(new EventFilter(EventCategory.ALL, "P003"), panel.filter("P003"));
+    }
+
+    @Test
     void theRowsOfTheSelectedPatientAreHighlightedAndAClickSelectsHim() {
         List<String> clicked = new ArrayList<>();
         panel.onPatientClicked(clicked::add);

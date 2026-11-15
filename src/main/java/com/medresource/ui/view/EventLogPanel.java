@@ -194,6 +194,22 @@ public final class EventLogPanel extends ThemedCard {
     }
 
     /**
+     * Marca la casilla «Solo el paciente seleccionado», como si el usuario la hubiera marcado, y vuelve a filtrar el
+     * registro. Sirve para mostrar toda la historia de un paciente que se eligió desde el reporte.
+     *
+     * @return {@code true} si se marcó; {@code false} si la casilla estaba deshabilitada porque no hay paciente
+     *         seleccionado
+     */
+    public boolean showOnlySelected() {
+        if (!onlySelected.isEnabled()) {
+            return false;
+        }
+        onlySelected.setSelected(true);
+        filterAction.run();
+        return true;
+    }
+
+    /**
      * Cambia las filas por otras, por ejemplo al cambiar el filtro; baja hasta la última.
      *
      * @param entries filas, de la más vieja a la más reciente
