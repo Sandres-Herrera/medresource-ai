@@ -61,7 +61,8 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
     }
 
     /**
-     * Busca los recursos que necesita un paciente.
+     * Busca los recursos que necesita un paciente. Si al hospital le falta alguno
+     * ({@link Hospital#missingFor}), el paciente no se puede atender todavía.
      *
      * <p>Una cirugía reserva también la cama donde el paciente se recuperará (en UCI si la enfermedad lo
      * requiere), para que al salir del quirófano tenga a dónde ir.</p>
@@ -75,41 +76,20 @@ public abstract class PriorityBasedStrategy implements AllocationStrategy {
         Patient patient = candidate.patient();
         Disease diagnosis = candidate.diagnosis();
         TreatmentType treatment = diagnosis.getTreatment();
-
-        Optional<Doctor> doctor = bestDoctor(hospital.freeDoctors(), diagnosis, patient.getAge());
-        List<Nurse> freeNurses = hospital.freeNurses();
-        if (doctor.isEmpty() || freeNurses.size() < treatment.getRequiredNurses()) {
+        if (!hospital.missingFor(diagnosis, patient.getAge(), patient.getBloodType(), BLOOD_UNITS_PER_TREATMENT)
+                .isEmpty()) {
             return Optional.empty();
         }
 
+        Doctor doctor = bestDoctor(hospital.freeDoctors(), diagnosis, patient.getAge()).orElseThrow();
+        List<Nurse> nurses = hospital.freeNurses().subList(0, treatment.getRequiredNurses());
         Bed bed = null;
         if (diagnosis.requiresIcu() || treatment.requiresBed() || treatment.hasRecovery()) {
-            List<Bed> beds = diagnosis.requiresIcu() ? hospital.freeIcuBeds() : hospital.freeBeds();
-            if (beds.isEmpty() || !hospital.hasNursingCapacityFor(diagnosis.requiresIcu())) {
-                return Optional.empty();
-            }
-            bed = beds.get(0);
+            bed = (diagnosis.requiresIcu() ? hospital.freeIcuBeds() : hospital.freeBeds()).get(0);
         }
-
-        OperatingRoom operatingRoom = null;
-        if (treatment.requiresOperatingRoom()) {
-            List<OperatingRoom> rooms = hospital.freeOperatingRooms();
-            if (rooms.isEmpty()) {
-                return Optional.empty();
-            }
-            operatingRoom = rooms.get(0);
-        }
-
-        int bloodUnits = 0;
-        if (diagnosis.requiresBlood()) {
-            bloodUnits = BLOOD_UNITS_PER_TREATMENT;
-            if (!hospital.getBloodBank().hasCompatibleUnits(patient.getBloodType(), bloodUnits)) {
-                return Optional.empty();
-            }
-        }
-
-        return Optional.of(new Assignment(patient, doctor.get(),
-                freeNurses.subList(0, treatment.getRequiredNurses()), bed, operatingRoom, bloodUnits));
+        OperatingRoom operatingRoom = treatment.requiresOperatingRoom() ? hospital.freeOperatingRooms().get(0) : null;
+        int bloodUnits = diagnosis.requiresBlood() ? BLOOD_UNITS_PER_TREATMENT : 0;
+        return Optional.of(new Assignment(patient, doctor, nurses, bed, operatingRoom, bloodUnits));
     }
 
     /** Elige el médico más efectivo; a igual efectividad, el primero de la lista. */
