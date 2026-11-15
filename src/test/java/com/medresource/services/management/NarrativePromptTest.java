@@ -49,6 +49,14 @@ class NarrativePromptTest {
     }
 
     @Test
+    void explainsThatTheHoursAreOfTheClockOfTheSimulation() {
+        String prompt = NarrativePrompt.of(facts(), 0);
+
+        assertTrue(prompt.contains("reloj de la simulación, que empieza a las 00:00"));
+        assertTrue(prompt.contains("escribe \"hasta las\" y esa hora"));
+    }
+
+    @Test
     void needsTheFacts() {
         assertThrows(IllegalArgumentException.class, () -> NarrativePrompt.of(null, 1));
         assertThrows(IllegalArgumentException.class, () -> NarrativePrompt.of(facts(), -1));

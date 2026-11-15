@@ -51,6 +51,9 @@ public final class NarrativePrompt {
                 4. Escribe en español, en tono de informe técnico, con frases cortas, sin markdown ni viñetas.
                 5. No menciones que eres una IA ni hables de los HECHOS como un archivo.
                 6. Los códigos como P024 o D03 identifican pacientes y médicos; puedes nombrarlos.
+                7. Las horas (hh:mm) son del reloj de la simulación, que empieza a las 00:00. \
+                "duracion_de_las_llegadas" es la hora hasta la que llegaron pacientes: escribe "hasta las" y esa \
+                hora, nunca "en" y esa hora.
 
                 Responde solo con un JSON con esta forma exacta:
                 {
