@@ -1,0 +1,17 @@
+# Configuración de la IA que redacta el reporte de fin de simulación (Gemini).
+#
+# Copia este archivo como ai.properties en esta misma carpeta (src/main/resources)
+# y pon tu clave. ai.properties está en .gitignore: nunca se sube al repositorio.
+# La clave se crea en Google AI Studio (Dashboard > API Keys).
+#
+# Sin este archivo (y sin la variable de entorno GEMINI_API_KEY) el reporte se
+# redacta con plantillas, sin IA.
+
+# Clave de la API de Gemini.
+gemini.apiKey=PEGA_AQUI_TU_CLAVE
+
+# Modelo que redacta. Flash-Lite tiene el mayor límite diario en la capa gratuita.
+gemini.model=gemini-flash-lite-latest
+
+# Segundos que se espera la respuesta antes de usar las plantillas.
+gemini.timeoutSeconds=30
