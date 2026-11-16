@@ -3,6 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
+import com.medresource.services.management.ComparisonArchive;
 import com.medresource.services.management.ReportArchive;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.controller.SimulationSetup;
@@ -24,8 +25,8 @@ import java.util.List;
 
 /**
  * Ventana principal de MedResource AI: la pantalla de inicio ({@link HomePanel}), desde donde se configura una
- * simulación nueva, se lanza una rápida con el hospital estándar o se abren los reportes guardados
- * ({@link SavedReportsWindow}).
+ * simulación nueva, se lanza una rápida con el hospital estándar, se abren los reportes guardados
+ * ({@link SavedReportsWindow}) o se comparan dos simulaciones guardadas ({@link CompareRunsWindow}).
  *
  * <p>Lleva el logo de la aplicación como icono, empieza con el foco en «Nueva simulación» (Enter la abre) y se
  * cierra también con la tecla Escape. Se puede agrandar o maximizar: el contenido queda centrado. No se puede
@@ -59,7 +60,11 @@ public final class MainWindow extends JFrame {
                         () -> CaseConfigDialog.ask(this).ifPresent(request -> open(request.setup(), request.speed())),
                         () -> open(SimulationSetup.standard(QUICK_CASE), DEMO_SPEED),
                         () -> open(SimulationSetup.standard(DEMO_CASE), DEMO_SPEED),
-                        () -> SavedReportsWindow.open(ReportArchive::fromConfiguration),
+                        () -> SavedReportsWindow.open(ReportArchive::fromConfiguration,
+                                ComparisonArchive::fromConfiguration,
+                                request -> open(request.setup(), request.speed())),
+                        () -> CompareRunsWindow.open(ReportArchive::fromConfiguration,
+                                ComparisonArchive::fromConfiguration),
                         this::dispose));
         home.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "salir");
         home.getActionMap().put("salir", new AbstractAction() {

@@ -45,7 +45,7 @@ public final class HomePanel extends JPanel {
 
     /** Lo que hace cada opción de la pantalla de inicio. */
     public record Actions(Runnable newSimulation, Runnable quickSimulation, Runnable demo, Runnable savedReports,
-                          Runnable exit) {
+                          Runnable compareRuns, Runnable exit) {
 
         /**
          * Valida las acciones.
@@ -54,7 +54,7 @@ public final class HomePanel extends JPanel {
          */
         public Actions {
             if (newSimulation == null || quickSimulation == null || demo == null || savedReports == null
-                    || exit == null) {
+                    || compareRuns == null || exit == null) {
                 throw new IllegalArgumentException("Todas las acciones de la pantalla de inicio son obligatorias.");
             }
         }
@@ -64,6 +64,7 @@ public final class HomePanel extends JPanel {
     private final ActionCard quick;
     private final ActionCard demo;
     private final HomeButton savedReports;
+    private final HomeButton compareRuns;
     private final HomeButton exit;
     private final List<String> chips = new ArrayList<>();
 
@@ -99,6 +100,8 @@ public final class HomePanel extends JPanel {
         demo.addActionListener(event -> actions.demo().run());
         savedReports = new HomeButton(HomeButton.Style.LINK, "Reportes guardados", null);
         savedReports.addActionListener(event -> actions.savedReports().run());
+        compareRuns = new HomeButton(HomeButton.Style.LINK, "Comparar simulaciones", null);
+        compareRuns.addActionListener(event -> actions.compareRuns().run());
         exit = new HomeButton(HomeButton.Style.LINK, "Salir", null);
         exit.addActionListener(event -> actions.exit().run());
 
@@ -160,11 +163,13 @@ public final class HomePanel extends JPanel {
         return demo;
     }
 
-    /** Enlaces de abajo: los reportes guardados y salir, separados por un punto. */
+    /** Enlaces de abajo: los reportes guardados, comparar simulaciones y salir, separados por puntos. */
     private JPanel links() {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 0));
         row.setOpaque(false);
         row.add(savedReports);
+        row.add(label("·", Font.PLAIN, 13f, HomeTheme.FAINT));
+        row.add(compareRuns);
         row.add(label("·", Font.PLAIN, 13f, HomeTheme.FAINT));
         row.add(exit);
         return row;
@@ -173,6 +178,11 @@ public final class HomePanel extends JPanel {
     /** Enlace a los reportes guardados. */
     HomeButton savedReportsLink() {
         return savedReports;
+    }
+
+    /** Enlace para comparar dos simulaciones guardadas. */
+    HomeButton compareRunsLink() {
+        return compareRuns;
     }
 
     /** Enlace para salir. */

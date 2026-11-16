@@ -159,18 +159,30 @@ public final class HomeButton extends Clickable {
             surface.setColor(HomeTheme.ACCENT);
             surface.draw(new RoundRectangle2D.Double(0.5, 0.5, width - 1.0, height - 1.0, ARC + 4, ARC + 4));
         }
-        Color fill = isPressed() ? HomeTheme.ACCENT.darker() : isHover() ? HomeTheme.ACCENT_HOVER : HomeTheme.ACCENT;
-        surface.setColor(fill);
+        surface.setColor(fill());
         surface.fill(new RoundRectangle2D.Double(3, 3, width - 6.0, height - 6.0, ARC, ARC));
         FontMetrics metrics = surface.getFontMetrics();
         int textWidth = metrics.stringWidth(text);
         int gap = icon == null ? 0 : ICON_SIZE + 8;
         int x = (width - textWidth - gap) / 2;
         if (icon != null) {
-            icon.paint(surface, x, (height - ICON_SIZE) / 2.0, ICON_SIZE, HomeTheme.ACCENT_TEXT);
+            icon.paint(surface, x, (height - ICON_SIZE) / 2.0, ICON_SIZE, textColor());
         }
-        surface.setColor(HomeTheme.ACCENT_TEXT);
+        surface.setColor(textColor());
         surface.drawString(text, x + gap, (height + metrics.getAscent() - metrics.getDescent()) / 2);
+    }
+
+    /** Relleno del botón principal ahora: gris si está desactivado, más claro con el ratón encima. */
+    Color fill() {
+        if (!isEnabled()) {
+            return HomeTheme.CARD_BORDER;
+        }
+        return isPressed() ? HomeTheme.ACCENT.darker() : isHover() ? HomeTheme.ACCENT_HOVER : HomeTheme.ACCENT;
+    }
+
+    /** Color del texto del botón principal ahora: apagado si está desactivado. */
+    Color textColor() {
+        return isEnabled() ? HomeTheme.ACCENT_TEXT : HomeTheme.FAINT;
     }
 
     private void paintOutline(Graphics2D surface) {

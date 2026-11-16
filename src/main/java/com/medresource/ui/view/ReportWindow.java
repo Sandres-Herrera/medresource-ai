@@ -85,6 +85,10 @@ public final class ReportWindow extends JFrame {
     public static final String ARCHIVE_ERROR_TEXT = "No se guardó en la base de datos";
     /** Mensaje cuando el equipo no tiene configurada la base de datos. */
     public static final String NO_DATABASE_TEXT = "Sin base de datos configurada: el reporte no se guardó";
+    /** Texto del botón que vuelve a simular el mismo caso. */
+    public static final String RERUN = "Reutilizar caso";
+    /** Texto del botón que vuelve a simular el mismo caso con las recomendaciones del reporte. */
+    public static final String TRY_RECOMMENDATIONS = "Probar recomendaciones";
 
     private static final int TICK_MILLIS = 250;
     private static final Dimension SIZE = new Dimension(1100, 760);
@@ -107,6 +111,10 @@ public final class ReportWindow extends JFrame {
     private final HomeButton openFolder = new HomeButton(HomeButton.Style.LINK, "Abrir carpeta", null);
     private final JLabel saveStatus = new JLabel("Descarga el reporte en Word o PDF, en normas APA.");
     private final JLabel archiveStatus = new JLabel(" ");
+    private transient Consumer<Boolean> rerunAction;
+    private final HomeButton rerun = new HomeButton(HomeButton.Style.OUTLINE, RERUN, HomeIcon.PLAY);
+    private final HomeButton tryRecommendations =
+            new HomeButton(HomeButton.Style.OUTLINE, TRY_RECOMMENDATIONS, HomeIcon.PLAY);
     private final transient CoverPreferences coverMemory = CoverPreferences.forUser();
     private transient Path savedFile;
     private File lastFolder;
@@ -193,10 +201,37 @@ public final class ReportWindow extends JFrame {
      * @throws IllegalArgumentException si es nulo
      */
     public static ReportWindow showingSaved(SavedReport saved) {
+        return showingSaved(saved, null);
+    }
+
+    /**
+     * Abre la ventana con un reporte guardado y, arriba, los botones «Reutilizar caso» y «Probar recomendaciones»,
+     * que vuelven a simular el mismo caso (los mismos pacientes) para compararlo después con la ejecución
+     * original. «Probar recomendaciones» solo está activo si el reporte recomendó algo.
+     *
+     * @param saved  reporte guardado
+     * @param onRerun recibe {@code false} al pulsar «Reutilizar caso» y {@code true} al pulsar «Probar
+     *                recomendaciones»; si es nulo, los botones no se muestran
+     * @return la ventana ya visible
+     * @throws IllegalArgumentException si falta el reporte
+     */
+    public static ReportWindow showingSaved(SavedReport saved, Consumer<Boolean> onRerun) {
         if (saved == null || !saved.isSaved()) {
             throw new IllegalArgumentException("El reporte guardado es obligatorio.");
         }
         ReportWindow window = new ReportWindow(code -> { });
+        window.rerunAction = onRerun;
+        if (onRerun != null) {
+            window.rerun.addActionListener(event -> onRerun.accept(false));
+            window.tryRecommendations.addActionListener(event -> onRerun.accept(true));
+            boolean recommends = !saved.report().whatIf().recommendations().isEmpty();
+            window.tryRecommendations.setEnabled(recommends);
+            window.tryRecommendations.setToolTipText(recommends
+                    ? "Abre «Nueva simulación» con el mismo caso y los cambios recomendados ya puestos"
+                    : "Este reporte no recomendó cambios");
+            window.rerun.setToolTipText("Abre «Nueva simulación» con el mismo caso, el mismo hospital y la misma "
+                    + "estrategia");
+        }
         window.onShowCase = code -> window.explainCase(code, saved);
         window.showReport(saved.report());
         window.showArchiveStatus("Guardado el " + SAVED_AT.format(saved.savedAt()), HomeTheme.MUTED);
@@ -323,6 +358,10 @@ public final class ReportWindow extends JFrame {
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
         right.setOpaque(false);
         right.add(archiveStatus);
+        rerun.setVisible(rerunAction != null);
+        tryRecommendations.setVisible(rerunAction != null);
+        right.add(rerun);
+        right.add(tryRecommendations);
         right.add(download);
         bar.add(right, BorderLayout.EAST);
         download.addActionListener(event -> download());

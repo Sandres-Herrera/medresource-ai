@@ -29,7 +29,7 @@ class HomePanelTest {
     private final List<String> done = new ArrayList<>();
     private final HomePanel panel = new HomePanel(HospitalConfig.standard(), QUICK, DEMO, 10,
             new HomePanel.Actions(() -> done.add("nueva"), () -> done.add("rápida"), () -> done.add("demo"),
-                    () -> done.add("reportes"), () -> done.add("salir")));
+                    () -> done.add("reportes"), () -> done.add("comparar"), () -> done.add("salir")));
 
     /** Acomoda el panel y todo lo que tiene dentro a un tamaño, como lo haría una ventana. */
     private static void layOut(Container container) {
@@ -47,10 +47,12 @@ class HomePanelTest {
         panel.quickCard().doClick();
         panel.demoCard().doClick();
         panel.savedReportsLink().doClick();
+        panel.compareRunsLink().doClick();
         panel.exitLink().doClick();
 
-        assertEquals(List.of("nueva", "rápida", "demo", "reportes", "salir"), done);
+        assertEquals(List.of("nueva", "rápida", "demo", "reportes", "comparar", "salir"), done);
         assertEquals("Reportes guardados", panel.savedReportsLink().getText());
+        assertEquals("Comparar simulaciones", panel.compareRunsLink().getText());
     }
 
     @Test
@@ -103,7 +105,8 @@ class HomePanelTest {
 
     @Test
     void rejectsMissingData() {
-        HomePanel.Actions actions = new HomePanel.Actions(() -> { }, () -> { }, () -> { }, () -> { }, () -> { });
+        HomePanel.Actions actions = new HomePanel.Actions(() -> { }, () -> { }, () -> { }, () -> { }, () -> { },
+                () -> { });
 
         assertThrows(IllegalArgumentException.class, () -> new HomePanel(null, QUICK, DEMO, 10, actions));
         assertThrows(IllegalArgumentException.class,
@@ -111,9 +114,11 @@ class HomePanelTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new HomePanel(HospitalConfig.standard(), QUICK, DEMO, 10, null));
         assertThrows(IllegalArgumentException.class, () -> new HomePanel.Actions(null, () -> { }, () -> { },
-                () -> { }, () -> { }));
+                () -> { }, () -> { }, () -> { }));
         assertThrows(IllegalArgumentException.class, () -> new HomePanel.Actions(() -> { }, () -> { }, () -> { },
-                null, () -> { }));
+                null, () -> { }, () -> { }));
+        assertThrows(IllegalArgumentException.class, () -> new HomePanel.Actions(() -> { }, () -> { }, () -> { },
+                () -> { }, null, () -> { }));
         assertThrows(IllegalArgumentException.class, () -> HomePanel.describe(null, 1));
     }
 
