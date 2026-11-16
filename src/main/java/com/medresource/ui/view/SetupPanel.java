@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.Scenario;
+import com.medresource.model.Specialty;
 import com.medresource.ui.controller.HospitalField;
 import com.medresource.ui.controller.HospitalPreset;
 import com.medresource.ui.controller.SetupDraft;
@@ -16,6 +17,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.KeyStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -72,6 +74,9 @@ public final class SetupPanel extends JPanel {
     private final Stepper duration;
     private final Stepper seed;
     private final IconButton dice = new IconButton(HomeIcon.DICE, "Sortear otra semilla", 28);
+    private final HomeButton extraButton = new HomeButton(HomeButton.Style.LINK, "Ninguno", null);
+    private final JPopupMenu extraPopup = new JPopupMenu();
+    private final ExtraDoctorsPanel extraDoctors;
     private final IconButton close = new IconButton(HomeIcon.CLOSE, "Cerrar", 30);
     private final HomeButton cancel = new HomeButton(HomeButton.Style.LINK, "Cancelar", null);
     private final HomeButton start = new HomeButton(HomeButton.Style.COMPACT, "Iniciar simulación", HomeIcon.PLAY);
@@ -98,6 +103,7 @@ public final class SetupPanel extends JPanel {
         this.duration = new Stepper("Llegadas", CaseConfig.MIN_DURATION_MINUTES,
                 CaseConfig.MAX_DURATION_MINUTES, 30, draft.getDurationMinutes());
         this.seed = new Stepper("Semilla", 0, 999_999_999, 1, (int) Math.min(999_999_999L, draft.getSeed()));
+        this.extraDoctors = new ExtraDoctorsPanel(draft.getHospital());
         setBackground(HomeTheme.BACKGROUND);
         setBorder(BorderFactory.createLineBorder(HomeTheme.CARD_BORDER));
         add(buildHeader(), BorderLayout.NORTH);
@@ -203,8 +209,15 @@ public final class SetupPanel extends JPanel {
             resourceSteppers.put(field, stepper);
             rows.add(labeledRow(field.getDisplayName(), stepper));
         }
+        JPanel extraRow = new JPanel(new BorderLayout(8, 0));
+        extraRow.setOpaque(false);
+        extraRow.add(label("Especialistas extra", Font.PLAIN, 13f, HomeTheme.MUTED), BorderLayout.CENTER);
+        extraRow.add(extraButton, BorderLayout.EAST);
+        extraPopup.setBorder(BorderFactory.createEmptyBorder());
+        extraPopup.add(extraDoctors);
         card.content().add(pills, BorderLayout.NORTH);
         card.content().add(rows, BorderLayout.CENTER);
+        card.content().add(extraRow, BorderLayout.SOUTH);
         return card;
     }
 
@@ -304,7 +317,7 @@ public final class SetupPanel extends JPanel {
 
     private void wireActions() {
         presetPills.forEach((preset, pill) -> pill.addActionListener(event -> {
-            draft.setHospital(preset.config());
+            draft.applyPreset(preset);
             resourceSteppers.forEach((field, stepper) -> stepper.setValue(field.valueIn(draft.getHospital())));
             refresh();
         }));
@@ -312,6 +325,14 @@ public final class SetupPanel extends JPanel {
             draft.setResource(field, value);
             refresh();
         }));
+        extraButton.addActionListener(event -> extraPopup.show(extraButton, 0, extraButton.getHeight()));
+        extraDoctors.onChange((specialty, count) -> {
+            int accepted = draft.setExtraDoctors(specialty, count);
+            if (accepted != count) {
+                extraDoctors.showCount(specialty, accepted);
+            }
+            refresh();
+        });
         scenarioTiles.forEach((scenario, tile) -> tile.addActionListener(event -> {
             draft.setScenario(scenario);
             refresh();
@@ -344,6 +365,9 @@ public final class SetupPanel extends JPanel {
             duration.commitText();
             seed.commitText();
             resourceSteppers.values().forEach(Stepper::commitText);
+            for (Specialty specialty : Specialty.values()) {
+                extraDoctors.stepper(specialty).commitText();
+            }
             startAction.accept(draft.toRequest());
         });
     }
@@ -358,6 +382,9 @@ public final class SetupPanel extends JPanel {
         strategyTiles.forEach((option, tile) -> tile.setSelected(option == draft.getStrategy()));
         speedPills.forEach((speed, pill) -> pill.setSelected(speed == draft.getSpeed()));
         summary.setText(draft.summary());
+        int extra = draft.getHospital().extraDoctors().size();
+        extraButton.setText(extra == 0 ? "Ninguno" : "+" + extra + (extra == 1 ? " médico" : " médicos"));
+        extraButton.setToolTipText("Médicos extra: " + draft.getHospital().describeExtraDoctors());
     }
 
     // ---------- piezas para las pruebas y para la ventana ----------
@@ -368,6 +395,16 @@ public final class SetupPanel extends JPanel {
 
     public Stepper resourceStepper(HospitalField field) {
         return resourceSteppers.get(field);
+    }
+
+    /** Botón que abre la lista de médicos extra por especialidad. */
+    public HomeButton extraDoctorsButton() {
+        return extraButton;
+    }
+
+    /** Lista de médicos extra por especialidad, que se abre con {@link #extraDoctorsButton()}. */
+    public ExtraDoctorsPanel extraDoctorsPanel() {
+        return extraDoctors;
     }
 
     public ChoiceTile scenarioTile(Scenario scenario) {

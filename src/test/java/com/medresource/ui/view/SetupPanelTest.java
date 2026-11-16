@@ -3,6 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
+import com.medresource.model.Specialty;
 import com.medresource.ui.controller.HospitalField;
 import com.medresource.ui.controller.HospitalPreset;
 import com.medresource.ui.controller.SetupDraft;
@@ -134,6 +135,52 @@ class SetupPanelTest {
 
         assertEquals(2, cancelled.size());
         assertTrue(started.isEmpty());
+    }
+
+    @Test
+    void theExtraDoctorsAreSentWithTheHospital() {
+        panel.extraDoctorsPanel().stepper(Specialty.SURGERY).setValue(2);
+        panel.extraDoctorsPanel().stepper(Specialty.PEDIATRICS).setValue(1);
+
+        panel.startButton().doClick();
+
+        assertEquals(HospitalConfig.standard().withExtraDoctors(
+                List.of(Specialty.PEDIATRICS, Specialty.SURGERY, Specialty.SURGERY)), started.get(0).setup().hospital());
+    }
+
+    @Test
+    void theButtonAndTheSummarySayHowManyExtraDoctorsThereAre() {
+        assertEquals("Ninguno", panel.extraDoctorsButton().getText());
+
+        panel.extraDoctorsPanel().stepper(Specialty.SURGERY).setValue(1);
+        assertEquals("+1 médico", panel.extraDoctorsButton().getText());
+        assertEquals("Médicos extra: 1 de Cirugía", panel.extraDoctorsButton().getToolTipText());
+
+        panel.extraDoctorsPanel().stepper(Specialty.TRAUMATOLOGY).setValue(2);
+        assertEquals("+3 médicos", panel.extraDoctorsButton().getText());
+        assertTrue(panel.summaryText().contains("hospital estándar + 3 especialistas"));
+    }
+
+    @Test
+    void theExtraDoctorsStopAtTheMaximumOfTheHospital() {
+        panel.extraDoctorsPanel().stepper(Specialty.SURGERY).setValue(10);
+
+        panel.extraDoctorsPanel().stepper(Specialty.PEDIATRICS).setValue(5);
+
+        assertEquals(HospitalConfig.MAX_EXTRA_DOCTORS - 10,
+                panel.extraDoctorsPanel().stepper(Specialty.PEDIATRICS).getValue());
+        assertEquals(HospitalConfig.MAX_EXTRA_DOCTORS, draft.getHospital().extraDoctors().size());
+    }
+
+    @Test
+    void choosingASizeKeepsTheExtraDoctors() {
+        panel.extraDoctorsPanel().stepper(Specialty.SURGERY).setValue(1);
+
+        panel.presetPill(HospitalPreset.LARGE).doClick();
+
+        assertTrue(panel.presetPill(HospitalPreset.LARGE).isSelected());
+        assertEquals(1, draft.getExtraDoctors(Specialty.SURGERY));
+        assertEquals("+1 médico", panel.extraDoctorsButton().getText());
     }
 
     @Test
