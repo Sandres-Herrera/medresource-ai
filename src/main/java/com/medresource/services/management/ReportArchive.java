@@ -85,7 +85,7 @@ public class ReportArchive {
         }
         prepareCatalog();
         int caseId = cases.idFor(request.caseConfig());
-        int resultId = runs.save(caseId, request.hospitalConfig(), request.result());
+        int resultId = runs.save(caseId, request.hospitalConfig(), request.result(), request.baseRunId());
         int reportId;
         try {
             reportId = reports.save(SavedReport.toSave(resultId, report));

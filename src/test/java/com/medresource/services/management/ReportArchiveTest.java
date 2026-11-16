@@ -70,6 +70,19 @@ class ReportArchiveTest {
     }
 
     @Test
+    void savesTheRunThatTheSimulationIsBasedOn() {
+        archive.save(request, report);
+        ReportRequest rerun = new ReportRequest(request.result(), request.trace(), request.hospital(),
+                request.hospitalConfig(), request.strategy(), 1);
+
+        archive.save(rerun, report);
+
+        assertEquals(Optional.empty(), results.saved.get(0).basedOn());
+        assertEquals(Optional.of(1), results.saved.get(1).basedOn());
+        assertEquals(results.saved.get(0).caseId(), results.saved.get(1).caseId());
+    }
+
+    @Test
     void theCatalogIsLoadedBeforeTheFirstSaveOnly() {
         archive.save(request, report);
         int afterFirst = diseases.saves;

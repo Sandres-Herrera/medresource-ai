@@ -76,7 +76,23 @@ public class SimulationService {
      * @throws IllegalArgumentException si el caso no existe o algún dato es inválido
      */
     public int save(int caseId, HospitalConfig hospital, SimulationResult result) {
-        RunRecord run = new RunRecord(caseId, hospital, result);
+        return save(caseId, hospital, result, null);
+    }
+
+    /**
+     * Guarda el resultado de una simulación que se ejecutó por fuera del servicio y que puede basarse en otra
+     * ejecución del mismo caso, por ejemplo la que se volvió a simular para probar sus recomendaciones.
+     *
+     * @param caseId    identificador del caso guardado sobre el que se ejecutó
+     * @param hospital  recursos del hospital con los que se ejecutó
+     * @param result    resultado de la ejecución
+     * @param baseRunId ejecución en la que se basa; {@code null} si es una simulación nueva
+     * @return identificador de la ejecución guardada
+     * @throws IllegalArgumentException si el caso no existe o algún dato es inválido
+     * @throws com.medresource.persistence.DataAccessException si la ejecución base no existe o es de otro caso
+     */
+    public int save(int caseId, HospitalConfig hospital, SimulationResult result, Integer baseRunId) {
+        RunRecord run = new RunRecord(caseId, hospital, result, baseRunId);
         if (cases.find(caseId).isEmpty()) {
             throw new IllegalArgumentException("No existe el caso con el identificador " + caseId + ".");
         }
