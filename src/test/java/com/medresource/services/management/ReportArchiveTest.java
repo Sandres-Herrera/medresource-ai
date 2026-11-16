@@ -142,7 +142,7 @@ class ReportArchiveTest {
     void listsAndOpensTheSavedReports() {
         SavedReport saved = archive.save(request, report);
         SavedReportSummary summary = new SavedReportSummary(saved.id(), saved.resultId(), SAVED_AT,
-                request.caseConfig(), request.result().strategyName(), 0, NarrativeSource.AI);
+                request.caseConfig(), request.result().strategyName(), 0, NarrativeSource.AI, 1, null);
         reports.summaries.add(summary);
 
         assertEquals(List.of(summary), archive.summaries());

@@ -88,7 +88,22 @@ final class FakeReportDatabase {
         row.put("cantidad_pacientes", patients);
         row.put("duracion_minutos", 480);
         row.put("fallecidos", deaths);
+        row.put("id_caso", 1);
+        row.put("id_ejecucion_base", null);
         results.put(resultId, row);
+    }
+
+    /**
+     * Cambia el caso de una ejecución declarada (por defecto, el 1) y la ejecución en la que se basa (por defecto,
+     * ninguna).
+     *
+     * @param resultId  identificador de la ejecución
+     * @param caseId    identificador de su caso
+     * @param baseRunId ejecución base, o {@code null}
+     */
+    void linkResult(int resultId, int caseId, Integer baseRunId) {
+        results.get(resultId).put("id_caso", caseId);
+        results.get(resultId).put("id_ejecucion_base", baseRunId);
     }
 
     /** Simula que se borra la ejecución: Oracle borra en cascada su reporte. */
@@ -259,6 +274,7 @@ final class FakeReportDatabase {
             case "getInt" -> ((Number) rows.get(position[0]).get(String.valueOf(args[0]))).intValue();
             case "getLong" -> ((Number) rows.get(position[0]).get((String) args[0])).longValue();
             case "getString" -> (String) rows.get(position[0]).get((String) args[0]);
+            case "getObject" -> rows.get(position[0]).get((String) args[0]);
             case "getTimestamp" -> (Timestamp) rows.get(position[0]).get((String) args[0]);
             case "close" -> {
                 resultSetsClosed++;

@@ -39,7 +39,8 @@ public class OracleReportDao implements ReportDao {
     static final String SELECT_REPORTS =
             "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte ORDER BY id";
     static final String SELECT_SUMMARIES = "SELECT p.id, p.id_ejecucion, p.guardado_en, p.origen, r.estrategia, "
-            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos, "
+            + "r.id_ejecucion_base, c.id AS id_caso, c.semilla, c.escenario, c.cantidad_pacientes, "
+            + "c.duracion_minutos, "
             + "(SELECT COUNT(*) FROM resultado_paciente d "
             + "WHERE d.id_ejecucion = p.id_ejecucion AND d.estado = 'DECEASED') "
             + "AS fallecidos "
@@ -228,7 +229,8 @@ public class OracleReportDao implements ReportDao {
                     owner), row.getInt("cantidad_pacientes"), row.getInt("duracion_minutos"));
             return new SavedReportSummary(id, row.getInt("id_ejecucion"), savedAt(row, id), config,
                     row.getString("estrategia"), row.getInt("fallecidos"),
-                    parse(NarrativeSource.class, row.getString("origen"), owner));
+                    parse(NarrativeSource.class, row.getString("origen"), owner), row.getInt("id_caso"),
+                    baseRunOf(row));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
         }
@@ -240,6 +242,12 @@ public class OracleReportDao implements ReportDao {
             throw new DataAccessException("El reporte " + id + " no tiene fecha de guardado.");
         }
         return savedAt.toLocalDateTime();
+    }
+
+    /** Ejecución base de la fila actual, o {@code null} si no tiene. */
+    private static Integer baseRunOf(ResultSet row) throws SQLException {
+        Object base = row.getObject("id_ejecucion_base");
+        return base == null ? null : ((Number) base).intValue();
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String name, String owner) {
