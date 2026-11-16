@@ -2,9 +2,10 @@
 -- MedResource AI - esquema de la base de datos (Oracle 18c XE, servicio XEPDB1)
 --
 -- Se ejecuta con el usuario de la aplicación (ver README, sección Oracle).
--- Los valores de texto que vienen de una enumeración de Java (especialidad,
--- escenario, tipo de sangre...) se guardan con el nombre de la constante y una
--- restricción CHECK que lista los nombres válidos.
+-- Las tablas, las columnas y las restricciones tienen nombres en español (sin
+-- tildes ni eñes). Los valores de texto que vienen de una enumeración de Java
+-- (especialidad, escenario, tipo de sangre...) se guardan con el nombre de la
+-- constante, en inglés, y una restricción CHECK que lista los nombres válidos.
 -- Los números decimales de Java (double) se guardan como BINARY_DOUBLE para no
 -- perder precisión; los booleanos, como NUMBER(1) con valor 0 o 1.
 -- ============================================================================
@@ -13,54 +14,54 @@
 -- Catálogo de enfermedades
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE disease (
-    id                   NUMBER(5)            NOT NULL,
-    name                 VARCHAR2(100 CHAR)   NOT NULL,
-    main_specialty       VARCHAR2(30)         NOT NULL,
-    treatment            VARCHAR2(20)         NOT NULL,
-    curable              NUMBER(1)            NOT NULL,
-    requires_blood       NUMBER(1)            NOT NULL,
-    requires_icu         NUMBER(1)            NOT NULL,
-    deterioration_rate   BINARY_DOUBLE        NOT NULL,
-    irreducible_mortality BINARY_DOUBLE       NOT NULL,
-    min_duration_minutes NUMBER(5)            NOT NULL,
-    max_duration_minutes NUMBER(5)            NOT NULL,
-    min_age              NUMBER(3)            NOT NULL,
-    max_age              NUMBER(3)            NOT NULL,
-    frequency            BINARY_DOUBLE        NOT NULL,
-    CONSTRAINT pk_disease PRIMARY KEY (id),
-    CONSTRAINT uq_disease_name UNIQUE (name),
-    CONSTRAINT ck_disease_id CHECK (id > 0),
-    CONSTRAINT ck_disease_specialty CHECK (main_specialty IN (
+CREATE TABLE enfermedad (
+    id                       NUMBER(5)            NOT NULL,
+    nombre                   VARCHAR2(100 CHAR)   NOT NULL,
+    especialidad_principal   VARCHAR2(30)         NOT NULL,
+    tratamiento              VARCHAR2(20)         NOT NULL,
+    curable                  NUMBER(1)            NOT NULL,
+    requiere_sangre          NUMBER(1)            NOT NULL,
+    requiere_uci             NUMBER(1)            NOT NULL,
+    tasa_deterioro           BINARY_DOUBLE        NOT NULL,
+    mortalidad_irreducible   BINARY_DOUBLE        NOT NULL,
+    duracion_min_minutos     NUMBER(5)            NOT NULL,
+    duracion_max_minutos     NUMBER(5)            NOT NULL,
+    edad_minima              NUMBER(3)            NOT NULL,
+    edad_maxima              NUMBER(3)            NOT NULL,
+    frecuencia               BINARY_DOUBLE        NOT NULL,
+    CONSTRAINT pk_enfermedad PRIMARY KEY (id),
+    CONSTRAINT uq_enfermedad_nombre UNIQUE (nombre),
+    CONSTRAINT ck_enfermedad_id CHECK (id > 0),
+    CONSTRAINT ck_enfermedad_especialidad CHECK (especialidad_principal IN (
         'GENERAL_MEDICINE', 'PEDIATRICS', 'INTERNAL_MEDICINE', 'SURGERY', 'TRAUMATOLOGY', 'EMERGENCY_MEDICINE')),
-    CONSTRAINT ck_disease_treatment CHECK (treatment IN ('CONSULTATION', 'HOSPITALIZATION', 'SURGERY')),
-    CONSTRAINT ck_disease_curable CHECK (curable IN (0, 1)),
-    CONSTRAINT ck_disease_blood CHECK (requires_blood IN (0, 1)),
-    CONSTRAINT ck_disease_icu CHECK (requires_icu IN (0, 1)),
-    CONSTRAINT ck_disease_deterioration CHECK (deterioration_rate >= 0),
-    CONSTRAINT ck_disease_mortality CHECK (irreducible_mortality >= 0 AND irreducible_mortality <= 1),
-    CONSTRAINT ck_disease_duration CHECK (min_duration_minutes > 0 AND min_duration_minutes <= max_duration_minutes),
-    CONSTRAINT ck_disease_age CHECK (min_age >= 0 AND min_age <= max_age),
-    CONSTRAINT ck_disease_frequency CHECK (frequency > 0)
+    CONSTRAINT ck_enfermedad_tratamiento CHECK (tratamiento IN ('CONSULTATION', 'HOSPITALIZATION', 'SURGERY')),
+    CONSTRAINT ck_enfermedad_curable CHECK (curable IN (0, 1)),
+    CONSTRAINT ck_enfermedad_sangre CHECK (requiere_sangre IN (0, 1)),
+    CONSTRAINT ck_enfermedad_uci CHECK (requiere_uci IN (0, 1)),
+    CONSTRAINT ck_enfermedad_deterioro CHECK (tasa_deterioro >= 0),
+    CONSTRAINT ck_enfermedad_mortalidad CHECK (mortalidad_irreducible >= 0 AND mortalidad_irreducible <= 1),
+    CONSTRAINT ck_enfermedad_duracion CHECK (duracion_min_minutos > 0 AND duracion_min_minutos <= duracion_max_minutos),
+    CONSTRAINT ck_enfermedad_edad CHECK (edad_minima >= 0 AND edad_minima <= edad_maxima),
+    CONSTRAINT ck_enfermedad_frecuencia CHECK (frecuencia > 0)
 );
 
-CREATE TABLE disease_secondary_specialty (
-    disease_id           NUMBER(5)            NOT NULL,
-    specialty            VARCHAR2(30)         NOT NULL,
-    CONSTRAINT pk_disease_secondary PRIMARY KEY (disease_id, specialty),
-    CONSTRAINT fk_disease_secondary_disease FOREIGN KEY (disease_id) REFERENCES disease (id) ON DELETE CASCADE,
-    CONSTRAINT ck_disease_secondary_specialty CHECK (specialty IN (
+CREATE TABLE enfermedad_especialidad_sec (
+    id_enfermedad            NUMBER(5)            NOT NULL,
+    especialidad             VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_enf_especialidad_sec PRIMARY KEY (id_enfermedad, especialidad),
+    CONSTRAINT fk_enf_especialidad_sec_enf FOREIGN KEY (id_enfermedad) REFERENCES enfermedad (id) ON DELETE CASCADE,
+    CONSTRAINT ck_enf_especialidad_sec CHECK (especialidad IN (
         'GENERAL_MEDICINE', 'PEDIATRICS', 'INTERNAL_MEDICINE', 'SURGERY', 'TRAUMATOLOGY', 'EMERGENCY_MEDICINE'))
 );
 
-CREATE TABLE disease_symptom (
-    disease_id           NUMBER(5)            NOT NULL,
-    symptom_order        NUMBER(3)            NOT NULL,
-    symptom              VARCHAR2(30)         NOT NULL,
-    CONSTRAINT pk_disease_symptom PRIMARY KEY (disease_id, symptom_order),
-    CONSTRAINT fk_disease_symptom_disease FOREIGN KEY (disease_id) REFERENCES disease (id) ON DELETE CASCADE,
-    CONSTRAINT ck_disease_symptom_order CHECK (symptom_order >= 0),
-    CONSTRAINT ck_disease_symptom_name CHECK (symptom IN (
+CREATE TABLE enfermedad_sintoma (
+    id_enfermedad            NUMBER(5)            NOT NULL,
+    orden_sintoma            NUMBER(3)            NOT NULL,
+    sintoma                  VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_enfermedad_sintoma PRIMARY KEY (id_enfermedad, orden_sintoma),
+    CONSTRAINT fk_enf_sintoma_enfermedad FOREIGN KEY (id_enfermedad) REFERENCES enfermedad (id) ON DELETE CASCADE,
+    CONSTRAINT ck_enf_sintoma_orden CHECK (orden_sintoma >= 0),
+    CONSTRAINT ck_enf_sintoma_nombre CHECK (sintoma IN (
         'UNCONSCIOUS', 'CHEST_PAIN', 'BREATHING_DIFFICULTY', 'BLEEDING', 'EXPOSED_BONE', 'UNABLE_TO_WALK',
         'ABDOMINAL_PAIN', 'HIGH_FEVER', 'GENERALIZED_PAIN', 'LIMB_DEFORMITY', 'LEG_PAIN', 'WEIGHT_LOSS',
         'FATIGUE', 'FEVER', 'COUGH', 'CONGESTION'))
@@ -70,146 +71,146 @@ CREATE TABLE disease_symptom (
 -- Casos de simulación (la semilla y sus pacientes, para repetir el mismo caso)
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE sim_case (
-    id                   NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
-    seed                 NUMBER(19)           NOT NULL,
-    scenario             VARCHAR2(30)         NOT NULL,
-    patient_count        NUMBER(4)            NOT NULL,
-    duration_minutes     NUMBER(5)            NOT NULL,
-    created_at           TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
-    CONSTRAINT pk_sim_case PRIMARY KEY (id),
-    CONSTRAINT uq_sim_case_config UNIQUE (seed, scenario, patient_count, duration_minutes),
-    CONSTRAINT ck_sim_case_scenario CHECK (scenario IN (
+CREATE TABLE caso (
+    id                       NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
+    semilla                  NUMBER(19)           NOT NULL,
+    escenario                VARCHAR2(30)         NOT NULL,
+    cantidad_pacientes       NUMBER(4)            NOT NULL,
+    duracion_minutos         NUMBER(5)            NOT NULL,
+    creado_en                TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT pk_caso PRIMARY KEY (id),
+    CONSTRAINT uq_caso_configuracion UNIQUE (semilla, escenario, cantidad_pacientes, duracion_minutos),
+    CONSTRAINT ck_caso_escenario CHECK (escenario IN (
         'NORMAL', 'HIGH_DEMAND', 'CATASTROPHE', 'UNEXPECTED_EMERGENCIES')),
-    CONSTRAINT ck_sim_case_patients CHECK (patient_count >= 1 AND patient_count <= 1000),
-    CONSTRAINT ck_sim_case_duration CHECK (duration_minutes >= 60 AND duration_minutes <= 1440)
+    CONSTRAINT ck_caso_pacientes CHECK (cantidad_pacientes >= 1 AND cantidad_pacientes <= 1000),
+    CONSTRAINT ck_caso_duracion CHECK (duracion_minutos >= 60 AND duracion_minutos <= 1440)
 );
 
-CREATE TABLE case_patient (
-    case_id              NUMBER(10)           NOT NULL,
-    patient_id           NUMBER(5)            NOT NULL,
-    age                  NUMBER(3)            NOT NULL,
-    sex                  VARCHAR2(10)         NOT NULL,
-    blood_type           VARCHAR2(15)         NOT NULL,
-    disease_id           NUMBER(5)            NOT NULL,
-    arrival_minute       NUMBER(5)            NOT NULL,
-    initial_health       BINARY_DOUBLE        NOT NULL,
-    irrecoverable        NUMBER(1)            NOT NULL,
-    CONSTRAINT pk_case_patient PRIMARY KEY (case_id, patient_id),
-    CONSTRAINT fk_case_patient_case FOREIGN KEY (case_id) REFERENCES sim_case (id) ON DELETE CASCADE,
-    CONSTRAINT fk_case_patient_disease FOREIGN KEY (disease_id) REFERENCES disease (id),
-    CONSTRAINT ck_case_patient_id CHECK (patient_id > 0),
-    CONSTRAINT ck_case_patient_age CHECK (age >= 0),
-    CONSTRAINT ck_case_patient_sex CHECK (sex IN ('FEMALE', 'MALE')),
-    CONSTRAINT ck_case_patient_blood CHECK (blood_type IN (
+CREATE TABLE caso_paciente (
+    id_caso                  NUMBER(10)           NOT NULL,
+    id_paciente              NUMBER(5)            NOT NULL,
+    edad                     NUMBER(3)            NOT NULL,
+    sexo                     VARCHAR2(10)         NOT NULL,
+    tipo_sangre              VARCHAR2(15)         NOT NULL,
+    id_enfermedad            NUMBER(5)            NOT NULL,
+    minuto_llegada           NUMBER(5)            NOT NULL,
+    salud_inicial            BINARY_DOUBLE        NOT NULL,
+    irrecuperable            NUMBER(1)            NOT NULL,
+    CONSTRAINT pk_caso_paciente PRIMARY KEY (id_caso, id_paciente),
+    CONSTRAINT fk_caso_paciente_caso FOREIGN KEY (id_caso) REFERENCES caso (id) ON DELETE CASCADE,
+    CONSTRAINT fk_caso_paciente_enfermedad FOREIGN KEY (id_enfermedad) REFERENCES enfermedad (id),
+    CONSTRAINT ck_caso_paciente_id CHECK (id_paciente > 0),
+    CONSTRAINT ck_caso_paciente_edad CHECK (edad >= 0),
+    CONSTRAINT ck_caso_paciente_sexo CHECK (sexo IN ('FEMALE', 'MALE')),
+    CONSTRAINT ck_caso_paciente_sangre CHECK (tipo_sangre IN (
         'O_POSITIVE', 'O_NEGATIVE', 'A_POSITIVE', 'A_NEGATIVE',
         'B_POSITIVE', 'B_NEGATIVE', 'AB_POSITIVE', 'AB_NEGATIVE')),
-    CONSTRAINT ck_case_patient_arrival CHECK (arrival_minute >= 0),
-    CONSTRAINT ck_case_patient_health CHECK (initial_health > 0 AND initial_health <= 100),
-    CONSTRAINT ck_case_patient_irrecoverable CHECK (irrecoverable IN (0, 1))
+    CONSTRAINT ck_caso_paciente_llegada CHECK (minuto_llegada >= 0),
+    CONSTRAINT ck_caso_paciente_salud CHECK (salud_inicial > 0 AND salud_inicial <= 100),
+    CONSTRAINT ck_caso_paciente_irrecuperable CHECK (irrecuperable IN (0, 1))
 );
 
-CREATE TABLE case_patient_symptom (
-    case_id              NUMBER(10)           NOT NULL,
-    patient_id           NUMBER(5)            NOT NULL,
-    symptom_order        NUMBER(3)            NOT NULL,
-    symptom              VARCHAR2(30)         NOT NULL,
-    CONSTRAINT pk_case_patient_symptom PRIMARY KEY (case_id, patient_id, symptom_order),
-    CONSTRAINT fk_case_symptom_patient FOREIGN KEY (case_id, patient_id)
-        REFERENCES case_patient (case_id, patient_id) ON DELETE CASCADE,
-    CONSTRAINT ck_case_symptom_order CHECK (symptom_order >= 0),
-    CONSTRAINT ck_case_symptom_name CHECK (symptom IN (
+CREATE TABLE caso_paciente_sintoma (
+    id_caso                  NUMBER(10)           NOT NULL,
+    id_paciente              NUMBER(5)            NOT NULL,
+    orden_sintoma            NUMBER(3)            NOT NULL,
+    sintoma                  VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_caso_paciente_sintoma PRIMARY KEY (id_caso, id_paciente, orden_sintoma),
+    CONSTRAINT fk_caso_sintoma_paciente FOREIGN KEY (id_caso, id_paciente)
+        REFERENCES caso_paciente (id_caso, id_paciente) ON DELETE CASCADE,
+    CONSTRAINT ck_caso_sintoma_orden CHECK (orden_sintoma >= 0),
+    CONSTRAINT ck_caso_sintoma_nombre CHECK (sintoma IN (
         'UNCONSCIOUS', 'CHEST_PAIN', 'BREATHING_DIFFICULTY', 'BLEEDING', 'EXPOSED_BONE', 'UNABLE_TO_WALK',
         'ABDOMINAL_PAIN', 'HIGH_FEVER', 'GENERALIZED_PAIN', 'LIMB_DEFORMITY', 'LEG_PAIN', 'WEIGHT_LOSS',
         'FATIGUE', 'FEVER', 'COUGH', 'CONGESTION'))
 );
 
 -- ---------------------------------------------------------------------------
--- Resultados de las ejecuciones (una ejecución = un caso + una estrategia)
+-- Ejecuciones (una ejecución = un caso + una estrategia + unos recursos)
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE sim_result (
-    id                   NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
-    case_id              NUMBER(10)           NOT NULL,
-    strategy_name        VARCHAR2(100 CHAR)   NOT NULL,
-    total_minutes        NUMBER(6)            NOT NULL,
-    beds                 NUMBER(3)            NOT NULL,
-    icu_beds             NUMBER(3)            NOT NULL,
-    operating_rooms      NUMBER(3)            NOT NULL,
-    doctors              NUMBER(3)            NOT NULL,
-    nurses               NUMBER(3)            NOT NULL,
-    blood_units_per_type NUMBER(3)            NOT NULL,
-    morgue_capacity      NUMBER(3)            NOT NULL,
-    executed_at          TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
-    CONSTRAINT pk_sim_result PRIMARY KEY (id),
-    CONSTRAINT fk_sim_result_case FOREIGN KEY (case_id) REFERENCES sim_case (id) ON DELETE CASCADE,
-    CONSTRAINT ck_sim_result_minutes CHECK (total_minutes >= 0),
-    CONSTRAINT ck_sim_result_beds CHECK (beds BETWEEN 1 AND 200),
-    CONSTRAINT ck_sim_result_icu CHECK (icu_beds BETWEEN 1 AND 50),
-    CONSTRAINT ck_sim_result_rooms CHECK (operating_rooms BETWEEN 1 AND 20),
-    CONSTRAINT ck_sim_result_doctors CHECK (doctors BETWEEN 1 AND 50),
-    CONSTRAINT ck_sim_result_nurses CHECK (nurses BETWEEN 1 AND 100),
-    CONSTRAINT ck_sim_result_blood CHECK (blood_units_per_type BETWEEN 0 AND 100),
-    CONSTRAINT ck_sim_result_morgue CHECK (morgue_capacity BETWEEN 1 AND 50)
+CREATE TABLE ejecucion (
+    id                       NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
+    id_caso                  NUMBER(10)           NOT NULL,
+    estrategia               VARCHAR2(100 CHAR)   NOT NULL,
+    minutos_totales          NUMBER(6)            NOT NULL,
+    camas                    NUMBER(3)            NOT NULL,
+    camas_uci                NUMBER(3)            NOT NULL,
+    quirofanos               NUMBER(3)            NOT NULL,
+    medicos                  NUMBER(3)            NOT NULL,
+    enfermeros               NUMBER(3)            NOT NULL,
+    unidades_sangre_por_tipo NUMBER(3)            NOT NULL,
+    capacidad_morgue         NUMBER(3)            NOT NULL,
+    ejecutado_en             TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT pk_ejecucion PRIMARY KEY (id),
+    CONSTRAINT fk_ejecucion_caso FOREIGN KEY (id_caso) REFERENCES caso (id) ON DELETE CASCADE,
+    CONSTRAINT ck_ejecucion_minutos CHECK (minutos_totales >= 0),
+    CONSTRAINT ck_ejecucion_camas CHECK (camas BETWEEN 1 AND 200),
+    CONSTRAINT ck_ejecucion_uci CHECK (camas_uci BETWEEN 1 AND 50),
+    CONSTRAINT ck_ejecucion_quirofanos CHECK (quirofanos BETWEEN 1 AND 20),
+    CONSTRAINT ck_ejecucion_medicos CHECK (medicos BETWEEN 1 AND 50),
+    CONSTRAINT ck_ejecucion_enfermeros CHECK (enfermeros BETWEEN 1 AND 100),
+    CONSTRAINT ck_ejecucion_sangre CHECK (unidades_sangre_por_tipo BETWEEN 0 AND 100),
+    CONSTRAINT ck_ejecucion_morgue CHECK (capacidad_morgue BETWEEN 1 AND 50)
 );
 
-CREATE INDEX idx_sim_result_case ON sim_result (case_id);
+CREATE INDEX idx_ejecucion_caso ON ejecucion (id_caso);
 
-CREATE TABLE patient_result (
-    result_id            NUMBER(10)           NOT NULL,
-    patient_id           NUMBER(5)            NOT NULL,
-    patient_code         VARCHAR2(20)         NOT NULL,
-    age                  NUMBER(3)            NOT NULL,
-    sex                  VARCHAR2(10)         NOT NULL,
-    triage               NUMBER(1)            NOT NULL,
-    disease_id           NUMBER(5)            NOT NULL,
-    arrival_minute       NUMBER(5)            NOT NULL,
-    treatment_start_minute NUMBER(6)          NOT NULL,
-    outcome_minute       NUMBER(6)            NOT NULL,
-    status               VARCHAR2(30)         NOT NULL,
-    cause_of_death       VARCHAR2(30),
-    care_level           VARCHAR2(20),
-    irrecoverable        NUMBER(1)            NOT NULL,
-    final_health         BINARY_DOUBLE        NOT NULL,
-    CONSTRAINT pk_patient_result PRIMARY KEY (result_id, patient_id),
-    CONSTRAINT fk_patient_result_result FOREIGN KEY (result_id) REFERENCES sim_result (id) ON DELETE CASCADE,
-    CONSTRAINT fk_patient_result_disease FOREIGN KEY (disease_id) REFERENCES disease (id),
-    CONSTRAINT ck_patient_result_age CHECK (age >= 0),
-    CONSTRAINT ck_patient_result_sex CHECK (sex IN ('FEMALE', 'MALE')),
-    CONSTRAINT ck_patient_result_triage CHECK (triage >= 1 AND triage <= 5),
-    CONSTRAINT ck_patient_result_arrival CHECK (arrival_minute >= 0),
-    CONSTRAINT ck_patient_result_start CHECK (treatment_start_minute >= -1),
-    CONSTRAINT ck_patient_result_outcome CHECK (outcome_minute >= arrival_minute),
-    CONSTRAINT ck_patient_result_status CHECK (status IN (
+CREATE TABLE resultado_paciente (
+    id_ejecucion             NUMBER(10)           NOT NULL,
+    id_paciente              NUMBER(5)            NOT NULL,
+    codigo_paciente          VARCHAR2(20)         NOT NULL,
+    edad                     NUMBER(3)            NOT NULL,
+    sexo                     VARCHAR2(10)         NOT NULL,
+    nivel_triage             NUMBER(1)            NOT NULL,
+    id_enfermedad            NUMBER(5)            NOT NULL,
+    minuto_llegada           NUMBER(5)            NOT NULL,
+    minuto_inicio_atencion   NUMBER(6)            NOT NULL,
+    minuto_desenlace         NUMBER(6)            NOT NULL,
+    estado                   VARCHAR2(30)         NOT NULL,
+    causa_muerte             VARCHAR2(30),
+    nivel_atencion           VARCHAR2(20),
+    irrecuperable            NUMBER(1)            NOT NULL,
+    salud_final              BINARY_DOUBLE        NOT NULL,
+    CONSTRAINT pk_resultado_paciente PRIMARY KEY (id_ejecucion, id_paciente),
+    CONSTRAINT fk_resultado_pac_ejecucion FOREIGN KEY (id_ejecucion) REFERENCES ejecucion (id) ON DELETE CASCADE,
+    CONSTRAINT fk_resultado_pac_enfermedad FOREIGN KEY (id_enfermedad) REFERENCES enfermedad (id),
+    CONSTRAINT ck_resultado_pac_edad CHECK (edad >= 0),
+    CONSTRAINT ck_resultado_pac_sexo CHECK (sexo IN ('FEMALE', 'MALE')),
+    CONSTRAINT ck_resultado_pac_triage CHECK (nivel_triage >= 1 AND nivel_triage <= 5),
+    CONSTRAINT ck_resultado_pac_llegada CHECK (minuto_llegada >= 0),
+    CONSTRAINT ck_resultado_pac_inicio CHECK (minuto_inicio_atencion >= -1),
+    CONSTRAINT ck_resultado_pac_desenlace CHECK (minuto_desenlace >= minuto_llegada),
+    CONSTRAINT ck_resultado_pac_estado CHECK (estado IN (
         'DISCHARGED', 'STABILIZED_WITHOUT_CURE', 'REFERRED', 'DECEASED', 'UNATTENDED')),
-    CONSTRAINT ck_patient_result_cause CHECK (cause_of_death IS NULL OR cause_of_death IN (
+    CONSTRAINT ck_resultado_pac_causa CHECK (causa_muerte IS NULL OR causa_muerte IN (
         'LACK_OF_TIMELY_CARE', 'NO_ICU_BED', 'NO_COMPATIBLE_RESOURCE', 'MISDIAGNOSIS',
         'NON_IDEAL_SPECIALIST', 'IRREDUCIBLE_MORTALITY')),
-    CONSTRAINT ck_patient_result_care CHECK (care_level IS NULL OR care_level IN (
+    CONSTRAINT ck_resultado_pac_atencion CHECK (nivel_atencion IS NULL OR nivel_atencion IN (
         'PRIMARY', 'SECONDARY', 'NOT_SUITABLE')),
-    CONSTRAINT ck_patient_result_irrec CHECK (irrecoverable IN (0, 1)),
-    CONSTRAINT ck_patient_result_health CHECK (final_health >= 0 AND final_health <= 100),
-    CONSTRAINT ck_patient_result_death CHECK (
-        (status = 'DECEASED' AND cause_of_death IS NOT NULL)
-        OR (status <> 'DECEASED' AND cause_of_death IS NULL)),
-    CONSTRAINT ck_patient_result_treated CHECK (
-        (treatment_start_minute = -1 AND care_level IS NULL)
-        OR (treatment_start_minute >= 0 AND care_level IS NOT NULL))
+    CONSTRAINT ck_resultado_pac_irrecuperable CHECK (irrecuperable IN (0, 1)),
+    CONSTRAINT ck_resultado_pac_salud CHECK (salud_final >= 0 AND salud_final <= 100),
+    CONSTRAINT ck_resultado_pac_muerte CHECK (
+        (estado = 'DECEASED' AND causa_muerte IS NOT NULL)
+        OR (estado <> 'DECEASED' AND causa_muerte IS NULL)),
+    CONSTRAINT ck_resultado_pac_atendido CHECK (
+        (minuto_inicio_atencion = -1 AND nivel_atencion IS NULL)
+        OR (minuto_inicio_atencion >= 0 AND nivel_atencion IS NOT NULL))
 );
 
-CREATE TABLE sim_event (
-    result_id            NUMBER(10)           NOT NULL,
-    event_order          NUMBER(8)            NOT NULL,
-    event_minute         NUMBER(6)            NOT NULL,
-    event_type           VARCHAR2(30)         NOT NULL,
-    patient_code         VARCHAR2(20)         NOT NULL,
-    resource_code        VARCHAR2(20),
-    description          VARCHAR2(400 CHAR)   NOT NULL,
-    CONSTRAINT pk_sim_event PRIMARY KEY (result_id, event_order),
-    CONSTRAINT fk_sim_event_result FOREIGN KEY (result_id) REFERENCES sim_result (id) ON DELETE CASCADE,
-    CONSTRAINT ck_sim_event_order CHECK (event_order >= 0),
-    CONSTRAINT ck_sim_event_minute CHECK (event_minute >= 0),
-    CONSTRAINT ck_sim_event_type CHECK (event_type IN (
+CREATE TABLE evento (
+    id_ejecucion             NUMBER(10)           NOT NULL,
+    orden_evento             NUMBER(8)            NOT NULL,
+    minuto_evento            NUMBER(6)            NOT NULL,
+    tipo_evento              VARCHAR2(30)         NOT NULL,
+    codigo_paciente          VARCHAR2(20)         NOT NULL,
+    codigo_recurso           VARCHAR2(20),
+    descripcion              VARCHAR2(400 CHAR)   NOT NULL,
+    CONSTRAINT pk_evento PRIMARY KEY (id_ejecucion, orden_evento),
+    CONSTRAINT fk_evento_ejecucion FOREIGN KEY (id_ejecucion) REFERENCES ejecucion (id) ON DELETE CASCADE,
+    CONSTRAINT ck_evento_orden CHECK (orden_evento >= 0),
+    CONSTRAINT ck_evento_minuto CHECK (minuto_evento >= 0),
+    CONSTRAINT ck_evento_tipo CHECK (tipo_evento IN (
         'ARRIVAL', 'EMERGENCY_ALERT', 'TRIAGE_STARTED', 'TRIAGE_ASSIGNED', 'DIAGNOSIS', 'REEVALUATION',
         'FIRST_AID', 'TREATMENT_STARTED', 'TREATMENT_FINISHED', 'ICU_ADMISSION', 'RECOVERY_STARTED', 'DISCHARGE',
         'STABILIZED_WITHOUT_CURE', 'REFERRAL', 'DEATH', 'MORGUE_ADMISSION', 'MORGUE_RELEASE', 'UNATTENDED'))
@@ -219,18 +220,18 @@ CREATE TABLE sim_event (
 -- Reportes de fin de simulación (uno por ejecución)
 --
 -- El reporte completo (números, «¿y si…?» y texto) se guarda en JSON para volver a
--- abrirlo sin repetir el análisis ni llamar a la IA. source dice quién redactó el
+-- abrirlo sin repetir el análisis ni llamar a la IA. origen dice quién redactó el
 -- texto: la IA (AI) o las plantillas (TEMPLATE).
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE sim_report (
-    id                   NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
-    result_id            NUMBER(10)           NOT NULL,
-    source               VARCHAR2(10)         NOT NULL,
-    report_json          CLOB                 NOT NULL,
-    saved_at             TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
-    CONSTRAINT pk_sim_report PRIMARY KEY (id),
-    CONSTRAINT uq_sim_report_result UNIQUE (result_id),
-    CONSTRAINT fk_sim_report_result FOREIGN KEY (result_id) REFERENCES sim_result (id) ON DELETE CASCADE,
-    CONSTRAINT ck_sim_report_source CHECK (source IN ('AI', 'TEMPLATE'))
+CREATE TABLE reporte (
+    id                       NUMBER(10)           GENERATED BY DEFAULT AS IDENTITY,
+    id_ejecucion             NUMBER(10)           NOT NULL,
+    origen                   VARCHAR2(10)         NOT NULL,
+    contenido_json           CLOB                 NOT NULL,
+    guardado_en              TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT pk_reporte PRIMARY KEY (id),
+    CONSTRAINT uq_reporte_ejecucion UNIQUE (id_ejecucion),
+    CONSTRAINT fk_reporte_ejecucion FOREIGN KEY (id_ejecucion) REFERENCES ejecucion (id) ON DELETE CASCADE,
+    CONSTRAINT ck_reporte_origen CHECK (origen IN ('AI', 'TEMPLATE'))
 );

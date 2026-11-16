@@ -148,25 +148,25 @@ class SchemaScriptTest {
     void theCatalogTablesAreCreated() throws IOException {
         List<String> tables = createdTables();
 
-        assertTrue(tables.contains("disease"));
-        assertTrue(tables.contains("disease_secondary_specialty"));
-        assertTrue(tables.contains("disease_symptom"));
+        assertTrue(tables.contains("enfermedad"));
+        assertTrue(tables.contains("enfermedad_especialidad_sec"));
+        assertTrue(tables.contains("enfermedad_sintoma"));
     }
 
     @Test
     void theSpecialtiesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_disease_specialty", Specialty.values());
-        assertMatches("ck_disease_secondary_specialty", Specialty.values());
+        assertMatches("ck_enfermedad_especialidad", Specialty.values());
+        assertMatches("ck_enf_especialidad_sec", Specialty.values());
     }
 
     @Test
     void theTreatmentsMatchTheEnumeration() throws IOException {
-        assertMatches("ck_disease_treatment", TreatmentType.values());
+        assertMatches("ck_enfermedad_tratamiento", TreatmentType.values());
     }
 
     @Test
     void theDiseaseSymptomsMatchTheEnumeration() throws IOException {
-        assertMatches("ck_disease_symptom_name", Symptom.values());
+        assertMatches("ck_enf_sintoma_nombre", Symptom.values());
     }
 
     // ---------- casos ----------
@@ -175,35 +175,35 @@ class SchemaScriptTest {
     void theCaseTablesAreCreated() throws IOException {
         List<String> tables = createdTables();
 
-        assertTrue(tables.contains("sim_case"));
-        assertTrue(tables.contains("case_patient"));
-        assertTrue(tables.contains("case_patient_symptom"));
+        assertTrue(tables.contains("caso"));
+        assertTrue(tables.contains("caso_paciente"));
+        assertTrue(tables.contains("caso_paciente_sintoma"));
     }
 
     @Test
     void theScenariosMatchTheEnumeration() throws IOException {
-        assertMatches("ck_sim_case_scenario", Scenario.values());
+        assertMatches("ck_caso_escenario", Scenario.values());
     }
 
     @Test
     void theBloodTypesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_case_patient_blood", BloodType.values());
+        assertMatches("ck_caso_paciente_sangre", BloodType.values());
     }
 
     @Test
     void theSexesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_case_patient_sex", Sex.values());
+        assertMatches("ck_caso_paciente_sexo", Sex.values());
     }
 
     @Test
     void thePatientSymptomsMatchTheEnumeration() throws IOException {
-        assertMatches("ck_case_symptom_name", Symptom.values());
+        assertMatches("ck_caso_sintoma_nombre", Symptom.values());
     }
 
     @Test
     void theCaseLimitsMatchTheCaseConfiguration() throws IOException {
-        String patients = constraint("ck_sim_case_patients");
-        String duration = constraint("ck_sim_case_duration");
+        String patients = constraint("ck_caso_pacientes");
+        String duration = constraint("ck_caso_duracion");
 
         assertTrue(patients.contains(">= " + CaseConfig.MIN_PATIENTS));
         assertTrue(patients.contains("<= " + CaseConfig.MAX_PATIENTS));
@@ -217,24 +217,24 @@ class SchemaScriptTest {
     void theResultTablesAreCreated() throws IOException {
         List<String> tables = createdTables();
 
-        assertTrue(tables.contains("sim_result"));
-        assertTrue(tables.contains("patient_result"));
-        assertTrue(tables.contains("sim_event"));
+        assertTrue(tables.contains("ejecucion"));
+        assertTrue(tables.contains("resultado_paciente"));
+        assertTrue(tables.contains("evento"));
     }
 
     @Test
     void theEventTypesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_sim_event_type", EventType.values());
+        assertMatches("ck_evento_tipo", EventType.values());
     }
     @Test
     void theHospitalLimitsMatchTheHospitalConfiguration() throws IOException {
-        assertBetween("ck_sim_result_beds", 1, HospitalConfig.MAX_BEDS);
-        assertBetween("ck_sim_result_icu", 1, HospitalConfig.MAX_ICU_BEDS);
-        assertBetween("ck_sim_result_rooms", 1, HospitalConfig.MAX_OPERATING_ROOMS);
-        assertBetween("ck_sim_result_doctors", 1, HospitalConfig.MAX_DOCTORS);
-        assertBetween("ck_sim_result_nurses", 1, HospitalConfig.MAX_NURSES);
-        assertBetween("ck_sim_result_blood", 0, HospitalConfig.MAX_BLOOD_UNITS_PER_TYPE);
-        assertBetween("ck_sim_result_morgue", 1, HospitalConfig.MAX_MORGUE_CAPACITY);
+        assertBetween("ck_ejecucion_camas", 1, HospitalConfig.MAX_BEDS);
+        assertBetween("ck_ejecucion_uci", 1, HospitalConfig.MAX_ICU_BEDS);
+        assertBetween("ck_ejecucion_quirofanos", 1, HospitalConfig.MAX_OPERATING_ROOMS);
+        assertBetween("ck_ejecucion_medicos", 1, HospitalConfig.MAX_DOCTORS);
+        assertBetween("ck_ejecucion_enfermeros", 1, HospitalConfig.MAX_NURSES);
+        assertBetween("ck_ejecucion_sangre", 0, HospitalConfig.MAX_BLOOD_UNITS_PER_TYPE);
+        assertBetween("ck_ejecucion_morgue", 1, HospitalConfig.MAX_MORGUE_CAPACITY);
     }
 
     private void assertBetween(String constraintName, int min, int max) throws IOException {
@@ -243,17 +243,17 @@ class SchemaScriptTest {
     }
     @Test
     void theCausesOfDeathMatchTheEnumeration() throws IOException {
-        assertMatches("ck_patient_result_cause", CauseOfDeath.values());
+        assertMatches("ck_resultado_pac_causa", CauseOfDeath.values());
     }
 
     @Test
     void theCareLevelsMatchTheEnumeration() throws IOException {
-        assertMatches("ck_patient_result_care", CompatibilityLevel.values());
+        assertMatches("ck_resultado_pac_atencion", CompatibilityLevel.values());
     }
 
     @Test
     void theResultSexesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_patient_result_sex", Sex.values());
+        assertMatches("ck_resultado_pac_sexo", Sex.values());
     }
 
     @Test
@@ -265,14 +265,14 @@ class SchemaScriptTest {
             }
         }
 
-        assertEquals(expected, allowedValues("ck_patient_result_status"));
-        assertFalse(allowedValues("ck_patient_result_status").contains("WAITING"));
+        assertEquals(expected, allowedValues("ck_resultado_pac_estado"));
+        assertFalse(allowedValues("ck_resultado_pac_estado").contains("WAITING"));
     }
 
     @Test
     void theTriageRangeMatchesTheTriageLevels() throws IOException {
         List<Integer> levels = Arrays.stream(TriageLevel.values()).map(TriageLevel::getLevel).toList();
-        String triage = constraint("ck_patient_result_triage");
+        String triage = constraint("ck_resultado_pac_triage");
 
         assertTrue(triage.contains(">= " + levels.stream().min(Integer::compare).orElseThrow()));
         assertTrue(triage.contains("<= " + levels.stream().max(Integer::compare).orElseThrow()));
@@ -284,32 +284,32 @@ class SchemaScriptTest {
         assertEquals(11, statements().size());
     }
 
+    @Test
+    void theTablesHaveSpanishNames() throws IOException {
+        assertEquals(List.of("enfermedad", "enfermedad_especialidad_sec", "enfermedad_sintoma", "caso",
+                "caso_paciente", "caso_paciente_sintoma", "ejecucion", "resultado_paciente", "evento", "reporte"),
+                createdTables());
+    }
+
     // ---------- reportes ----------
 
     @Test
     void theReportTableIsCreatedAfterTheResults() throws IOException {
         List<String> tables = createdTables();
 
-        assertTrue(tables.indexOf("sim_report") > tables.indexOf("sim_result"));
-        assertTrue(reportTable().contains("REFERENCES sim_result (id) ON DELETE CASCADE"));
-        assertTrue(reportTable().contains("CONSTRAINT uq_sim_report_result UNIQUE (result_id)"));
+        assertTrue(tables.indexOf("reporte") > tables.indexOf("ejecucion"));
+        assertTrue(reportTable().contains("REFERENCES ejecucion (id) ON DELETE CASCADE"));
+        assertTrue(reportTable().contains("CONSTRAINT uq_reporte_ejecucion UNIQUE (id_ejecucion)"));
     }
 
     @Test
     void theReportSourcesMatchTheEnumeration() throws IOException {
-        assertMatches("ck_sim_report_source", NarrativeSource.values());
+        assertMatches("ck_reporte_origen", NarrativeSource.values());
     }
 
-    @Test
-    void theScriptForExistingDatabasesCreatesTheSameReportTable() throws IOException {
-        List<String> migration = SchemaInstaller.statementsFrom(read("/db/add_report_table.sql"));
-
-        assertEquals(List.of(reportTable()), migration);
-        assertFalse(read("/db/add_report_table.sql").contains("&"));
-    }
 
     private static String reportTable() throws IOException {
-        return statements().stream().filter(statement -> statement.startsWith("CREATE TABLE sim_report "))
+        return statements().stream().filter(statement -> statement.startsWith("CREATE TABLE reporte "))
                 .findFirst().orElseThrow();
     }
 

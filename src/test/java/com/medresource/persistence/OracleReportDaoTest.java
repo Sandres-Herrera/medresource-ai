@@ -58,9 +58,9 @@ class OracleReportDaoTest {
         assertEquals(1, first);
         assertEquals(2, second);
         assertEquals(List.of(1, 2), database.reportIds());
-        assertEquals(1, database.reportColumn(first, "result_id"));
-        assertEquals("AI", database.reportColumn(first, "source"));
-        assertEquals(ReportJson.toJson(report), database.reportColumn(first, "report_json"));
+        assertEquals(1, database.reportColumn(first, "id_ejecucion"));
+        assertEquals("AI", database.reportColumn(first, "origen"));
+        assertEquals(ReportJson.toJson(report), database.reportColumn(first, "contenido_json"));
         assertEquals(2, database.commits);
     }
 
@@ -136,16 +136,16 @@ class OracleReportDaoTest {
     void damagedDataIsReportedAsADataError() {
         int id = dao.save(SavedReport.toSave(1, report));
 
-        database.corruptResult(1, "scenario", "INVENTADO");
+        database.corruptResult(1, "escenario", "INVENTADO");
         DataAccessException scenario = assertThrows(DataAccessException.class, dao::summaries);
         assertTrue(scenario.getMessage().contains("INVENTADO"));
 
-        database.corruptReport(id, "report_json", "{\"report\":");
+        database.corruptReport(id, "contenido_json", "{\"report\":");
         DataAccessException json = assertThrows(DataAccessException.class, () -> dao.findById(id));
         assertTrue(json.getMessage().contains("reporte " + id));
 
-        database.corruptReport(id, "report_json", ReportJson.toJson(report));
-        database.corruptReport(id, "saved_at", null);
+        database.corruptReport(id, "contenido_json", ReportJson.toJson(report));
+        database.corruptReport(id, "guardado_en", null);
         assertThrows(DataAccessException.class, () -> dao.findById(id));
     }
 
@@ -153,7 +153,7 @@ class OracleReportDaoTest {
     void theSavedAtComesFromTheDatabase() {
         int id = dao.save(SavedReport.toSave(1, report));
 
-        assertEquals(Timestamp.valueOf(FakeReportDatabase.FIRST_SAVE), database.reportColumn(id, "saved_at"));
+        assertEquals(Timestamp.valueOf(FakeReportDatabase.FIRST_SAVE), database.reportColumn(id, "guardado_en"));
     }
 
     // ---------- borrar ----------
@@ -185,7 +185,7 @@ class OracleReportDaoTest {
         dao.save(SavedReport.toSave(1, report));
         dao.findById(1);
         dao.summaries();
-        database.failWhenContaining = "FROM sim_report";
+        database.failWhenContaining = "FROM reporte";
 
         assertThrows(DataAccessException.class, () -> dao.findAll());
 

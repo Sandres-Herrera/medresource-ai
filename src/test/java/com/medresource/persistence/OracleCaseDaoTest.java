@@ -57,10 +57,10 @@ class OracleCaseDaoTest {
     void savesTheConfigurationOfTheCase() {
         int id = dao.save(threePatients(77));
 
-        assertEquals(77L, database.caseColumn(id, "seed"));
-        assertEquals("NORMAL", database.caseColumn(id, "scenario"));
-        assertEquals(3, database.caseColumn(id, "patient_count"));
-        assertEquals(120, database.caseColumn(id, "duration_minutes"));
+        assertEquals(77L, database.caseColumn(id, "semilla"));
+        assertEquals("NORMAL", database.caseColumn(id, "escenario"));
+        assertEquals(3, database.caseColumn(id, "cantidad_pacientes"));
+        assertEquals(120, database.caseColumn(id, "duracion_minutos"));
     }
 
     @Test
@@ -68,19 +68,19 @@ class OracleCaseDaoTest {
         int id = dao.save(threePatients(77));
 
         assertEquals(List.of(1, 2, 3), database.patientIds(id));
-        assertEquals(30, database.patientColumn(id, 1, "age"));
-        assertEquals("FEMALE", database.patientColumn(id, 1, "sex"));
-        assertEquals("O_POSITIVE", database.patientColumn(id, 1, "blood_type"));
-        assertEquals(1, database.patientColumn(id, 1, "disease_id"));
-        assertEquals(0, database.patientColumn(id, 1, "arrival_minute"));
-        assertEquals(80.5, (Double) database.patientColumn(id, 1, "initial_health"), 0.0);
-        assertEquals(0, database.patientColumn(id, 1, "irrecoverable"));
-        assertEquals("MALE", database.patientColumn(id, 2, "sex"));
-        assertEquals("AB_NEGATIVE", database.patientColumn(id, 2, "blood_type"));
-        assertEquals(2, database.patientColumn(id, 2, "disease_id"));
-        assertEquals(10, database.patientColumn(id, 2, "arrival_minute"));
-        assertEquals(1, database.patientColumn(id, 3, "irrecoverable"));
-        assertEquals(33.25, (Double) database.patientColumn(id, 3, "initial_health"), 0.0);
+        assertEquals(30, database.patientColumn(id, 1, "edad"));
+        assertEquals("FEMALE", database.patientColumn(id, 1, "sexo"));
+        assertEquals("O_POSITIVE", database.patientColumn(id, 1, "tipo_sangre"));
+        assertEquals(1, database.patientColumn(id, 1, "id_enfermedad"));
+        assertEquals(0, database.patientColumn(id, 1, "minuto_llegada"));
+        assertEquals(80.5, (Double) database.patientColumn(id, 1, "salud_inicial"), 0.0);
+        assertEquals(0, database.patientColumn(id, 1, "irrecuperable"));
+        assertEquals("MALE", database.patientColumn(id, 2, "sexo"));
+        assertEquals("AB_NEGATIVE", database.patientColumn(id, 2, "tipo_sangre"));
+        assertEquals(2, database.patientColumn(id, 2, "id_enfermedad"));
+        assertEquals(10, database.patientColumn(id, 2, "minuto_llegada"));
+        assertEquals(1, database.patientColumn(id, 3, "irrecuperable"));
+        assertEquals(33.25, (Double) database.patientColumn(id, 3, "salud_inicial"), 0.0);
     }
 
     @Test
@@ -129,7 +129,7 @@ class OracleCaseDaoTest {
 
     @Test
     void reportsADatabaseFailureAndUndoesTheCase() {
-        database.failWhenContaining = "INSERT INTO case_patient_symptom";
+        database.failWhenContaining = "INSERT INTO caso_paciente_sintoma";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(threePatients(77)));
 
@@ -257,7 +257,7 @@ class OracleCaseDaoTest {
     @Test
     void reportsASavedScenarioThatDoesNotExist() {
         int id = dao.save(threePatients(77));
-        database.corruptCase(id, "scenario", "INVENTADO");
+        database.corruptCase(id, "escenario", "INVENTADO");
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
@@ -267,15 +267,15 @@ class OracleCaseDaoTest {
     @Test
     void reportsAPatientWithAnUnknownSexOrBloodType() {
         int id = dao.save(threePatients(77));
-        database.corruptPatient(id, 2, "sex", "X");
+        database.corruptPatient(id, 2, "sexo", "X");
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
         assertTrue(error.getMessage().contains("paciente 2"));
         assertTrue(error.getMessage().contains("Sex"));
 
-        database.corruptPatient(id, 2, "sex", "MALE");
-        database.corruptPatient(id, 2, "blood_type", "Z");
+        database.corruptPatient(id, 2, "sexo", "MALE");
+        database.corruptPatient(id, 2, "tipo_sangre", "Z");
         error = assertThrows(DataAccessException.class, () -> dao.findById(id));
         assertTrue(error.getMessage().contains("BloodType"));
     }
@@ -283,7 +283,7 @@ class OracleCaseDaoTest {
     @Test
     void reportsAPatientWithInvalidData() {
         int id = dao.save(threePatients(77));
-        database.corruptPatient(id, 1, "age", 1);
+        database.corruptPatient(id, 1, "edad", 1);
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findAll());
 
@@ -294,7 +294,7 @@ class OracleCaseDaoTest {
     @Test
     void reportsACaseWhosePatientsDoNotMatchItsConfiguration() {
         int id = dao.save(threePatients(77));
-        database.corruptCase(id, "patient_count", 5);
+        database.corruptCase(id, "cantidad_pacientes", 5);
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
@@ -304,7 +304,7 @@ class OracleCaseDaoTest {
     @Test
     void reportsPatientsOutOfArrivalOrder() {
         int id = dao.save(threePatients(77));
-        database.corruptPatient(id, 3, "arrival_minute", 5);
+        database.corruptPatient(id, 3, "minuto_llegada", 5);
 
         assertThrows(DataAccessException.class, () -> dao.findById(id));
     }

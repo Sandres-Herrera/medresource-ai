@@ -63,16 +63,16 @@ class OracleResultDaoTest {
     void savesTheStrategyTheDurationAndEveryResourceOfTheHospital() {
         int id = dao.save(runOf(2, "Prioridad clínica", 88));
 
-        assertEquals(2, database.resultColumn(id, "case_id"));
-        assertEquals("Prioridad clínica", database.resultColumn(id, "strategy_name"));
-        assertEquals(130, database.resultColumn(id, "total_minutes"));
-        assertEquals(HOSPITAL.hospitalizationBeds(), database.resultColumn(id, "beds"));
-        assertEquals(HOSPITAL.icuBeds(), database.resultColumn(id, "icu_beds"));
-        assertEquals(HOSPITAL.operatingRooms(), database.resultColumn(id, "operating_rooms"));
-        assertEquals(HOSPITAL.doctors(), database.resultColumn(id, "doctors"));
-        assertEquals(HOSPITAL.nurses(), database.resultColumn(id, "nurses"));
-        assertEquals(HOSPITAL.bloodUnitsPerType(), database.resultColumn(id, "blood_units_per_type"));
-        assertEquals(HOSPITAL.morgueCapacity(), database.resultColumn(id, "morgue_capacity"));
+        assertEquals(2, database.resultColumn(id, "id_caso"));
+        assertEquals("Prioridad clínica", database.resultColumn(id, "estrategia"));
+        assertEquals(130, database.resultColumn(id, "minutos_totales"));
+        assertEquals(HOSPITAL.hospitalizationBeds(), database.resultColumn(id, "camas"));
+        assertEquals(HOSPITAL.icuBeds(), database.resultColumn(id, "camas_uci"));
+        assertEquals(HOSPITAL.operatingRooms(), database.resultColumn(id, "quirofanos"));
+        assertEquals(HOSPITAL.doctors(), database.resultColumn(id, "medicos"));
+        assertEquals(HOSPITAL.nurses(), database.resultColumn(id, "enfermeros"));
+        assertEquals(HOSPITAL.bloodUnitsPerType(), database.resultColumn(id, "unidades_sangre_por_tipo"));
+        assertEquals(HOSPITAL.morgueCapacity(), database.resultColumn(id, "capacidad_morgue"));
     }
 
     @Test
@@ -80,32 +80,32 @@ class OracleResultDaoTest {
         int id = dao.save(runOf(1, "FIFO", 77));
 
         assertEquals(List.of(1, 2, 3), database.patientIds(id));
-        assertEquals("P-001", database.patientColumn(id, 1, "patient_code"));
-        assertEquals(30, database.patientColumn(id, 1, "age"));
-        assertEquals("FEMALE", database.patientColumn(id, 1, "sex"));
-        assertEquals(2, database.patientColumn(id, 1, "triage"));
-        assertEquals(1, database.patientColumn(id, 1, "disease_id"));
-        assertEquals(0, database.patientColumn(id, 1, "arrival_minute"));
-        assertEquals(12, database.patientColumn(id, 1, "treatment_start_minute"));
-        assertEquals(75, database.patientColumn(id, 1, "outcome_minute"));
-        assertEquals("DISCHARGED", database.patientColumn(id, 1, "status"));
-        assertEquals("PRIMARY", database.patientColumn(id, 1, "care_level"));
-        assertEquals(0, database.patientColumn(id, 1, "irrecoverable"));
-        assertEquals(88.5, (Double) database.patientColumn(id, 1, "final_health"), 0.0);
+        assertEquals("P-001", database.patientColumn(id, 1, "codigo_paciente"));
+        assertEquals(30, database.patientColumn(id, 1, "edad"));
+        assertEquals("FEMALE", database.patientColumn(id, 1, "sexo"));
+        assertEquals(2, database.patientColumn(id, 1, "nivel_triage"));
+        assertEquals(1, database.patientColumn(id, 1, "id_enfermedad"));
+        assertEquals(0, database.patientColumn(id, 1, "minuto_llegada"));
+        assertEquals(12, database.patientColumn(id, 1, "minuto_inicio_atencion"));
+        assertEquals(75, database.patientColumn(id, 1, "minuto_desenlace"));
+        assertEquals("DISCHARGED", database.patientColumn(id, 1, "estado"));
+        assertEquals("PRIMARY", database.patientColumn(id, 1, "nivel_atencion"));
+        assertEquals(0, database.patientColumn(id, 1, "irrecuperable"));
+        assertEquals(88.5, (Double) database.patientColumn(id, 1, "salud_final"), 0.0);
     }
 
     @Test
     void savesTheCauseOfDeathAndLeavesEmptyWhatDoesNotApply() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
-        assertNull(database.patientColumn(id, 1, "cause_of_death"));
-        assertEquals("DECEASED", database.patientColumn(id, 2, "status"));
-        assertEquals("NO_ICU_BED", database.patientColumn(id, 2, "cause_of_death"));
-        assertEquals("SECONDARY", database.patientColumn(id, 2, "care_level"));
-        assertEquals(-1, database.patientColumn(id, 3, "treatment_start_minute"));
-        assertNull(database.patientColumn(id, 3, "care_level"));
-        assertEquals(1, database.patientColumn(id, 3, "irrecoverable"));
-        assertEquals(5, database.patientColumn(id, 3, "triage"));
+        assertNull(database.patientColumn(id, 1, "causa_muerte"));
+        assertEquals("DECEASED", database.patientColumn(id, 2, "estado"));
+        assertEquals("NO_ICU_BED", database.patientColumn(id, 2, "causa_muerte"));
+        assertEquals("SECONDARY", database.patientColumn(id, 2, "nivel_atencion"));
+        assertEquals(-1, database.patientColumn(id, 3, "minuto_inicio_atencion"));
+        assertNull(database.patientColumn(id, 3, "nivel_atencion"));
+        assertEquals(1, database.patientColumn(id, 3, "irrecuperable"));
+        assertEquals(5, database.patientColumn(id, 3, "nivel_triage"));
     }
 
     @Test
@@ -113,15 +113,15 @@ class OracleResultDaoTest {
         int id = dao.save(runOf(1, "FIFO", 77));
 
         assertEquals(4, database.eventCount(id));
-        assertEquals(0, database.eventColumn(id, 0, "event_minute"));
-        assertEquals("ARRIVAL", database.eventColumn(id, 0, "event_type"));
-        assertEquals("P-001", database.eventColumn(id, 0, "patient_code"));
-        assertNull(database.eventColumn(id, 0, "resource_code"));
-        assertEquals("Llega P-001", database.eventColumn(id, 0, "description"));
-        assertEquals("TREATMENT_STARTED", database.eventColumn(id, 1, "event_type"));
-        assertEquals("DOC-1", database.eventColumn(id, 1, "resource_code"));
-        assertEquals(75, database.eventColumn(id, 3, "event_minute"));
-        assertEquals("BED-3", database.eventColumn(id, 3, "resource_code"));
+        assertEquals(0, database.eventColumn(id, 0, "minuto_evento"));
+        assertEquals("ARRIVAL", database.eventColumn(id, 0, "tipo_evento"));
+        assertEquals("P-001", database.eventColumn(id, 0, "codigo_paciente"));
+        assertNull(database.eventColumn(id, 0, "codigo_recurso"));
+        assertEquals("Llega P-001", database.eventColumn(id, 0, "descripcion"));
+        assertEquals("TREATMENT_STARTED", database.eventColumn(id, 1, "tipo_evento"));
+        assertEquals("DOC-1", database.eventColumn(id, 1, "codigo_recurso"));
+        assertEquals(75, database.eventColumn(id, 3, "minuto_evento"));
+        assertEquals("BED-3", database.eventColumn(id, 3, "codigo_recurso"));
     }
 
     @Test
@@ -183,7 +183,7 @@ class OracleResultDaoTest {
 
     @Test
     void reportsADatabaseFailureAndUndoesTheRun() {
-        database.failWhenContaining = "INSERT INTO sim_event";
+        database.failWhenContaining = "INSERT INTO evento";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(runOf(1, "FIFO", 77)));
 
@@ -304,7 +304,7 @@ class OracleResultDaoTest {
     @Test
     void reportsASavedScenarioThatDoesNotExist() {
         int id = dao.save(runOf(1, "FIFO", 77));
-        database.corruptCase(1, "scenario", "INEXISTENTE");
+        database.corruptCase(1, "escenario", "INEXISTENTE");
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
@@ -316,13 +316,13 @@ class OracleResultDaoTest {
     void reportsAPatientWithAnUnknownTriageStatusOrSex() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
-        database.corruptPatient(id, 1, "triage", 9);
+        database.corruptPatient(id, 1, "nivel_triage", 9);
         DataAccessException triage = assertThrows(DataAccessException.class, () -> dao.findById(id));
-        database.corruptPatient(id, 1, "triage", 2);
-        database.corruptPatient(id, 1, "status", "VOLANDO");
+        database.corruptPatient(id, 1, "nivel_triage", 2);
+        database.corruptPatient(id, 1, "estado", "VOLANDO");
         DataAccessException status = assertThrows(DataAccessException.class, () -> dao.findById(id));
-        database.corruptPatient(id, 1, "status", "DISCHARGED");
-        database.corruptPatient(id, 1, "sex", "X");
+        database.corruptPatient(id, 1, "estado", "DISCHARGED");
+        database.corruptPatient(id, 1, "sexo", "X");
         DataAccessException sex = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
         assertTrue(triage.getMessage().contains("triage desconocido (9)"));
@@ -335,10 +335,10 @@ class OracleResultDaoTest {
     void reportsAnUnknownCauseOfDeathOrCareLevel() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
-        database.corruptPatient(id, 2, "cause_of_death", "BRUJERIA");
+        database.corruptPatient(id, 2, "causa_muerte", "BRUJERIA");
         DataAccessException cause = assertThrows(DataAccessException.class, () -> dao.findById(id));
-        database.corruptPatient(id, 2, "cause_of_death", "NO_ICU_BED");
-        database.corruptPatient(id, 2, "care_level", "MEDIO");
+        database.corruptPatient(id, 2, "causa_muerte", "NO_ICU_BED");
+        database.corruptPatient(id, 2, "nivel_atencion", "MEDIO");
         DataAccessException care = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
         assertTrue(cause.getMessage().contains("CauseOfDeath"));
@@ -348,7 +348,7 @@ class OracleResultDaoTest {
     @Test
     void reportsAPatientWithInvalidData() {
         int id = dao.save(runOf(1, "FIFO", 77));
-        database.corruptPatient(id, 1, "status", "WAITING");
+        database.corruptPatient(id, 1, "estado", "WAITING");
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
@@ -359,10 +359,10 @@ class OracleResultDaoTest {
     void reportsAnEventWithAnUnknownTypeOrInvalidData() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
-        database.corruptEvent(id, 2, "event_type", "TERREMOTO");
+        database.corruptEvent(id, 2, "tipo_evento", "TERREMOTO");
         DataAccessException type = assertThrows(DataAccessException.class, () -> dao.findById(id));
-        database.corruptEvent(id, 2, "event_type", "DEATH");
-        database.corruptEvent(id, 2, "description", "");
+        database.corruptEvent(id, 2, "tipo_evento", "DEATH");
+        database.corruptEvent(id, 2, "descripcion", "");
         DataAccessException invalid = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
         assertTrue(type.getMessage().contains("Un evento de la ejecución " + id));
@@ -374,10 +374,10 @@ class OracleResultDaoTest {
     void reportsARunWhoseHospitalOrPatientsDoNotMatchWhatWasSaved() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
-        database.corruptResult(id, "beds", 9999);
+        database.corruptResult(id, "camas", 9999);
         DataAccessException hospital = assertThrows(DataAccessException.class, () -> dao.findById(id));
-        database.corruptResult(id, "beds", 11);
-        database.corruptCase(1, "patient_count", 4);
+        database.corruptResult(id, "camas", 11);
+        database.corruptCase(1, "cantidad_pacientes", 4);
         DataAccessException patients = assertThrows(DataAccessException.class, () -> dao.findById(id));
 
         assertTrue(hospital.getMessage().contains("Los datos guardados de la ejecución " + id + " no son válidos"));

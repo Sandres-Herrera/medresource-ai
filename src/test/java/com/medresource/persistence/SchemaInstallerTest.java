@@ -104,15 +104,15 @@ class SchemaInstallerTest {
     @Test
     void aRejectedStatementStopsTheInstallationAndStillClosesEverything() {
         FakeJdbc.Recorder recorder = new FakeJdbc.Recorder();
-        recorder.failWhenContaining = "CREATE TABLE sim_case";
+        recorder.failWhenContaining = "CREATE TABLE caso (";
 
         DataAccessException exception = assertThrows(DataAccessException.class,
                 () -> new SchemaInstaller(managerFor(recorder)).install());
 
         assertTrue(exception.getCause() instanceof SQLException);
         assertTrue(exception.getMessage().contains("fallo simulado"));
-        assertTrue(recorder.executed.stream().noneMatch(sql -> sql.contains("CREATE TABLE sim_case")));
-        assertTrue(recorder.executed.stream().anyMatch(sql -> sql.contains("CREATE TABLE disease")));
+        assertTrue(recorder.executed.stream().noneMatch(sql -> sql.contains("CREATE TABLE caso (")));
+        assertTrue(recorder.executed.stream().anyMatch(sql -> sql.contains("CREATE TABLE enfermedad")));
         assertEquals(1, recorder.connectionsClosed);
         assertEquals(1, recorder.statementsClosed);
     }

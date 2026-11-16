@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>Guarda un caso de 20 pacientes con una semilla poco común, una ejecución y su reporte, y comprueba que el
  * reporte se lee igual y que aparece en la lista con sus fallecidos. Borra lo que crea: al borrar el caso se
- * borran sus ejecuciones y sus reportes. Si las tablas todavía no existen (no se ha corrido {@code schema.sql} o
- * {@code add_report_table.sql}), se omite con un aviso.</p>
+ * borran sus ejecuciones y sus reportes. Si las tablas todavía no existen (no se ha corrido {@code schema.sql}),
+ * se omite con un aviso.</p>
  */
 class OracleReportDaoIntegrationTest {
 
@@ -54,7 +54,7 @@ class OracleReportDaoIntegrationTest {
             dao.summaries();
         } catch (DataAccessException error) {
             assumeTrue(!error.getMessage().contains(TABLE_MISSING),
-                    "Las tablas no existen: corra db/schema.sql (o db/add_report_table.sql) y repita la prueba.");
+                    "Las tablas no existen: corra db/schema.sql y repita la prueba.");
             throw error;
         }
 
