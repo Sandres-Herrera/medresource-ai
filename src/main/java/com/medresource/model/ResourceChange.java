@@ -118,6 +118,42 @@ public record ResourceChange(ExtraResource resource, Specialty specialty) {
     }
 
     /**
+     * Indica si el cambio, con su médico incluido, cabe en el hospital: si es un médico, que no pase el máximo de
+     * médicos extra; si es otro recurso, lo mismo que {@link #fitsIn(HospitalConfig)}.
+     *
+     * @param config hospital
+     * @return {@code true} si se puede aplicar con {@link #applyWithDoctorsTo(HospitalConfig)}
+     * @throws IllegalArgumentException si falta el hospital
+     */
+    public boolean fitsWithDoctorsIn(HospitalConfig config) {
+        requireConfig(config);
+        if (resource == ExtraResource.DOCTOR) {
+            return config.extraDoctors().size() + resource.getAmount() <= HospitalConfig.MAX_EXTRA_DOCTORS;
+        }
+        return fitsIn(config);
+    }
+
+    /**
+     * Devuelve el hospital con el cambio hecho y, si el cambio es un médico, con el especialista agregado a sus
+     * médicos extra. Es lo que se usa para volver a simular un caso con una recomendación del reporte.
+     *
+     * @param config hospital original
+     * @return hospital con el cambio
+     * @throws IllegalArgumentException si falta el hospital o si el cambio no cabe
+     */
+    public HospitalConfig applyWithDoctorsTo(HospitalConfig config) {
+        if (!fitsWithDoctorsIn(config)) {
+            throw new IllegalArgumentException("El cambio pasa del máximo permitido: " + describe() + ".");
+        }
+        if (resource != ExtraResource.DOCTOR) {
+            return applyTo(config);
+        }
+        List<Specialty> doctors = new ArrayList<>(config.extraDoctors());
+        doctors.addAll(extraDoctors());
+        return config.withExtraDoctors(doctors);
+    }
+
+    /**
      * Devuelve las especialidades de los médicos que el cambio agrega.
      *
      * @return una especialidad por médico agregado; vacío si el cambio no es de médicos

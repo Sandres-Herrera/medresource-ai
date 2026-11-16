@@ -2,6 +2,7 @@ package com.medresource.model;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,5 +79,35 @@ class ResourceChangeTest {
             assertEquals(List.of(Specialty.SURGERY), change.applyTo(hospital).extraDoctors(), change.describe());
         }
         assertEquals(35, ResourceChange.of(ExtraResource.BEDS).applyTo(hospital).hospitalizationBeds());
+    }
+
+    @Test
+    void appliedWithItsDoctorTheSpecialistJoinsTheExtraDoctors() {
+        HospitalConfig hospital = STANDARD.withExtraDoctors(List.of(Specialty.PEDIATRICS));
+
+        HospitalConfig changed = ResourceChange.doctor(Specialty.SURGERY).applyWithDoctorsTo(hospital);
+
+        assertEquals(List.of(Specialty.PEDIATRICS, Specialty.SURGERY), changed.extraDoctors());
+        assertEquals(STANDARD.doctors(), changed.doctors());
+        assertEquals(18, changed.totalDoctors());
+    }
+
+    @Test
+    void appliedWithItsDoctorAnotherResourceChangesAsUsual() {
+        ResourceChange beds = ResourceChange.of(ExtraResource.BEDS);
+
+        assertEquals(beds.applyTo(STANDARD), beds.applyWithDoctorsTo(STANDARD));
+        assertTrue(beds.fitsWithDoctorsIn(STANDARD));
+    }
+
+    @Test
+    void aDoctorDoesNotFitWhenTheExtraDoctorsAreFull() {
+        HospitalConfig full = STANDARD.withExtraDoctors(
+                Collections.nCopies(HospitalConfig.MAX_EXTRA_DOCTORS, Specialty.SURGERY));
+        ResourceChange surgeon = ResourceChange.doctor(Specialty.SURGERY);
+
+        assertFalse(surgeon.fitsWithDoctorsIn(full));
+        assertThrows(IllegalArgumentException.class, () -> surgeon.applyWithDoctorsTo(full));
+        assertThrows(IllegalArgumentException.class, () -> surgeon.fitsWithDoctorsIn(null));
     }
 }
