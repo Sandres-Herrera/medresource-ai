@@ -21,6 +21,9 @@ public class SchemaInstaller {
     /** Ruta del script de creación dentro del classpath. */
     public static final String SCHEMA_RESOURCE = "/db/schema.sql";
 
+    /** Ruta del script de funciones, procedimientos y triggers dentro del classpath. */
+    public static final String PLSQL_RESOURCE = "/db/plsql.sql";
+
     private static final String COMMENT_PREFIX = "--";
 
     private final ConnectionManager connections;
