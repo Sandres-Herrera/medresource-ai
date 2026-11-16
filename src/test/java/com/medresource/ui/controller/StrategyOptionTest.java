@@ -5,6 +5,8 @@ import com.medresource.services.strategy.FifoStrategy;
 import com.medresource.services.strategy.RandomStrategy;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,5 +35,15 @@ class StrategyOptionTest {
         for (StrategyOption option : StrategyOption.values()) {
             assertTrue(!option.getDescription().isBlank() && option.getDescription().length() <= 40, option.name());
         }
+    }
+
+    @Test
+    void findsEachOptionByTheNameSavedInTheResults() {
+        for (StrategyOption option : StrategyOption.values()) {
+            assertEquals(Optional.of(option), StrategyOption.fromStrategyName(option.create(3L).getName()));
+        }
+        assertEquals(Optional.of(StrategyOption.FIFO), StrategyOption.fromStrategyName("FIFO (orden de llegada)"));
+        assertEquals(Optional.empty(), StrategyOption.fromStrategyName("Red neuronal"));
+        assertEquals(Optional.empty(), StrategyOption.fromStrategyName(null));
     }
 }
