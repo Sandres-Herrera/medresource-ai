@@ -82,19 +82,19 @@ final class FakeReportDatabase {
      */
     void addResult(int resultId, String strategy, long seed, String scenario, int patients, int deaths) {
         Map<String, Object> row = new HashMap<>();
-        row.put("strategy_name", strategy);
-        row.put("seed", seed);
-        row.put("scenario", scenario);
-        row.put("patient_count", patients);
-        row.put("duration_minutes", 480);
-        row.put("deaths", deaths);
+        row.put("estrategia", strategy);
+        row.put("semilla", seed);
+        row.put("escenario", scenario);
+        row.put("cantidad_pacientes", patients);
+        row.put("duracion_minutos", 480);
+        row.put("fallecidos", deaths);
         results.put(resultId, row);
     }
 
     /** Simula que se borra la ejecución: Oracle borra en cascada su reporte. */
     void deleteResult(int resultId) {
         results.remove(resultId);
-        committed.reports.values().removeIf(row -> row.get("result_id").equals(resultId));
+        committed.reports.values().removeIf(row -> row.get("id_ejecucion").equals(resultId));
         working = committed;
     }
 
@@ -197,21 +197,21 @@ final class FakeReportDatabase {
             case OracleReportDao.INSERT_REPORT -> {
                 Object resultId = p.get(1);
                 if (!results.containsKey((Integer) resultId)) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_SIM_REPORT_RESULT) violada");
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_REPORTE_EJECUCION) violada");
                 }
-                if (working.reports.values().stream().anyMatch(row -> row.get("result_id").equals(resultId))) {
-                    throw new SQLException("ORA-00001: restricción única (UQ_SIM_REPORT_RESULT) violada");
+                if (working.reports.values().stream().anyMatch(row -> row.get("id_ejecucion").equals(resultId))) {
+                    throw new SQLException("ORA-00001: restricción única (UQ_REPORTE_EJECUCION) violada");
                 }
                 if (!List.of("AI", "TEMPLATE").contains(p.get(2))) {
-                    throw new SQLException("ORA-02290: restricción de control (CK_SIM_REPORT_SOURCE) violada");
+                    throw new SQLException("ORA-02290: restricción de control (CK_REPORTE_ORIGEN) violada");
                 }
                 int id = working.nextId++;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("id", id);
-                row.put("result_id", resultId);
-                row.put("source", p.get(2));
-                row.put("report_json", p.get(3));
-                row.put("saved_at", Timestamp.valueOf(clock));
+                row.put("id_ejecucion", resultId);
+                row.put("origen", p.get(2));
+                row.put("contenido_json", p.get(3));
+                row.put("guardado_en", Timestamp.valueOf(clock));
                 clock = clock.plusMinutes(1);
                 working.reports.put(id, row);
                 generatedKey[0] = id;
@@ -237,13 +237,13 @@ final class FakeReportDatabase {
                 }
             }
             case OracleReportDao.SELECT_REPORT_BY_RESULT -> working.reports.values().stream()
-                    .filter(row -> row.get("result_id").equals(p.get(1)))
+                    .filter(row -> row.get("id_ejecucion").equals(p.get(1)))
                     .forEach(rows::add);
             case OracleReportDao.SELECT_SUMMARIES -> working.reports.values().stream()
-                    .sorted(Comparator.comparing((Map<String, Object> row) -> (Timestamp) row.get("saved_at"))
+                    .sorted(Comparator.comparing((Map<String, Object> row) -> (Timestamp) row.get("guardado_en"))
                             .thenComparing(row -> (Integer) row.get("id")).reversed())
                     .forEach(row -> {
-                        Map<String, Object> joined = new HashMap<>(results.get((Integer) row.get("result_id")));
+                        Map<String, Object> joined = new HashMap<>(results.get((Integer) row.get("id_ejecucion")));
                         joined.putAll(row);
                         rows.add(joined);
                     });

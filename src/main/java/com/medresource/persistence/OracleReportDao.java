@@ -21,28 +21,31 @@ import java.util.Optional;
 /**
  * Guarda y lee en Oracle los reportes de fin de simulación.
  *
- * <p>Cada reporte ocupa una fila de {@code sim_report}: la ejecución de la que salió, quién redactó el texto, el
+ * <p>Cada reporte ocupa una fila de {@code reporte}: la ejecución de la que salió, quién redactó el texto, el
  * reporte completo como JSON (ver {@link ReportJson}) y la fecha en que se guardó, que pone Oracle. La lista de
  * reportes ({@link #summaries()}) no lee el JSON: toma el escenario, la semilla y la estrategia de
- * {@code sim_case} y {@code sim_result}, y cuenta los fallecidos en {@code patient_result}.</p>
+ * {@code caso} y {@code ejecucion}, y cuenta los fallecidos en {@code resultado_paciente}.</p>
  *
  * <p>Los reportes no se modifican: {@link #update(SavedReport)} no está permitido. Al borrar la ejecución, Oracle
  * borra también su reporte.</p>
  */
 public class OracleReportDao implements ReportDao {
 
-    static final String INSERT_REPORT = "INSERT INTO sim_report (result_id, source, report_json) VALUES (?, ?, ?)";
-    static final String SELECT_REPORT = "SELECT id, result_id, saved_at, report_json FROM sim_report WHERE id = ?";
+    static final String INSERT_REPORT = "INSERT INTO reporte (id_ejecucion, origen, contenido_json) VALUES (?, ?, ?)";
+    static final String SELECT_REPORT =
+            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte WHERE id = ?";
     static final String SELECT_REPORT_BY_RESULT =
-            "SELECT id, result_id, saved_at, report_json FROM sim_report WHERE result_id = ?";
-    static final String SELECT_REPORTS = "SELECT id, result_id, saved_at, report_json FROM sim_report ORDER BY id";
-    static final String SELECT_SUMMARIES = "SELECT p.id, p.result_id, p.saved_at, p.source, r.strategy_name, "
-            + "c.seed, c.scenario, c.patient_count, c.duration_minutes, "
-            + "(SELECT COUNT(*) FROM patient_result d WHERE d.result_id = p.result_id AND d.status = 'DECEASED') "
-            + "AS deaths "
-            + "FROM sim_report p JOIN sim_result r ON r.id = p.result_id JOIN sim_case c ON c.id = r.case_id "
-            + "ORDER BY p.saved_at DESC, p.id DESC";
-    static final String DELETE_REPORT = "DELETE FROM sim_report WHERE id = ?";
+            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte WHERE id_ejecucion = ?";
+    static final String SELECT_REPORTS =
+            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte ORDER BY id";
+    static final String SELECT_SUMMARIES = "SELECT p.id, p.id_ejecucion, p.guardado_en, p.origen, r.estrategia, "
+            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos, "
+            + "(SELECT COUNT(*) FROM resultado_paciente d "
+            + "WHERE d.id_ejecucion = p.id_ejecucion AND d.estado = 'DECEASED') "
+            + "AS fallecidos "
+            + "FROM reporte p JOIN ejecucion r ON r.id = p.id_ejecucion JOIN caso c ON c.id = r.id_caso "
+            + "ORDER BY p.guardado_en DESC, p.id DESC";
+    static final String DELETE_REPORT = "DELETE FROM reporte WHERE id = ?";
 
     /** Nombre de la columna que Oracle genera al insertar un reporte. */
     private static final String GENERATED_COLUMN = "ID";
@@ -210,29 +213,29 @@ public class OracleReportDao implements ReportDao {
         int id = row.getInt("id");
         GeneratedReport report;
         try {
-            report = ReportJson.fromJson(row.getString("report_json"));
+            report = ReportJson.fromJson(row.getString("contenido_json"));
         } catch (DataAccessException e) {
             throw new DataAccessException("El reporte " + id + " no se puede abrir: " + e.getMessage(), e);
         }
-        return new SavedReport(id, row.getInt("result_id"), savedAt(row, id), report);
+        return new SavedReport(id, row.getInt("id_ejecucion"), savedAt(row, id), report);
     }
 
     private static SavedReportSummary toSummary(ResultSet row) throws SQLException {
         int id = row.getInt("id");
         String owner = "El reporte " + id;
         try {
-            CaseConfig config = new CaseConfig(row.getLong("seed"), parse(Scenario.class, row.getString("scenario"),
-                    owner), row.getInt("patient_count"), row.getInt("duration_minutes"));
-            return new SavedReportSummary(id, row.getInt("result_id"), savedAt(row, id), config,
-                    row.getString("strategy_name"), row.getInt("deaths"),
-                    parse(NarrativeSource.class, row.getString("source"), owner));
+            CaseConfig config = new CaseConfig(row.getLong("semilla"), parse(Scenario.class, row.getString("escenario"),
+                    owner), row.getInt("cantidad_pacientes"), row.getInt("duracion_minutos"));
+            return new SavedReportSummary(id, row.getInt("id_ejecucion"), savedAt(row, id), config,
+                    row.getString("estrategia"), row.getInt("fallecidos"),
+                    parse(NarrativeSource.class, row.getString("origen"), owner));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
         }
     }
 
     private static LocalDateTime savedAt(ResultSet row, int id) throws SQLException {
-        Timestamp savedAt = row.getTimestamp("saved_at");
+        Timestamp savedAt = row.getTimestamp("guardado_en");
         if (savedAt == null) {
             throw new DataAccessException("El reporte " + id + " no tiene fecha de guardado.");
         }

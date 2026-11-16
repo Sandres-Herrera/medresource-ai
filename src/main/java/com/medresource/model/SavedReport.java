@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
  * base de datos trae los dos.</p>
  *
  * @param id       identificador del reporte; 0 si todavía no se ha guardado
- * @param resultId identificador de la ejecución (tabla {@code sim_result})
+ * @param resultId identificador de la ejecución (tabla {@code ejecucion})
  * @param savedAt  cuándo se guardó; nulo si todavía no se ha guardado
  * @param report   reporte completo: números, «¿y si…?» y texto
  */
