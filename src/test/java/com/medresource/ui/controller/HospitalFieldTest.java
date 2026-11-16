@@ -1,7 +1,10 @@
 package com.medresource.ui.controller;
 
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.Specialty;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,6 +36,16 @@ class HospitalFieldTest {
                 int expected = other == field ? field.getMax() : other.valueIn(STANDARD);
                 assertEquals(expected, other.valueIn(changed), field + " cambió " + other);
             }
+        }
+    }
+
+    @Test
+    void changingAResourceKeepsTheExtraDoctors() {
+        HospitalConfig withSurgeon = STANDARD.withExtraDoctors(List.of(Specialty.SURGERY));
+
+        for (HospitalField field : HospitalField.values()) {
+            assertEquals(List.of(Specialty.SURGERY), field.with(withSurgeon, field.getMax()).extraDoctors(),
+                    field.name());
         }
     }
 

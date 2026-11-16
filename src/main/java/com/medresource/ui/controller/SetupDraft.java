@@ -3,8 +3,11 @@ package com.medresource.ui.controller;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
+import com.medresource.model.Specialty;
 import com.medresource.services.simulation.CaseGenerator;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Random;
@@ -64,9 +67,57 @@ public final class SetupDraft {
         hospital = field.with(hospital, field.clamp(value));
     }
 
-    /** Tamaño ya armado al que corresponde el hospital, o vacío si el usuario lo personalizó. */
+    /**
+     * Cambia el hospital por un tamaño ya armado y conserva los médicos extra elegidos.
+     *
+     * @param preset tamaño
+     * @throws IllegalArgumentException si es nulo
+     */
+    public void applyPreset(HospitalPreset preset) {
+        if (preset == null) {
+            throw new IllegalArgumentException("El tamaño del hospital es obligatorio.");
+        }
+        hospital = preset.config().withExtraDoctors(hospital.extraDoctors());
+    }
+
+    /**
+     * Tamaño ya armado al que corresponde el hospital sin contar los médicos extra, o vacío si el usuario lo
+     * personalizó.
+     */
     public Optional<HospitalPreset> getPreset() {
-        return HospitalPreset.matching(hospital);
+        return HospitalPreset.matching(hospital.withExtraDoctors(List.of()));
+    }
+
+    /**
+     * Cuenta los médicos extra de una especialidad.
+     *
+     * @param specialty especialidad
+     * @return médicos extra de esa especialidad
+     * @throws IllegalArgumentException si la especialidad es nula
+     */
+    public int getExtraDoctors(Specialty specialty) {
+        return hospital.extraDoctorsOf(specialty);
+    }
+
+    /**
+     * Cambia cuántos médicos extra hay de una especialidad. La cantidad se ajusta para que no sea negativa ni pase
+     * el máximo de médicos extra del hospital, contando los de las demás especialidades.
+     *
+     * @param specialty especialidad
+     * @param count     cantidad pedida
+     * @return la cantidad que quedó
+     * @throws IllegalArgumentException si la especialidad es nula
+     */
+    public int setExtraDoctors(Specialty specialty, int count) {
+        int others = hospital.extraDoctors().size() - hospital.extraDoctorsOf(specialty);
+        int accepted = Math.max(0, Math.min(HospitalConfig.MAX_EXTRA_DOCTORS - others, count));
+        List<Specialty> doctors = new ArrayList<>(hospital.extraDoctors());
+        doctors.removeIf(specialty::equals);
+        for (int i = 0; i < accepted; i++) {
+            doctors.add(specialty);
+        }
+        hospital = hospital.withExtraDoctors(doctors);
+        return accepted;
     }
 
     public Scenario getScenario() {
@@ -200,7 +251,7 @@ public final class SetupDraft {
     /**
      * Resumen de lo elegido: ritmo promedio de llegada, tamaño del hospital y cuánto dura la llegada de pacientes
      * en pantalla con la velocidad elegida. Por ejemplo: «1 paciente cada 4,8 min · hospital estándar · a ×10 se
-     * ve en 48 min».
+     * ve en 48 min». Si hay médicos extra, el tamaño los suma: «hospital estándar + 2 especialistas».
      */
     public String summary() {
         double minutesPerPatient = durationMinutes / (double) patients;
@@ -209,6 +260,10 @@ public final class SetupDraft {
                 : decimal(1.0 / minutesPerPatient) + " pacientes por minuto";
         String size = getPreset().map(preset -> "hospital " + preset.getDisplayName().toLowerCase(Locale.ROOT))
                 .orElse("hospital personalizado");
+        int extra = hospital.extraDoctors().size();
+        if (extra > 0) {
+            size += " + " + extra + (extra == 1 ? " especialista" : " especialistas");
+        }
         return rhythm + " · " + size + " · a ×" + speed + " se ve en " + formatTime(durationMinutes / (double) speed);
     }
 

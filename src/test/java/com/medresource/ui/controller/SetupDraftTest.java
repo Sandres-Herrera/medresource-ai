@@ -3,8 +3,10 @@ package com.medresource.ui.controller;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
+import com.medresource.model.Specialty;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -130,5 +132,65 @@ class SetupDraftTest {
         assertThrows(IllegalArgumentException.class, () -> draft.setSpeed(3));
         assertThrows(IllegalArgumentException.class, () -> draft.rollSeed(null));
         assertThrows(IllegalArgumentException.class, () -> draft.arrivalsOf(null));
+    }
+
+    // ---------- médicos extra ----------
+
+    @Test
+    void addsExtraDoctorsOfEachSpecialtyToTheHospital() {
+        assertEquals(2, draft.setExtraDoctors(Specialty.SURGERY, 2));
+        assertEquals(1, draft.setExtraDoctors(Specialty.PEDIATRICS, 1));
+
+        assertEquals(2, draft.getExtraDoctors(Specialty.SURGERY));
+        assertEquals(1, draft.getExtraDoctors(Specialty.PEDIATRICS));
+        assertEquals(0, draft.getExtraDoctors(Specialty.TRAUMATOLOGY));
+        assertEquals(List.of(Specialty.PEDIATRICS, Specialty.SURGERY, Specialty.SURGERY),
+                draft.toRequest().setup().hospital().extraDoctors());
+        assertEquals(19, draft.getHospital().totalDoctors());
+    }
+
+    @Test
+    void loweringTheExtraDoctorsRemovesThem() {
+        draft.setExtraDoctors(Specialty.SURGERY, 3);
+
+        assertEquals(1, draft.setExtraDoctors(Specialty.SURGERY, 1));
+        assertEquals(0, draft.setExtraDoctors(Specialty.SURGERY, -4));
+        assertEquals(HospitalConfig.standard(), draft.getHospital());
+    }
+
+    @Test
+    void theExtraDoctorsNeverPassTheMaximum() {
+        draft.setExtraDoctors(Specialty.SURGERY, 10);
+
+        assertEquals(HospitalConfig.MAX_EXTRA_DOCTORS - 10, draft.setExtraDoctors(Specialty.PEDIATRICS, 9));
+        assertEquals(HospitalConfig.MAX_EXTRA_DOCTORS, draft.getHospital().extraDoctors().size());
+    }
+
+    @Test
+    void theExtraDoctorsKeepTheSizeAndAreCountedInTheSummary() {
+        draft.setExtraDoctors(Specialty.SURGERY, 1);
+
+        assertEquals(HospitalPreset.STANDARD, draft.getPreset().orElseThrow());
+        assertEquals("1 paciente cada 4,8 min · hospital estándar + 1 especialista · a ×1 se ve en 8 h",
+                draft.summary());
+
+        draft.setExtraDoctors(Specialty.PEDIATRICS, 1);
+
+        assertTrue(draft.summary().contains("hospital estándar + 2 especialistas"));
+    }
+
+    @Test
+    void choosingASizeOrAResourceKeepsTheExtraDoctors() {
+        draft.setExtraDoctors(Specialty.SURGERY, 2);
+
+        draft.applyPreset(HospitalPreset.LARGE);
+        assertEquals(HospitalConfig.large().withExtraDoctors(List.of(Specialty.SURGERY, Specialty.SURGERY)),
+                draft.getHospital());
+        assertEquals(HospitalPreset.LARGE, draft.getPreset().orElseThrow());
+
+        draft.setResource(HospitalField.BEDS, 40);
+        assertEquals(2, draft.getExtraDoctors(Specialty.SURGERY));
+        assertThrows(IllegalArgumentException.class, () -> draft.applyPreset(null));
+        assertThrows(IllegalArgumentException.class, () -> draft.setExtraDoctors(null, 1));
     }
 }
