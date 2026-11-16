@@ -68,6 +68,41 @@ public class SchemaInstaller {
     }
 
     /**
+     * Separa un script PL/SQL en sus unidades (funciones, procedimientos y triggers). Cada unidad termina en una
+     * línea que solo tiene {@code /}, como en SQL*Plus y SQL Developer; la línea de la barra no se incluye. Se
+     * quitan las líneas en blanco y de comentario que hay antes de cada unidad, pero no las de adentro, porque
+     * dentro de PL/SQL el {@code ;} y los comentarios son parte del código.
+     *
+     * @param script texto del script
+     * @return unidades en el orden del script, cada una terminada en su {@code END ...;}
+     * @throws IllegalArgumentException si el script es nulo
+     */
+    static List<String> programUnitsFrom(String script) {
+        if (script == null) {
+            throw new IllegalArgumentException("El script es obligatorio.");
+        }
+        List<String> units = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String line : script.split("\\R")) {
+            if (line.strip().equals("/")) {
+                addUnit(units, current);
+                current.setLength(0);
+            } else if (!current.isEmpty() || !(line.isBlank() || line.strip().startsWith(COMMENT_PREFIX))) {
+                current.append(line).append('\n');
+            }
+        }
+        addUnit(units, current);
+        return units;
+    }
+
+    private static void addUnit(List<String> units, StringBuilder text) {
+        String unit = text.toString().strip();
+        if (!unit.isEmpty()) {
+            units.add(unit);
+        }
+    }
+
+    /**
      * Crea todas las tablas.
      *
      * @throws DataAccessException si no se encuentra el script, no se puede conectar o Oracle rechaza alguna sentencia

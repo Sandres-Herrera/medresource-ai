@@ -74,6 +74,28 @@ class SchemaInstallerTest {
     }
 
     @Test
+    void splitsAPlsqlScriptIntoItsUnitsAtTheSlashLines() {
+        String script = "-- encabezado\n\nCREATE OR REPLACE FUNCTION f RETURN NUMBER IS\nBEGIN\n"
+                + "    -- comentario de adentro\n    RETURN 1;\nEND f;\n/\n\n-- otro\nCREATE TRIGGER t\nBEGIN\n"
+                + "    NULL;\nEND;\n/\n";
+
+        List<String> units = SchemaInstaller.programUnitsFrom(script);
+
+        assertEquals(List.of(
+                "CREATE OR REPLACE FUNCTION f RETURN NUMBER IS\nBEGIN\n    -- comentario de adentro\n"
+                        + "    RETURN 1;\nEND f;",
+                "CREATE TRIGGER t\nBEGIN\n    NULL;\nEND;"), units);
+    }
+
+    @Test
+    void aPlsqlScriptUnderstandsWindowsLineEndingsAndALastUnitWithoutSlash() {
+        assertEquals(List.of("BEGIN\n  NULL;\nEND;", "BEGIN\n  X;\nEND;"),
+                SchemaInstaller.programUnitsFrom("BEGIN\r\n  NULL;\r\nEND;\r\n/\r\nBEGIN\n  X;\nEND;"));
+        assertTrue(SchemaInstaller.programUnitsFrom("-- nada\n/\n").isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> SchemaInstaller.programUnitsFrom(null));
+    }
+
+    @Test
     void rejectsAMissingScript() {
         assertThrows(IllegalArgumentException.class, () -> SchemaInstaller.statementsFrom(null));
     }
