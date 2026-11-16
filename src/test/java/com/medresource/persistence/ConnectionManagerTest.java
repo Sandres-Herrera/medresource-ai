@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,6 +38,16 @@ class ConnectionManagerTest {
 
         assertSame(fake, connection);
         assertEquals(List.of("jdbc:oracle:thin:@//localhost:1521/XEPDB1", "medresource", "secreta123"), received);
+    }
+
+    @Test
+    void sendsTheDoublesWithoutRoundingThem() {
+        Properties properties = ConnectionManager.properties("medresource", "secreta123");
+
+        assertEquals("medresource", properties.getProperty("user"));
+        assertEquals("secreta123", properties.getProperty("password"));
+        assertEquals("true", properties.getProperty("SetFloatAndDoubleUseBinary"));
+        assertEquals(3, properties.size());
     }
 
     @Test
