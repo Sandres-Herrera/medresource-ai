@@ -22,8 +22,8 @@ import java.util.Optional;
 /**
  * Guarda y lee en Oracle los casos de simulación, con todos sus pacientes.
  *
- * <p>Un caso ocupa tres tablas: {@code sim_case} (la configuración), {@code case_patient} (los pacientes)
- * y {@code case_patient_symptom} (los síntomas de cada paciente, en orden). Cada operación se hace en una
+ * <p>Un caso ocupa tres tablas: {@code caso} (la configuración), {@code caso_paciente} (los pacientes)
+ * y {@code caso_paciente_sintoma} (los síntomas de cada paciente, en orden). Cada operación se hace en una
  * sola transacción. El identificador del caso lo genera Oracle. Los pacientes guardan solo el número de su
  * enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe el DAO.</p>
  *
@@ -33,27 +33,27 @@ import java.util.Optional;
 public class OracleCaseDao implements CaseDao {
 
     static final String INSERT_CASE =
-            "INSERT INTO sim_case (seed, scenario, patient_count, duration_minutes) VALUES (?, ?, ?, ?)";
-    static final String INSERT_PATIENT = "INSERT INTO case_patient (case_id, patient_id, age, sex, blood_type, "
-            + "disease_id, arrival_minute, initial_health, irrecoverable) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO caso (semilla, escenario, cantidad_pacientes, duracion_minutos) VALUES (?, ?, ?, ?)";
+    static final String INSERT_PATIENT = "INSERT INTO caso_paciente (id_caso, id_paciente, edad, sexo, tipo_sangre, "
+            + "id_enfermedad, minuto_llegada, salud_inicial, irrecuperable) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String INSERT_SYMPTOM =
-            "INSERT INTO case_patient_symptom (case_id, patient_id, symptom_order, symptom) VALUES (?, ?, ?, ?)";
-    static final String DELETE_CASE = "DELETE FROM sim_case WHERE id = ?";
+            "INSERT INTO caso_paciente_sintoma (id_caso, id_paciente, orden_sintoma, sintoma) VALUES (?, ?, ?, ?)";
+    static final String DELETE_CASE = "DELETE FROM caso WHERE id = ?";
 
     static final String SELECT_CASES =
-            "SELECT id, seed, scenario, patient_count, duration_minutes FROM sim_case ORDER BY id";
+            "SELECT id, semilla, escenario, cantidad_pacientes, duracion_minutos FROM caso ORDER BY id";
     static final String SELECT_CASE =
-            "SELECT id, seed, scenario, patient_count, duration_minutes FROM sim_case WHERE id = ?";
-    static final String SELECT_ID_BY_CONFIG = "SELECT id FROM sim_case WHERE seed = ? AND scenario = ? "
-            + "AND patient_count = ? AND duration_minutes = ?";
-    static final String SELECT_PATIENTS = "SELECT case_id, patient_id, age, sex, blood_type, disease_id, "
-            + "arrival_minute, initial_health, irrecoverable FROM case_patient ORDER BY case_id, patient_id";
-    static final String SELECT_PATIENTS_OF = "SELECT case_id, patient_id, age, sex, blood_type, disease_id, "
-            + "arrival_minute, initial_health, irrecoverable FROM case_patient WHERE case_id = ? ORDER BY patient_id";
-    static final String SELECT_SYMPTOMS = "SELECT case_id, patient_id, symptom FROM case_patient_symptom "
-            + "ORDER BY case_id, patient_id, symptom_order";
-    static final String SELECT_SYMPTOMS_OF = "SELECT case_id, patient_id, symptom FROM case_patient_symptom "
-            + "WHERE case_id = ? ORDER BY patient_id, symptom_order";
+            "SELECT id, semilla, escenario, cantidad_pacientes, duracion_minutos FROM caso WHERE id = ?";
+    static final String SELECT_ID_BY_CONFIG = "SELECT id FROM caso WHERE semilla = ? AND escenario = ? "
+            + "AND cantidad_pacientes = ? AND duracion_minutos = ?";
+    static final String SELECT_PATIENTS = "SELECT id_caso, id_paciente, edad, sexo, tipo_sangre, id_enfermedad, "
+            + "minuto_llegada, salud_inicial, irrecuperable FROM caso_paciente ORDER BY id_caso, id_paciente";
+    static final String SELECT_PATIENTS_OF = "SELECT id_caso, id_paciente, edad, sexo, tipo_sangre, id_enfermedad, "
+            + "minuto_llegada, salud_inicial, irrecuperable FROM caso_paciente WHERE id_caso = ? ORDER BY id_paciente";
+    static final String SELECT_SYMPTOMS = "SELECT id_caso, id_paciente, sintoma FROM caso_paciente_sintoma "
+            + "ORDER BY id_caso, id_paciente, orden_sintoma";
+    static final String SELECT_SYMPTOMS_OF = "SELECT id_caso, id_paciente, sintoma FROM caso_paciente_sintoma "
+            + "WHERE id_caso = ? ORDER BY id_paciente, orden_sintoma";
 
     /** Nombre de la columna que Oracle genera al insertar un caso. */
     private static final String GENERATED_COLUMN = "ID";
@@ -228,10 +228,10 @@ public class OracleCaseDao implements CaseDao {
                 while (rows.next()) {
                     Map<String, Object> header = new HashMap<>();
                     header.put("id", rows.getInt("id"));
-                    header.put("seed", rows.getLong("seed"));
-                    header.put("scenario", rows.getString("scenario"));
-                    header.put("patient_count", rows.getInt("patient_count"));
-                    header.put("duration_minutes", rows.getInt("duration_minutes"));
+                    header.put("semilla", rows.getLong("semilla"));
+                    header.put("escenario", rows.getString("escenario"));
+                    header.put("cantidad_pacientes", rows.getInt("cantidad_pacientes"));
+                    header.put("duracion_minutos", rows.getInt("duracion_minutos"));
                     headers.add(header);
                 }
             }
@@ -248,9 +248,9 @@ public class OracleCaseDao implements CaseDao {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    PatientKey key = new PatientKey(rows.getInt("case_id"), rows.getInt("patient_id"));
+                    PatientKey key = new PatientKey(rows.getInt("id_caso"), rows.getInt("id_paciente"));
                     result.computeIfAbsent(key, k -> new ArrayList<>())
-                            .add(parse(Symptom.class, rows.getString("symptom"), key));
+                            .add(parse(Symptom.class, rows.getString("sintoma"), key));
                 }
             }
         }
@@ -268,7 +268,7 @@ public class OracleCaseDao implements CaseDao {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    PatientKey key = new PatientKey(rows.getInt("case_id"), rows.getInt("patient_id"));
+                    PatientKey key = new PatientKey(rows.getInt("id_caso"), rows.getInt("id_paciente"));
                     result.computeIfAbsent(key.caseId(), k -> new ArrayList<>())
                             .add(toProfile(rows, key, catalog, symptoms.getOrDefault(key, List.of())));
                 }
@@ -280,17 +280,17 @@ public class OracleCaseDao implements CaseDao {
     /** Arma el paciente de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
     private static PatientProfile toProfile(ResultSet row, PatientKey key, Map<Integer, Disease> catalog,
                                             List<Symptom> symptoms) throws SQLException {
-        Disease disease = catalog.get(row.getInt("disease_id"));
+        Disease disease = catalog.get(row.getInt("id_enfermedad"));
         if (disease == null) {
             throw new DataAccessException("El paciente " + key.patientId() + " del caso " + key.caseId()
-                    + " usa la enfermedad " + row.getInt("disease_id") + ", que no está guardada.");
+                    + " usa la enfermedad " + row.getInt("id_enfermedad") + ", que no está guardada.");
         }
         try {
-            return new PatientProfile(key.patientId(), row.getInt("age"),
-                    parse(Sex.class, row.getString("sex"), key),
-                    parse(BloodType.class, row.getString("blood_type"), key),
-                    disease, symptoms, row.getInt("arrival_minute"), row.getDouble("initial_health"),
-                    row.getInt("irrecoverable") == 1);
+            return new PatientProfile(key.patientId(), row.getInt("edad"),
+                    parse(Sex.class, row.getString("sexo"), key),
+                    parse(BloodType.class, row.getString("tipo_sangre"), key),
+                    disease, symptoms, row.getInt("minuto_llegada"), row.getDouble("salud_inicial"),
+                    row.getInt("irrecuperable") == 1);
         } catch (IllegalArgumentException e) {
             throw new DataAccessException("Los datos guardados del paciente " + key.patientId() + " del caso "
                     + key.caseId() + " no son válidos: " + e.getMessage(), e);
@@ -300,9 +300,9 @@ public class OracleCaseDao implements CaseDao {
     private static SimulationCase toCase(Map<String, Object> header, List<PatientProfile> profiles) {
         int caseId = (Integer) header.get("id");
         try {
-            CaseConfig config = new CaseConfig((Long) header.get("seed"),
-                    Scenario.valueOf((String) header.get("scenario")),
-                    (Integer) header.get("patient_count"), (Integer) header.get("duration_minutes"));
+            CaseConfig config = new CaseConfig((Long) header.get("semilla"),
+                    Scenario.valueOf((String) header.get("escenario")),
+                    (Integer) header.get("cantidad_pacientes"), (Integer) header.get("duracion_minutos"));
             return new SimulationCase(config, profiles);
         } catch (IllegalArgumentException | NullPointerException e) {
             throw new DataAccessException("Los datos guardados del caso " + caseId + " no son válidos: "

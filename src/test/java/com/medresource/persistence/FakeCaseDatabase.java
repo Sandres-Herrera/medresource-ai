@@ -25,8 +25,8 @@ import java.util.TreeSet;
  */
 final class FakeCaseDatabase {
 
-    private static final List<String> PATIENT_COLUMNS = List.of("case_id", "patient_id", "age", "sex",
-            "blood_type", "disease_id", "arrival_minute", "initial_health", "irrecoverable");
+    private static final List<String> PATIENT_COLUMNS = List.of("id_caso", "id_paciente", "edad", "sexo",
+            "tipo_sangre", "id_enfermedad", "minuto_llegada", "salud_inicial", "irrecuperable");
 
     /** Contenido de las tres tablas y el siguiente identificador. */
     private static final class Tables {
@@ -192,19 +192,19 @@ final class FakeCaseDatabase {
         switch (sql) {
             case OracleCaseDao.INSERT_CASE -> {
                 for (Map<String, Object> other : working.cases.values()) {
-                    if (other.get("seed").equals(p.get(1)) && other.get("scenario").equals(p.get(2))
-                            && other.get("patient_count").equals(p.get(3))
-                            && other.get("duration_minutes").equals(p.get(4))) {
-                        throw new SQLException("ORA-00001: restricción única (UQ_SIM_CASE_CONFIG) violada");
+                    if (other.get("semilla").equals(p.get(1)) && other.get("escenario").equals(p.get(2))
+                            && other.get("cantidad_pacientes").equals(p.get(3))
+                            && other.get("duracion_minutos").equals(p.get(4))) {
+                        throw new SQLException("ORA-00001: restricción única (UQ_CASO_CONFIGURACION) violada");
                     }
                 }
                 int id = working.nextId++;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("id", id);
-                row.put("seed", p.get(1));
-                row.put("scenario", p.get(2));
-                row.put("patient_count", p.get(3));
-                row.put("duration_minutes", p.get(4));
+                row.put("semilla", p.get(1));
+                row.put("escenario", p.get(2));
+                row.put("cantidad_pacientes", p.get(3));
+                row.put("duracion_minutos", p.get(4));
                 working.cases.put(id, row);
                 generatedKey[0] = id;
                 return 1;
@@ -212,13 +212,14 @@ final class FakeCaseDatabase {
             case OracleCaseDao.INSERT_PATIENT -> {
                 List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
                 if (!working.cases.containsKey(key.get(0))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_CASE_PATIENT_CASE) violada");
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_CASO_PACIENTE_CASO) violada");
                 }
                 if (!knownDiseases.contains((Integer) p.get(6))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_CASE_PATIENT_DISEASE) violada");
+                    throw new SQLException(
+                            "ORA-02291: restricción de integridad (FK_CASO_PACIENTE_ENFERMEDAD) violada");
                 }
                 if (working.patients.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_CASE_PATIENT) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_CASO_PACIENTE) violada");
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 0; i < PATIENT_COLUMNS.size(); i++) {
@@ -230,11 +231,11 @@ final class FakeCaseDatabase {
             case OracleCaseDao.INSERT_SYMPTOM -> {
                 List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
                 if (!working.patients.containsKey(key)) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_CASE_SYMPTOM_PATIENT) violada");
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_CASO_SINTOMA_PACIENTE) violada");
                 }
                 TreeMap<Integer, String> map = working.symptoms.computeIfAbsent(key, k -> new TreeMap<>());
                 if (map.containsKey((Integer) p.get(3))) {
-                    throw new SQLException("ORA-00001: restricción única (PK_CASE_PATIENT_SYMPTOM) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_CASO_PACIENTE_SINTOMA) violada");
                 }
                 map.put((Integer) p.get(3), (String) p.get(4));
                 return 1;
@@ -262,9 +263,9 @@ final class FakeCaseDatabase {
                 }
             }
             case OracleCaseDao.SELECT_ID_BY_CONFIG -> working.cases.values().stream()
-                    .filter(row -> row.get("seed").equals(p.get(1)) && row.get("scenario").equals(p.get(2))
-                            && row.get("patient_count").equals(p.get(3))
-                            && row.get("duration_minutes").equals(p.get(4)))
+                    .filter(row -> row.get("semilla").equals(p.get(1)) && row.get("escenario").equals(p.get(2))
+                            && row.get("cantidad_pacientes").equals(p.get(3))
+                            && row.get("duracion_minutos").equals(p.get(4)))
                     .forEach(rows::add);
             case OracleCaseDao.SELECT_PATIENTS, OracleCaseDao.SELECT_PATIENTS_OF -> {
                 Integer only = (Integer) p.get(1);
@@ -279,7 +280,7 @@ final class FakeCaseDatabase {
                 working.symptoms.forEach((key, map) -> {
                     if (only == null || only.equals(key.get(0))) {
                         map.values().forEach(name -> rows.add(
-                                Map.of("case_id", key.get(0), "patient_id", key.get(1), "symptom", name)));
+                                Map.of("id_caso", key.get(0), "id_paciente", key.get(1), "sintoma", name)));
                     }
                 });
             }
