@@ -33,10 +33,10 @@ public final class CaseConfigDialog extends JDialog {
     private transient SimulationRequest result;
     private Point dragStart;
 
-    private CaseConfigDialog(Window owner) {
+    private CaseConfigDialog(Window owner, SetupDraft draft) {
         super(owner, SetupPanel.TITLE, ModalityType.APPLICATION_MODAL);
         setUndecorated(true);
-        SetupPanel panel = new SetupPanel(new SetupDraft(), new Random());
+        SetupPanel panel = new SetupPanel(draft, new Random());
         panel.onStart(request -> {
             result = request;
             dispose();
@@ -68,7 +68,23 @@ public final class CaseConfigDialog extends JDialog {
      * @return la configuración y la velocidad elegidas, o vacío si el usuario canceló
      */
     public static Optional<SimulationRequest> ask(Window owner) {
-        CaseConfigDialog dialog = new CaseConfigDialog(owner);
+        return ask(owner, new SetupDraft());
+    }
+
+    /**
+     * Muestra el diálogo con un borrador ya preparado, por ejemplo para volver a simular el caso de una ejecución
+     * guardada ({@link SetupDraft#applyRerun}), y espera a que el usuario termine.
+     *
+     * @param owner ventana dueña del diálogo (puede ser nula)
+     * @param draft borrador con el que empieza el formulario
+     * @return la configuración y la velocidad elegidas, o vacío si el usuario canceló
+     * @throws IllegalArgumentException si el borrador es nulo
+     */
+    public static Optional<SimulationRequest> ask(Window owner, SetupDraft draft) {
+        if (draft == null) {
+            throw new IllegalArgumentException("El borrador es obligatorio.");
+        }
+        CaseConfigDialog dialog = new CaseConfigDialog(owner, draft);
         dialog.setVisible(true);
         return Optional.ofNullable(dialog.result);
     }
