@@ -154,4 +154,45 @@ class PlsqlScriptTest {
         assertTrue(saving.contains("p_nueva := 0;"));
         assertTrue(saving.contains("RETURNING id INTO p_id;"));
     }
+
+    // ---------- triggers ----------
+
+    @Test
+    void hasTheTriggersOfTheCareTimeAndOfTheAudit() throws IOException {
+        assertEquals(List.of("trg_validar_tiempo_atencion", "trg_auditoria_reporte"),
+                names().subList(names().size() - 2, names().size()));
+    }
+
+    @Test
+    void aPatientCannotStartCareBeforeArrivingUnlessItWasNeverAttended() throws IOException {
+        String trigger = unit("trg_validar_tiempo_atencion");
+
+        assertTrue(trigger.contains("BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON "
+                + "resultado_paciente"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < "
+                + ":NEW.minuto_llegada"));
+        assertTrue(trigger.contains("RAISE_APPLICATION_ERROR(-20001"));
+    }
+
+    @Test
+    void everySavedOrDeletedReportIsAudited() throws IOException {
+        String trigger = unit("trg_auditoria_reporte");
+
+        assertTrue(trigger.contains("AFTER INSERT OR DELETE ON reporte"));
+        assertTrue(trigger.contains("VALUES (:NEW.id, :NEW.id_ejecucion, 'INSERT', USER);"));
+        assertTrue(trigger.contains("VALUES (:OLD.id, :OLD.id_ejecucion, 'DELETE', USER);"));
+    }
+
+    @Test
+    void theErrorCodesAreDifferentForEachRule() throws IOException {
+        String script = script();
+
+        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20001"));
+        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20002"));
+        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20003"));
+    }
+
+    private static int count(String text, String part) {
+        return text.split(Pattern.quote(part), -1).length - 1;
+    }
 }

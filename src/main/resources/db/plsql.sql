@@ -273,3 +273,38 @@ BEGIN
     p_nueva := 1;
 END pr_guardar_comparacion;
 /
+
+-- ---------------------------------------------------------------------------
+-- Impide guardar un paciente que empezó su atención antes de llegar
+-- (ORA-20001). El valor -1 significa que nunca lo atendieron y se acepta.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER trg_validar_tiempo_atencion
+BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON resultado_paciente
+FOR EACH ROW
+BEGIN
+    IF :NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < :NEW.minuto_llegada THEN
+        RAISE_APPLICATION_ERROR(-20001, 'El paciente ' || :NEW.codigo_paciente
+            || ' no puede empezar su atención (minuto ' || :NEW.minuto_inicio_atencion
+            || ') antes de llegar (minuto ' || :NEW.minuto_llegada || ').');
+    END IF;
+END trg_validar_tiempo_atencion;
+/
+
+-- ---------------------------------------------------------------------------
+-- Registra en auditoria_reporte cada reporte que se guarda o se borra (también
+-- los que se borran en cascada con su ejecución). Los reportes no se
+-- modifican, así que no se audita UPDATE.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER trg_auditoria_reporte
+AFTER INSERT OR DELETE ON reporte
+FOR EACH ROW
+BEGIN
+    IF INSERTING THEN
+        INSERT INTO auditoria_reporte (id_reporte, id_ejecucion, operacion, usuario)
+        VALUES (:NEW.id, :NEW.id_ejecucion, 'INSERT', USER);
+    ELSE
+        INSERT INTO auditoria_reporte (id_reporte, id_ejecucion, operacion, usuario)
+        VALUES (:OLD.id, :OLD.id_ejecucion, 'DELETE', USER);
+    END IF;
+END trg_auditoria_reporte;
+/
