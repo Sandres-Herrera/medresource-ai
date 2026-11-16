@@ -1,5 +1,6 @@
 package com.medresource.persistence;
 
+import com.medresource.model.ComparisonType;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -97,5 +98,60 @@ class PlsqlScriptTest {
         assertTrue(unit("fn_pacientes_sin_atencion").contains("estado = 'UNATTENDED'"));
         assertTrue(unit("fn_porcentaje_atendidos").contains("IF v_total = 0 THEN"));
         assertTrue(unit("fn_tasa_mortalidad").contains("IF v_total = 0 THEN"));
+    }
+
+    // ---------- procedimientos ----------
+
+    @Test
+    void hasTheProceduresOfTheSummaryAndTheComparisons() throws IOException {
+        assertTrue(names().containsAll(List.of("pr_resumen_simulacion", "pr_validar_comparacion",
+                "pr_guardar_comparacion")));
+        assertTrue(names().indexOf("pr_validar_comparacion") < names().indexOf("pr_guardar_comparacion"));
+    }
+
+    @Test
+    void theSummaryReturnsTheIndicatorsAndPrintsThem() throws IOException {
+        String summary = unit("pr_resumen_simulacion");
+
+        for (String output : List.of("p_pacientes", "p_atendidos", "p_fallecidos", "p_sin_atencion",
+                "p_espera_promedio", "p_espera_maxima")) {
+            assertTrue(summary.contains(output), output);
+        }
+        assertTrue(summary.contains("DBMS_OUTPUT.PUT_LINE"));
+    }
+
+    @Test
+    void theValidationUsesTheTypesAndTheMessagesOfTheApplication() throws IOException {
+        String validation = unit("pr_validar_comparacion");
+
+        for (ComparisonType type : ComparisonType.values()) {
+            assertTrue(validation.contains("p_tipo := '" + type.name() + "';"), type.name());
+        }
+        assertTrue(validation.contains("'Elige dos ejecuciones distintas: una ejecución no se compara consigo "
+                + "misma.'"));
+        assertTrue(validation.contains("solo se comparan ejecuciones del mismo caso, con los mismos pacientes."));
+        assertTrue(validation.contains("'Las dos ejecuciones tienen la misma estrategia y los mismos recursos: "
+                + "darían los mismos '"));
+    }
+
+    @Test
+    void theValidationComparesEveryResourceAndTheExtraDoctors() throws IOException {
+        String validation = unit("pr_validar_comparacion");
+
+        for (String column : List.of("camas", "camas_uci", "quirofanos", "medicos", "enfermeros",
+                "unidades_sangre_por_tipo", "capacidad_morgue", "fn_medicos_extra(id)")) {
+            assertTrue(validation.contains(column), column);
+        }
+    }
+
+    @Test
+    void savingValidatesFirstAndDoesNotRepeatAPair() throws IOException {
+        String saving = unit("pr_guardar_comparacion");
+
+        assertTrue(saving.indexOf("pr_validar_comparacion(") < saving.indexOf("INSERT INTO comparacion"));
+        assertTrue(saving.contains("RAISE_APPLICATION_ERROR(-20003, v_mensaje);"));
+        assertTrue(saving.contains("LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(p_id_a, p_id_b)"));
+        assertTrue(saving.contains("p_nueva := 0;"));
+        assertTrue(saving.contains("RETURNING id INTO p_id;"));
     }
 }
