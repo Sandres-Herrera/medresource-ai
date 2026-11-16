@@ -22,8 +22,9 @@ import java.util.function.IntConsumer;
 /**
  * Lista de los reportes guardados en la base de datos, del más reciente al más antiguo.
  *
- * <p>Cada fila dice cuándo se guardó, el caso (escenario, semilla y pacientes), los fallecidos, la estrategia y
- * quién redactó el texto, y tiene el botón «Abrir». Mientras se consulta la base de datos, si no hay reportes o si
+ * <p>Cada fila dice el número de la ejecución (y en cuál se basa, si se volvió a simular un caso guardado), el
+ * caso, cuándo se guardó, el escenario, la semilla y los pacientes, los fallecidos, la estrategia y quién redactó
+ * el texto, y tiene el botón «Abrir». Mientras se consulta la base de datos, si no hay reportes o si
  * la consulta falla, en lugar de la lista se ve un mensaje.</p>
  */
 public final class SavedReportsPanel extends JPanel {
@@ -31,8 +32,8 @@ public final class SavedReportsPanel extends JPanel {
     private static final long serialVersionUID = 1L;
 
     /** Títulos de las columnas, en el orden en que se ven. */
-    public static final List<String> COLUMNS = List.of("Guardado", "Escenario", "Semilla", "Pacientes", "Fallecidos",
-            "Estrategia", "Texto");
+    public static final List<String> COLUMNS = List.of("Ejecución", "Caso", "Guardado", "Escenario", "Semilla",
+            "Pacientes", "Fallecidos", "Estrategia", "Texto");
     /** Texto del botón de cada fila. */
     public static final String OPEN = "Abrir";
     /** Mensaje mientras se consulta la base de datos. */
@@ -41,7 +42,8 @@ public final class SavedReportsPanel extends JPanel {
     public static final String EMPTY_TEXT = "Todavía no hay reportes guardados. Cada reporte que generes al terminar "
             + "una simulación se guarda aquí.";
 
-    private static final int[] WIDTHS = {140, 120, 70, 80, 110, 200, 180};
+    private static final int[] WIDTHS = {100, 60, 120, 120, 60, 70, 100, 180, 110};
+    private static final int SCENARIO_COLUMN = 3;
     private static final int ROW_HEIGHT = 34;
     private static final DateTimeFormatter SAVED_AT = DateTimeFormatter.ofPattern("d/MM/yyyy HH:mm");
 
@@ -180,7 +182,7 @@ public final class SavedReportsPanel extends JPanel {
     }
 
     private JComponent row(SavedReportSummary summary) {
-        List<String> values = List.of(SAVED_AT.format(summary.savedAt()),
+        List<String> values = List.of(runLabel(summary), "#" + summary.caseId(), SAVED_AT.format(summary.savedAt()),
                 summary.config().scenario().getDisplayName(), String.valueOf(summary.config().seed()),
                 String.valueOf(summary.config().patientCount()),
                 summary.deaths() + " (" + ReportFormat.percent(summary.mortalityRate()) + ")",
@@ -191,8 +193,9 @@ public final class SavedReportsPanel extends JPanel {
         card.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel line = line();
         for (int i = 0; i < values.size(); i++) {
-            Color color = i == 1 ? HomeTheme.scenarioColor(summary.config().scenario()) : HomeTheme.TEXT;
-            line.add(cell(values.get(i), i, color, i == 1 ? Font.BOLD : Font.PLAIN, 13f));
+            Color color = i == SCENARIO_COLUMN ? HomeTheme.scenarioColor(summary.config().scenario())
+                    : i == 0 ? HomeTheme.ACCENT : HomeTheme.TEXT;
+            line.add(cell(values.get(i), i, color, i == SCENARIO_COLUMN || i == 0 ? Font.BOLD : Font.PLAIN, 13f));
         }
         line.add(Box.createHorizontalGlue());
         HomeButton open = new HomeButton(HomeButton.Style.OUTLINE, OPEN, HomeIcon.DOCUMENT);
@@ -202,6 +205,11 @@ public final class SavedReportsPanel extends JPanel {
         card.add(line, BorderLayout.CENTER);
         card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
         return card;
+    }
+
+    /** Número de la ejecución y, si se basa en otra, cuál: «#8» o «#8 · de #5». */
+    static String runLabel(SavedReportSummary summary) {
+        return "#" + summary.resultId() + summary.basedOn().map(base -> " · de #" + base).orElse("");
     }
 
     private static JPanel line() {

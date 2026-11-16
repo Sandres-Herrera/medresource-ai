@@ -41,10 +41,10 @@ class SavedReportsPanelTest {
 
         assertEquals("", panel.messageText());
         assertEquals(2, panel.rowCount());
-        assertEquals(List.of("15/11/2026 14:05", Scenario.CATASTROPHE.getDisplayName(), "7", "100", "13 (13 %)",
-                "Prioridad clínica (triage)", NarrativeSource.TEMPLATE.getLabel()), panel.rowTexts(0));
-        assertEquals(List.of("14/11/2026 09:30", Scenario.NORMAL.getDisplayName(), "42", "100", "0 (0 %)", "FIFO",
-                NarrativeSource.AI.getLabel()), panel.rowTexts(1));
+        assertEquals(List.of("#9", "#3", "15/11/2026 14:05", Scenario.CATASTROPHE.getDisplayName(), "7", "100",
+                "13 (13 %)", "Prioridad clínica (triage)", NarrativeSource.TEMPLATE.getLabel()), panel.rowTexts(0));
+        assertEquals(List.of("#5", "#1", "14/11/2026 09:30", Scenario.NORMAL.getDisplayName(), "42", "100",
+                "0 (0 %)", "FIFO", NarrativeSource.AI.getLabel()), panel.rowTexts(1));
         assertEquals(SavedReportsPanel.COLUMNS.size(), panel.rowTexts(0).size());
     }
 
@@ -86,5 +86,19 @@ class SavedReportsPanelTest {
 
         assertThrows(IllegalArgumentException.class, () -> panel.showReports(null));
         assertThrows(IllegalArgumentException.class, () -> panel.onOpen(null));
+    }
+
+    @Test
+    void aRunBasedOnAnotherSaysWhichOne() {
+        SavedReportSummary rerun = new SavedReportSummary(6, 12, LocalDateTime.of(2026, 11, 16, 10, 0),
+                new CaseConfig(7L, Scenario.CATASTROPHE, 100, 480), "FIFO (orden de llegada)", 9,
+                NarrativeSource.AI, 3, 9);
+
+        SavedReportsPanel panel = new SavedReportsPanel();
+        panel.showReports(List.of(rerun, CATASTROPHE));
+
+        assertEquals("#12 · de #9", panel.rowTexts(0).get(0));
+        assertEquals("#9", panel.rowTexts(1).get(0));
+        assertEquals("#3", panel.rowTexts(0).get(1));
     }
 }
