@@ -19,6 +19,7 @@ import com.medresource.model.CaseConfig;
 import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
 import com.medresource.model.CauseOfDeath;
+import com.medresource.model.ComparisonType;
 import com.medresource.model.CompatibilityLevel;
 import com.medresource.model.EventType;
 import com.medresource.model.HospitalConfig;
@@ -112,7 +113,8 @@ class SchemaScriptTest {
     @Test
     void everyStatementCreatesATableOrAnIndex() throws IOException {
         for (String statement : statements()) {
-            assertTrue(statement.startsWith("CREATE TABLE ") || statement.startsWith("CREATE INDEX "), statement);
+            assertTrue(statement.startsWith("CREATE TABLE ") || statement.startsWith("CREATE INDEX ")
+                    || statement.startsWith("CREATE UNIQUE INDEX "), statement);
         }
     }
 
@@ -298,16 +300,16 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesElevenTablesAndOneIndex() throws IOException {
-        assertEquals(11, createdTables().size());
-        assertEquals(12, statements().size());
+    void theScriptCreatesTwelveTablesAndTwoIndexes() throws IOException {
+        assertEquals(12, createdTables().size());
+        assertEquals(14, statements().size());
     }
 
     @Test
     void theTablesHaveSpanishNames() throws IOException {
         assertEquals(List.of("enfermedad", "enfermedad_especialidad_sec", "enfermedad_sintoma", "caso",
                 "caso_paciente", "caso_paciente_sintoma", "ejecucion", "ejecucion_medico_extra", "resultado_paciente",
-                "evento", "reporte"),
+                "evento", "reporte", "comparacion"),
                 createdTables());
     }
 
@@ -369,5 +371,33 @@ class SchemaScriptTest {
                         table.group(1) + " debe borrarse antes que " + parent.group(1));
             }
         }
+    }
+
+    // ---------- comparaciones ----------
+
+    @Test
+    void theComparisonTypesMatchTheEnumeration() throws IOException {
+        assertMatches("ck_comparacion_tipo", ComparisonType.values());
+    }
+
+    @Test
+    void aComparisonLinksTwoDifferentRunsOfACaseAndKeepsValidJson() throws IOException {
+        String table = statements().stream().filter(statement -> statement.startsWith("CREATE TABLE comparacion "))
+                .findFirst().orElseThrow();
+
+        assertTrue(table.contains("REFERENCES caso (id) ON DELETE CASCADE"));
+        assertTrue(table.contains("FOREIGN KEY (id_ejecucion_a) REFERENCES ejecucion (id) ON DELETE CASCADE"));
+        assertTrue(table.contains("FOREIGN KEY (id_ejecucion_b) REFERENCES ejecucion (id) ON DELETE CASCADE"));
+        assertTrue(table.contains("CHECK (id_ejecucion_a <> id_ejecucion_b)"));
+        assertTrue(table.contains("CHECK (contenido_json IS JSON)"));
+    }
+
+    @Test
+    void theSamePairOfRunsIsSavedOnlyOnceInAnyOrder() throws IOException {
+        String index = statements().stream().filter(statement -> statement.startsWith("CREATE UNIQUE INDEX "))
+                .findFirst().orElseThrow();
+
+        assertTrue(index.startsWith("CREATE UNIQUE INDEX uq_comparacion_par ON comparacion"));
+        assertTrue(index.contains("LEAST(id_ejecucion_a, id_ejecucion_b), GREATEST(id_ejecucion_a, id_ejecucion_b)"));
     }
 }
