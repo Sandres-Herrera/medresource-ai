@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.RerunPlan;
 import com.medresource.model.Scenario;
 import com.medresource.model.Specialty;
 import com.medresource.ui.controller.HospitalField;
@@ -9,6 +10,7 @@ import com.medresource.ui.controller.HospitalPreset;
 import com.medresource.ui.controller.SetupDraft;
 import com.medresource.ui.controller.SimulationClock;
 import com.medresource.ui.controller.SimulationRequest;
+import com.medresource.ui.controller.SimulationSetup;
 import com.medresource.ui.controller.StrategyOption;
 import org.junit.jupiter.api.Test;
 
@@ -145,7 +147,8 @@ class SetupPanelTest {
         panel.startButton().doClick();
 
         assertEquals(HospitalConfig.standard().withExtraDoctors(
-                List.of(Specialty.PEDIATRICS, Specialty.SURGERY, Specialty.SURGERY)), started.get(0).setup().hospital());
+                List.of(Specialty.PEDIATRICS, Specialty.SURGERY, Specialty.SURGERY)),
+                started.get(0).setup().hospital());
     }
 
     @Test
@@ -181,6 +184,57 @@ class SetupPanelTest {
         assertTrue(panel.presetPill(HospitalPreset.LARGE).isSelected());
         assertEquals(1, draft.getExtraDoctors(Specialty.SURGERY));
         assertEquals("+1 médico", panel.extraDoctorsButton().getText());
+    }
+
+    // ---------- volver a simular un caso guardado ----------
+
+    private static SetupPanel rerunPanel(SetupDraft rerun) {
+        rerun.applyRerun(new RerunPlan(5, new CaseConfig(7L, Scenario.CATASTROPHE, 80, 240),
+                HospitalConfig.small(), "FIFO (orden de llegada)", List.of()));
+        return new SetupPanel(rerun, new Random(3));
+    }
+
+    @Test
+    void aNewSimulationHasNoCaseNoticeAndEverythingCanChange() {
+        assertEquals("", panel.caseNoticeText());
+        assertTrue(panel.seedStepper().field().isEditable());
+        assertTrue(panel.scenarioTile(Scenario.CATASTROPHE).isEnabled());
+    }
+
+    @Test
+    void aRerunShowsTheCaseAndKeepsItFixed() {
+        SetupDraft rerun = new SetupDraft();
+        SetupPanel locked = rerunPanel(rerun);
+
+        assertEquals("Mismo caso que la ejecución #5: semilla 7, Catástrofe, 80 pacientes en 240 min",
+                locked.caseNoticeText());
+        assertFalse(locked.scenarioTile(Scenario.NORMAL).isEnabled());
+        assertFalse(locked.patientsStepper().field().isEditable());
+        assertFalse(locked.durationStepper().field().isEditable());
+        assertFalse(locked.seedStepper().field().isEditable());
+        assertFalse(locked.diceButton().isEnabled());
+        assertTrue(locked.scenarioTile(Scenario.CATASTROPHE).isSelected());
+    }
+
+    @Test
+    void aRerunStartsWithTheSameCaseAndTheChangedHospitalAndStrategy() {
+        SetupDraft rerun = new SetupDraft();
+        SetupPanel locked = rerunPanel(rerun);
+        List<SimulationRequest> requests = new ArrayList<>();
+        locked.onStart(requests::add);
+
+        locked.scenarioTile(Scenario.NORMAL).doClick();
+        locked.resourceStepper(HospitalField.BEDS).setValue(20);
+        locked.extraDoctorsPanel().stepper(Specialty.SURGERY).setValue(1);
+        locked.strategyTile(StrategyOption.CLINICAL_PRIORITY).doClick();
+        locked.startButton().doClick();
+
+        SimulationSetup setup = requests.get(0).setup();
+        assertEquals(new CaseConfig(7L, Scenario.CATASTROPHE, 80, 240), setup.caseConfig());
+        assertEquals(20, setup.hospital().hospitalizationBeds());
+        assertEquals(List.of(Specialty.SURGERY), setup.hospital().extraDoctors());
+        assertEquals(StrategyOption.CLINICAL_PRIORITY, setup.strategy());
+        assertEquals(5, setup.baseRunId());
     }
 
     @Test

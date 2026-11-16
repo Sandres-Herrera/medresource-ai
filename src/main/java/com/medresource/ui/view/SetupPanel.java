@@ -81,6 +81,7 @@ public final class SetupPanel extends JPanel {
     private final HomeButton cancel = new HomeButton(HomeButton.Style.LINK, "Cancelar", null);
     private final HomeButton start = new HomeButton(HomeButton.Style.COMPACT, "Iniciar simulación", HomeIcon.PLAY);
     private final JLabel summary = new JLabel();
+    private final JLabel caseNotice = new JLabel();
     private transient Consumer<SimulationRequest> startAction = request -> { };
     private transient Runnable cancelAction = () -> { };
 
@@ -120,6 +121,24 @@ public final class SetupPanel extends JPanel {
             }
         });
         refresh();
+        lockCaseIfNeeded();
+    }
+
+    /**
+     * Si el borrador vuelve a simular el caso de una ejecución guardada, deja quietos el escenario, los pacientes,
+     * la duración y la semilla, y muestra de qué caso se trata.
+     */
+    private void lockCaseIfNeeded() {
+        draft.caseNotice().ifPresent(notice -> {
+            scenarioTiles.values().forEach(tile -> tile.setEnabled(false));
+            patients.setEnabled(false);
+            duration.setEnabled(false);
+            seed.setEnabled(false);
+            dice.setEnabled(false);
+            caseNotice.setText(notice);
+            caseNotice.setToolTipText(notice);
+            caseNotice.setVisible(true);
+        });
     }
 
     /**
@@ -157,7 +176,9 @@ public final class SetupPanel extends JPanel {
         JPanel titles = column();
         titles.add(label(TITLE, Font.BOLD, 19f, HomeTheme.TEXT));
         titles.add(Box.createVerticalStrut(2));
-        titles.add(label("Configura el hospital, el caso y la estrategia", Font.PLAIN, 12.5f, HomeTheme.MUTED));
+        titles.add(label(draft.isCaseLocked()
+                ? "Mismo caso: cambia el hospital o la estrategia y compara después con la original"
+                : "Configura el hospital, el caso y la estrategia", Font.PLAIN, 12.5f, HomeTheme.MUTED));
         header.add(titles, BorderLayout.CENTER);
         JPanel corner = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         corner.setOpaque(false);
@@ -265,6 +286,10 @@ public final class SetupPanel extends JPanel {
         stack.setOpaque(false);
         stack.add(tiles, BorderLayout.NORTH);
         stack.add(fields, BorderLayout.CENTER);
+        caseNotice.setFont(HomeTheme.font(Font.PLAIN, 12f));
+        caseNotice.setForeground(HomeTheme.AMBER);
+        caseNotice.setVisible(false);
+        stack.add(caseNotice, BorderLayout.SOUTH);
         card.content().add(stack, BorderLayout.NORTH);
         return card;
     }
@@ -445,6 +470,11 @@ public final class SetupPanel extends JPanel {
 
     public HomeButton startButton() {
         return start;
+    }
+
+    /** Aviso del caso fijo; vacío si es una simulación nueva. */
+    public String caseNoticeText() {
+        return caseNotice.isVisible() ? caseNotice.getText() : "";
     }
 
     /** Texto del resumen de abajo. */
