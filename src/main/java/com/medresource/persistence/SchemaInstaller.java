@@ -10,9 +10,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
- * Crea las tablas de la base de datos ejecutando el script {@code db/schema.sql}.
+ * Crea las tablas de la base de datos ejecutando el script {@code db/schema.sql} y, después, las funciones,
+ * los procedimientos y los triggers de {@code db/plsql.sql}.
  *
- * <p>El mismo script se puede correr a mano en SQL*Plus; esta clase permite hacerlo desde la
+ * <p>Los mismos scripts se pueden correr a mano en SQL*Plus o SQL Developer; esta clase permite hacerlo desde la
  * aplicación. Si las tablas ya existen, Oracle rechaza el script y se lanza una
  * {@link DataAccessException}: primero hay que ejecutar {@code db/drop_schema.sql}.</p>
  */
@@ -106,12 +107,13 @@ public class SchemaInstaller {
     }
 
     /**
-     * Crea todas las tablas.
+     * Crea todas las tablas y después las unidades PL/SQL, en una sola conexión.
      *
      * @throws DataAccessException si no se encuentra el script, no se puede conectar o Oracle rechaza alguna sentencia
      */
     public void install() {
-        List<String> statements = statementsFrom(readScript());
+        List<String> statements = new ArrayList<>(statementsFrom(readScript(SCHEMA_RESOURCE)));
+        statements.addAll(programUnitsFrom(readScript(PLSQL_RESOURCE)));
         try (Connection connection = connections.getConnection();
              Statement statement = connection.createStatement()) {
             for (String sql : statements) {
@@ -122,14 +124,14 @@ public class SchemaInstaller {
         }
     }
 
-    private static String readScript() {
-        try (InputStream stream = SchemaInstaller.class.getResourceAsStream(SCHEMA_RESOURCE)) {
+    private static String readScript(String resource) {
+        try (InputStream stream = SchemaInstaller.class.getResourceAsStream(resource)) {
             if (stream == null) {
-                throw new DataAccessException("No se encontró el script " + SCHEMA_RESOURCE + ".");
+                throw new DataAccessException("No se encontró el script " + resource + ".");
             }
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new DataAccessException("No se pudo leer el script " + SCHEMA_RESOURCE + ".", e);
+            throw new DataAccessException("No se pudo leer el script " + resource + ".", e);
         }
     }
 }

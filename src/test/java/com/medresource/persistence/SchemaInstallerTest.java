@@ -2,6 +2,7 @@ package com.medresource.persistence;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,7 +26,11 @@ class SchemaInstallerTest {
     }
 
     private static String realScript() throws IOException {
-        try (InputStream stream = SchemaInstaller.class.getResourceAsStream(SchemaInstaller.SCHEMA_RESOURCE)) {
+        return script(SchemaInstaller.SCHEMA_RESOURCE);
+    }
+
+    private static String script(String resource) throws IOException {
+        try (InputStream stream = SchemaInstaller.class.getResourceAsStream(resource)) {
             assertNotNull(stream, "no se encontró el script");
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
@@ -103,14 +108,17 @@ class SchemaInstallerTest {
     // ---------- instalar ----------
 
     @Test
-    void executesEveryStatementOfTheScriptInOrder() throws IOException {
+    void executesTheTablesAndThenThePlsqlUnitsInOrder() throws IOException {
         FakeJdbc.Recorder recorder = new FakeJdbc.Recorder();
 
         new SchemaInstaller(managerFor(recorder)).install();
 
-        List<String> expected = SchemaInstaller.statementsFrom(realScript());
-        assertFalse(expected.isEmpty());
+        List<String> expected = new ArrayList<>(SchemaInstaller.statementsFrom(realScript()));
+        List<String> units = SchemaInstaller.programUnitsFrom(script(SchemaInstaller.PLSQL_RESOURCE));
+        expected.addAll(units);
+        assertFalse(units.isEmpty());
         assertEquals(expected, recorder.executed);
+        assertTrue(recorder.executed.get(recorder.executed.size() - 1).startsWith("CREATE OR REPLACE TRIGGER"));
     }
 
     @Test
