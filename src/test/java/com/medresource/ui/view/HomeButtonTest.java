@@ -125,4 +125,16 @@ class HomeButtonTest {
         assertTrue(button.getPreferredSize().width > narrow);
         assertThrows(IllegalArgumentException.class, () -> button.setText(" "));
     }
+
+    @Test
+    void aFilledButtonTurnsGreyWhileItCannotBeUsed() {
+        HomeButton button = new HomeButton(HomeButton.Style.COMPACT, "Comparar", HomeIcon.BRANCH);
+        assertEquals(HomeTheme.ACCENT, button.fill());
+        assertEquals(HomeTheme.ACCENT_TEXT, button.textColor());
+
+        button.setEnabled(false);
+
+        assertEquals(HomeTheme.CARD_BORDER, button.fill());
+        assertEquals(HomeTheme.FAINT, button.textColor());
+    }
 }
