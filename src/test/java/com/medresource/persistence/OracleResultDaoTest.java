@@ -95,6 +95,30 @@ class OracleResultDaoTest {
     }
 
     @Test
+    void savesTheRunItIsBasedOn() {
+        int first = dao.save(runOf(1, "FIFO", 77));
+
+        int second = dao.save(basedOn(runOf(1, "Prioridad clínica", 77), first));
+
+        assertNull(database.resultColumn(first, "id_ejecucion_base"));
+        assertEquals(first, database.resultColumn(second, "id_ejecucion_base"));
+    }
+
+    @Test
+    void doesNotSaveARunBasedOnAMissingRunOrOnARunOfAnotherCase() {
+        int ofCaseTwo = dao.save(runOf(2, "FIFO", 88));
+
+        DataAccessException missing = assertThrows(DataAccessException.class,
+                () -> dao.save(basedOn(runOf(1, "FIFO", 77), 99)));
+        DataAccessException otherCase = assertThrows(DataAccessException.class,
+                () -> dao.save(basedOn(runOf(1, "FIFO", 77), ofCaseTwo)));
+
+        assertTrue(missing.getMessage().contains("No existe la ejecución base 99"));
+        assertTrue(otherCase.getMessage().contains("del mismo caso"));
+        assertEquals(List.of(ofCaseTwo), database.resultIds());
+    }
+
+    @Test
     void savesEveryDataOfEachPatient() {
         int id = dao.save(runOf(1, "FIFO", 77));
 
@@ -269,6 +293,27 @@ class OracleResultDaoTest {
         assertEquals(List.of(Specialty.SURGERY, Specialty.TRAUMATOLOGY),
                 dao.findAll().get(0).hospital().extraDoctors());
         assertEquals(List.of(), dao.findAll().get(1).hospital().extraDoctors());
+    }
+
+    @Test
+    void findsTheRunThatARunIsBasedOn() {
+        int first = dao.save(runOf(1, "FIFO", 77));
+        int second = dao.save(basedOn(runOf(1, "Prioridad clínica", 77), first));
+
+        assertEquals(Optional.empty(), dao.findById(first).orElseThrow().basedOn());
+        assertEquals(Optional.of(first), dao.findById(second).orElseThrow().basedOn());
+        assertEquals(first, dao.findAll().get(1).baseRunId());
+    }
+
+    @Test
+    void deletingTheBaseRunLeavesTheLinkEmptyButKeepsTheOtherRun() {
+        int first = dao.save(runOf(1, "FIFO", 77));
+        int second = dao.save(basedOn(runOf(1, "Prioridad clínica", 77), first));
+
+        dao.deleteById(first);
+
+        assertEquals(List.of(second), database.resultIds());
+        assertNull(dao.findById(second).orElseThrow().baseRunId());
     }
 
     @Test
@@ -511,6 +556,10 @@ class OracleResultDaoTest {
         assertEquals("No se pudo borrar la ejecución " + id + ": fallo simulado", error.getMessage());
         assertEquals(List.of(id), database.resultIds());
         assertEquals(database.connectionsOpened, database.connectionsClosed);
+    }
+
+    private static RunRecord basedOn(RunRecord run, int baseRunId) {
+        return new RunRecord(run.caseId(), run.hospital(), run.result(), baseRunId);
     }
 
     private static RunRecord withExtraDoctors(RunRecord run, Specialty... doctors) {

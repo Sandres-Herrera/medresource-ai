@@ -18,9 +18,10 @@ import java.util.TreeMap;
  *
  * <p>No es una prueba: reconoce exactamente las sentencias de {@link OracleResultDao} y las ejecuta sobre
  * mapas, con transacciones (confirmar y deshacer), el identificador generado, las claves foráneas (la
- * ejecución necesita su caso, y los médicos extra, los pacientes y los eventos, su ejecución) y el borrado en
- * cascada que tiene el esquema real. Los casos se declaran con {@link #addCase}; las enfermedades, con {@link #addDisease}. Que el SQL
- * sea válido en Oracle lo comprueba {@code OracleResultDaoIntegrationTest}.</p>
+ * ejecución necesita su caso y su ejecución base; los médicos extra, los pacientes y los eventos, su ejecución),
+ * el borrado en cascada y el enlace a la ejecución base que queda vacío al borrarla, como en el esquema real. Los
+ * casos se declaran con {@link #addCase}; las enfermedades, con {@link #addDisease}. Que el SQL sea válido en
+ * Oracle lo comprueba {@code OracleResultDaoIntegrationTest}.</p>
  */
 final class FakeResultDatabase {
 
@@ -30,7 +31,8 @@ final class FakeResultDatabase {
     private static final List<String> EVENT_COLUMNS = List.of("id_ejecucion", "orden_evento", "minuto_evento",
             "tipo_evento", "codigo_paciente", "codigo_recurso", "descripcion");
     private static final List<String> RESULT_COLUMNS = List.of("id_caso", "estrategia", "minutos_totales", "camas",
-            "camas_uci", "quirofanos", "medicos", "enfermeros", "unidades_sangre_por_tipo", "capacidad_morgue");
+            "camas_uci", "quirofanos", "medicos", "enfermeros", "unidades_sangre_por_tipo", "capacidad_morgue",
+            "id_ejecucion_base");
 
     /** Contenido de las tablas y el siguiente identificador. */
     private static final class Tables {
@@ -243,6 +245,9 @@ final class FakeResultDatabase {
                 if (!cases.containsKey((Integer) p.get(1))) {
                     throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_CASO) violada");
                 }
+                if (p.get(11) != null && !working.results.containsKey((Integer) p.get(11))) {
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_BASE) violada");
+                }
                 int id = working.nextId++;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("id", id);
@@ -302,6 +307,9 @@ final class FakeResultDatabase {
             case OracleResultDao.DELETE_RESULT -> {
                 int id = (Integer) p.get(1);
                 working.extraDoctors.keySet().removeIf(key -> key.get(0) == id);
+                working.results.values().stream()
+                        .filter(row -> Integer.valueOf(id).equals(row.get("id_ejecucion_base")))
+                        .forEach(row -> row.put("id_ejecucion_base", null));
                 working.patients.keySet().removeIf(key -> key.get(0) == id);
                 working.events.keySet().removeIf(key -> key.get(0) == id);
                 return working.results.remove(id) == null ? 0 : 1;
@@ -315,6 +323,12 @@ final class FakeResultDatabase {
     private ResultSet query(String sql, Map<Integer, Object> p) throws SQLException {
         List<Map<String, Object>> rows = new ArrayList<>();
         switch (sql) {
+            case OracleResultDao.SELECT_BASE_CASE -> {
+                Map<String, Object> row = working.results.get((Integer) p.get(1));
+                if (row != null) {
+                    rows.add(row);
+                }
+            }
             case OracleResultDao.SELECT_CASE_CONFIG -> {
                 Map<String, Object> row = cases.get((Integer) p.get(1));
                 if (row != null) {
@@ -374,6 +388,7 @@ final class FakeResultDatabase {
             case "getLong" -> ((Number) rows.get(position[0]).get((String) args[0])).longValue();
             case "getDouble" -> ((Number) rows.get(position[0]).get((String) args[0])).doubleValue();
             case "getString" -> (String) rows.get(position[0]).get((String) args[0]);
+            case "getObject" -> rows.get(position[0]).get((String) args[0]);
             case "close" -> {
                 resultSetsClosed++;
                 yield null;
