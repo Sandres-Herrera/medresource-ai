@@ -300,16 +300,16 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesTwelveTablesAndTwoIndexes() throws IOException {
-        assertEquals(12, createdTables().size());
-        assertEquals(14, statements().size());
+    void theScriptCreatesThirteenTablesAndTwoIndexes() throws IOException {
+        assertEquals(13, createdTables().size());
+        assertEquals(15, statements().size());
     }
 
     @Test
     void theTablesHaveSpanishNames() throws IOException {
         assertEquals(List.of("enfermedad", "enfermedad_especialidad_sec", "enfermedad_sintoma", "caso",
                 "caso_paciente", "caso_paciente_sintoma", "ejecucion", "ejecucion_medico_extra", "resultado_paciente",
-                "evento", "reporte", "comparacion"),
+                "evento", "reporte", "comparacion", "auditoria_reporte"),
                 createdTables());
     }
 
@@ -399,5 +399,16 @@ class SchemaScriptTest {
 
         assertTrue(index.startsWith("CREATE UNIQUE INDEX uq_comparacion_par ON comparacion"));
         assertTrue(index.contains("LEAST(id_ejecucion_a, id_ejecucion_b), GREATEST(id_ejecucion_a, id_ejecucion_b)"));
+    }
+
+    // ---------- auditoría ----------
+
+    @Test
+    void theAuditOfTheReportsKeepsInsertsAndDeletesWithoutForeignKeys() throws IOException {
+        String table = statements().stream()
+                .filter(statement -> statement.startsWith("CREATE TABLE auditoria_reporte ")).findFirst().orElseThrow();
+
+        assertFalse(table.contains("REFERENCES"));
+        assertEquals(Set.of("INSERT", "DELETE"), allowedValues("ck_auditoria_operacion"));
     }
 }
