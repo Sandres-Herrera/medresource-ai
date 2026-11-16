@@ -60,7 +60,7 @@ public class HospitalFactory {
             Specialty.INTERNAL_MEDICINE);
 
     /**
-     * Crea un hospital nuevo con todos sus recursos libres.
+     * Crea un hospital nuevo con todos sus recursos libres, incluidos los médicos extra de la configuración.
      *
      * @param config cantidad de recursos de cada tipo
      * @return hospital nuevo, independiente de los creados antes
@@ -71,11 +71,12 @@ public class HospitalFactory {
     }
 
     /**
-     * Crea un hospital nuevo con todos sus recursos libres y, además de los médicos de la configuración,
-     * médicos extra de las especialidades indicadas. Sirve para probar qué pasaría con un especialista más.
+     * Crea un hospital nuevo con todos sus recursos libres y, además de los médicos de la configuración (los de
+     * la rotación y sus médicos extra), médicos extra de las especialidades indicadas. Sirve para probar qué
+     * pasaría con un especialista más.
      *
      * <p>Los médicos extra van después de los demás, con los códigos que siguen (con 16 médicos, el primer
-     * extra es {@code D17}).</p>
+     * extra es {@code D17}): primero los de la configuración y después los indicados.</p>
      *
      * @param config       cantidad de recursos de cada tipo
      * @param extraDoctors especialidad de cada médico extra; vacío si no hay
@@ -94,10 +95,16 @@ public class HospitalFactory {
                 createRooms(config.hospitalizationBeds()),
                 new Room("UCI", RoomType.ICU, config.icuBeds()),
                 createOperatingRooms(config.operatingRooms()),
-                createDoctors(config.doctors(), extraDoctors),
+                createDoctors(config.doctors(), allExtraDoctors(config, extraDoctors)),
                 createNurses(config.nurses()),
                 createBloodBank(config.bloodUnitsPerType()),
                 new Morgue(config.morgueCapacity()));
+    }
+
+    private static List<Specialty> allExtraDoctors(HospitalConfig config, List<Specialty> extraDoctors) {
+        List<Specialty> all = new ArrayList<>(config.extraDoctors());
+        all.addAll(extraDoctors);
+        return all;
     }
 
     private List<Room> createRooms(int totalBeds) {
