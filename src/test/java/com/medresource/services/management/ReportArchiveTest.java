@@ -6,6 +6,7 @@ import com.medresource.model.GeneratedReport;
 import com.medresource.model.GeneratedReportFixtures;
 import com.medresource.model.NarrativeSource;
 import com.medresource.model.RunRecord;
+import com.medresource.model.RerunPlan;
 import com.medresource.model.SavedReport;
 import com.medresource.model.SavedReportSummary;
 import com.medresource.persistence.DataAccessException;
@@ -80,6 +81,20 @@ class ReportArchiveTest {
         assertEquals(Optional.empty(), results.saved.get(0).basedOn());
         assertEquals(Optional.of(1), results.saved.get(1).basedOn());
         assertEquals(results.saved.get(0).caseId(), results.saved.get(1).caseId());
+    }
+
+    @Test
+    void preparesAnotherSimulationOfTheSameCaseOfASavedReport() {
+        SavedReport saved = archive.save(request, report);
+
+        RerunPlan same = archive.rerunPlan(saved, false);
+        RerunPlan recommended = archive.rerunPlan(saved, true);
+
+        assertEquals(saved.resultId(), same.baseRunId());
+        assertEquals(request.caseConfig(), same.caseConfig());
+        assertEquals(request.hospitalConfig(), same.hospital());
+        assertEquals(request.result().strategyName(), same.strategyName());
+        assertEquals(same, recommended);
     }
 
     @Test
