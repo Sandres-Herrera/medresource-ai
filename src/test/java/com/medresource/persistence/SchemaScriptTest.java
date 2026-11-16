@@ -136,7 +136,9 @@ class SchemaScriptTest {
             }
             Matcher target = reference.matcher(statement);
             while (target.find()) {
-                assertTrue(created.contains(target.group(1)), table.group(1) + " usa " + target.group(1) + " antes de crearla");
+                boolean itself = target.group(1).equals(table.group(1));
+                assertTrue(itself || created.contains(target.group(1)),
+                        table.group(1) + " usa " + target.group(1) + " antes de crearla");
             }
             created.add(table.group(1));
         }
@@ -220,6 +222,16 @@ class SchemaScriptTest {
         assertTrue(tables.contains("ejecucion"));
         assertTrue(tables.contains("resultado_paciente"));
         assertTrue(tables.contains("evento"));
+    }
+
+    @Test
+    void anExecutionCanBeBasedOnAnotherOneThatIsNotItself() throws IOException {
+        String execution = statements().stream().filter(statement -> statement.startsWith("CREATE TABLE ejecucion "))
+                .findFirst().orElseThrow();
+
+        assertTrue(execution.contains("id_ejecucion_base        NUMBER(10),"));
+        assertTrue(execution.contains("FOREIGN KEY (id_ejecucion_base) REFERENCES ejecucion (id) ON DELETE SET NULL"));
+        assertTrue(constraint("ck_ejecucion_base").contains("id_ejecucion_base <> id"));
     }
 
     @Test
@@ -350,6 +362,9 @@ class SchemaScriptTest {
             }
             Matcher parent = reference.matcher(statement);
             while (parent.find()) {
+                if (parent.group(1).equals(table.group(1))) {
+                    continue;
+                }
                 assertTrue(dropped.indexOf(table.group(1)) < dropped.indexOf(parent.group(1)),
                         table.group(1) + " debe borrarse antes que " + parent.group(1));
             }
