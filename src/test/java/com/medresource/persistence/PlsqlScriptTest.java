@@ -195,4 +195,25 @@ class PlsqlScriptTest {
     private static int count(String text, String part) {
         return text.split(Pattern.quote(part), -1).length - 1;
     }
+
+    // ---------- demostración ----------
+
+    @Test
+    void theDemoScriptShowsEveryFunctionAndProcedureAndChangesNothing() throws IOException {
+        String demo;
+        try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream("/db/demo_plsql.sql")) {
+            assertNotNull(stream, "no se encontró la demostración");
+            demo = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        for (String name : names()) {
+            if (!name.startsWith("trg_") && !name.equals("pr_guardar_comparacion")
+                    && !name.equals("pr_exigir_ejecucion")) {
+                assertTrue(demo.contains(name + "("), name);
+            }
+        }
+        assertTrue(demo.contains("trg_validar_tiempo_atencion"));
+        assertFalse(demo.contains("&"));
+        assertFalse(demo.contains("COMMIT"));
+    }
 }
