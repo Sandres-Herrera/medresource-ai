@@ -135,6 +135,17 @@ class SimulationServiceTest {
         assertTrue(resultDao.saved.isEmpty());
     }
 
+    @Test
+    void savesAResultBasedOnAnotherRunOfTheSameCase() {
+        int caseId = cases.idFor(CONFIG);
+        int first = service.save(caseId, HOSPITAL, ResultFixtures.resultOf("FIFO", 77));
+
+        int second = service.save(caseId, HOSPITAL, ResultFixtures.resultOf("FIFO", 77), first);
+
+        assertEquals(Optional.of(first), service.find(second).orElseThrow().basedOn());
+        assertEquals(Optional.empty(), service.find(first).orElseThrow().basedOn());
+    }
+
     // ---------- consultar y borrar ----------
 
     @Test

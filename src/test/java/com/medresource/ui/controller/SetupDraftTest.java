@@ -2,14 +2,18 @@ package com.medresource.ui.controller;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.RerunPlan;
 import com.medresource.model.Scenario;
 import com.medresource.model.Specialty;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -192,5 +196,64 @@ class SetupDraftTest {
         assertEquals(2, draft.getExtraDoctors(Specialty.SURGERY));
         assertThrows(IllegalArgumentException.class, () -> draft.applyPreset(null));
         assertThrows(IllegalArgumentException.class, () -> draft.setExtraDoctors(null, 1));
+    }
+
+    // ---------- volver a simular un caso guardado ----------
+
+    private static final RerunPlan PLAN = new RerunPlan(5, new CaseConfig(7L, Scenario.CATASTROPHE, 80, 240),
+            HospitalConfig.small().withExtraDoctors(List.of(Specialty.SURGERY)), "FIFO (orden de llegada)",
+            List.of("1 médico de Cirugía más"));
+
+    @Test
+    void aNewSimulationHasTheCaseFreeAndNoBaseRun() {
+        assertFalse(draft.isCaseLocked());
+        assertEquals(Optional.empty(), draft.getBaseRunId());
+        assertEquals(Optional.empty(), draft.caseNotice());
+        assertNull(draft.toRequest().setup().baseRunId());
+    }
+
+    @Test
+    void aRerunTakesTheCaseTheHospitalAndTheStrategyOfThePlan() {
+        draft.applyRerun(PLAN);
+
+        SimulationSetup setup = draft.toRequest().setup();
+        assertEquals(PLAN.caseConfig(), setup.caseConfig());
+        assertEquals(PLAN.hospital(), setup.hospital());
+        assertEquals(StrategyOption.FIFO, setup.strategy());
+        assertEquals(5, setup.baseRunId());
+        assertTrue(draft.isCaseLocked());
+        assertEquals("Mismo caso que la ejecución #5: semilla 7, Catástrofe, 80 pacientes en 240 min",
+                draft.caseNotice().orElseThrow());
+    }
+
+    @Test
+    void aRerunKeepsTheCaseButLetsTheHospitalTheStrategyAndTheSpeedChange() {
+        draft.applyRerun(PLAN);
+
+        draft.setScenario(Scenario.NORMAL);
+        draft.setPatients(10);
+        draft.setDurationMinutes(60);
+        draft.setSeed(99);
+        assertEquals(7L, draft.rollSeed(new Random(4)));
+        draft.setResource(HospitalField.BEDS, 20);
+        draft.setExtraDoctors(Specialty.PEDIATRICS, 1);
+        draft.setStrategy(StrategyOption.CLINICAL_PRIORITY);
+        draft.setSpeed(5);
+
+        SimulationRequest request = draft.toRequest();
+        assertEquals(PLAN.caseConfig(), request.setup().caseConfig());
+        assertEquals(20, request.setup().hospital().hospitalizationBeds());
+        assertEquals(List.of(Specialty.PEDIATRICS, Specialty.SURGERY), request.setup().hospital().extraDoctors());
+        assertEquals(StrategyOption.CLINICAL_PRIORITY, request.setup().strategy());
+        assertEquals(5, request.speed());
+    }
+
+    @Test
+    void rejectsAMissingPlanOrAStrategyThatCannotBeChosen() {
+        RerunPlan unknown = new RerunPlan(5, PLAN.caseConfig(), PLAN.hospital(), "Red neuronal", List.of());
+
+        assertThrows(IllegalArgumentException.class, () -> draft.applyRerun(null));
+        assertThrows(IllegalArgumentException.class, () -> draft.applyRerun(unknown));
+        assertFalse(draft.isCaseLocked());
     }
 }

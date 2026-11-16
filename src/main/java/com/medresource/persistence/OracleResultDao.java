@@ -34,19 +34,19 @@ import java.util.Optional;
  *
  * <p>Una ejecución ocupa cuatro tablas: {@code ejecucion} (la estrategia, la duración y los siete recursos
  * del hospital), {@code ejecucion_medico_extra} (los médicos extra del hospital, en orden),
- * {@code resultado_paciente} (cómo terminó cada paciente) y {@code evento} (los eventos, en orden). La
- * configuración del caso no se repite: se lee de {@code caso}. Cada operación se hace en una sola transacción
- * y el identificador de la ejecución lo genera Oracle. Los pacientes guardan solo el
- * número de su enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe
- * el DAO.</p>
+ * {@code resultado_paciente} (cómo terminó cada paciente) y {@code evento} (los eventos, en orden). Si la
+ * ejecución se basa en otra, debe ser del mismo caso. La configuración del caso no se repite: se lee de
+ * {@code caso}. Cada operación se hace en una sola transacción y el identificador de la ejecución lo genera
+ * Oracle. Los pacientes guardan solo el número de su enfermedad; al leer, la enfermedad se toma del
+ * {@link GenericDao} de enfermedades que recibe el DAO.</p>
  *
  * <p>Las ejecuciones no se modifican: {@link #update(RunRecord)} no está permitido.</p>
  */
 public class OracleResultDao implements ResultDao {
 
     static final String INSERT_RESULT = "INSERT INTO ejecucion (id_caso, estrategia, minutos_totales, camas, "
-            + "camas_uci, quirofanos, medicos, enfermeros, unidades_sangre_por_tipo, capacidad_morgue) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "camas_uci, quirofanos, medicos, enfermeros, unidades_sangre_por_tipo, capacidad_morgue, "
+            + "id_ejecucion_base) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String INSERT_PATIENT = "INSERT INTO resultado_paciente (id_ejecucion, id_paciente, "
             + "codigo_paciente, edad, sexo, nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, "
             + "minuto_desenlace, estado, causa_muerte, nivel_atencion, irrecuperable, salud_final) "
@@ -57,15 +57,16 @@ public class OracleResultDao implements ResultDao {
             "INSERT INTO ejecucion_medico_extra (id_ejecucion, orden_medico, especialidad) VALUES (?, ?, ?)";
     static final String DELETE_RESULT = "DELETE FROM ejecucion WHERE id = ?";
 
+    static final String SELECT_BASE_CASE = "SELECT id_caso FROM ejecucion WHERE id = ?";
     static final String SELECT_CASE_CONFIG =
             "SELECT semilla, escenario, cantidad_pacientes, duracion_minutos FROM caso WHERE id = ?";
     static final String SELECT_RESULTS = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
             + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
-            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
+            + "r.id_ejecucion_base, c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
             + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso ORDER BY r.id";
     static final String SELECT_RESULT = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
             + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
-            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
+            + "r.id_ejecucion_base, c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
             + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso WHERE r.id = ?";
     static final String SELECT_IDS_BY_CASE = "SELECT id FROM ejecucion WHERE id_caso = ? ORDER BY id";
     static final String SELECT_PATIENTS = "SELECT id_ejecucion, id_paciente, codigo_paciente, edad, sexo, "
@@ -124,6 +125,7 @@ public class OracleResultDao implements ResultDao {
         requireRun(run);
         return transactions.run("guardar la ejecución de " + run.result().strategyName(), connection -> {
             requireSameCase(connection, run);
+            requireBaseOfSameCase(connection, run);
             int resultId = insertResult(connection, run);
             insertExtraDoctors(connection, resultId, run.hospital().extraDoctors());
             insertPatients(connection, resultId, run.result().outcomes());
@@ -149,6 +151,27 @@ public class OracleResultDao implements ResultDao {
         }
     }
 
+    /** Si la ejecución se basa en otra, comprueba que esa otra existe y es del mismo caso. */
+    private static void requireBaseOfSameCase(Connection connection, RunRecord run) throws SQLException {
+        if (run.baseRunId() == null) {
+            return;
+        }
+        try (PreparedStatement statement = connection.prepareStatement(SELECT_BASE_CASE)) {
+            statement.setInt(1, run.baseRunId());
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new DataAccessException("No existe la ejecución base " + run.baseRunId() + ".");
+                }
+                int baseCase = rows.getInt("id_caso");
+                if (baseCase != run.caseId()) {
+                    throw new DataAccessException("La ejecución base " + run.baseRunId() + " es del caso " + baseCase
+                            + " y la nueva es del caso " + run.caseId()
+                            + ": solo se puede basar en una ejecución del mismo caso.");
+                }
+            }
+        }
+    }
+
     private static int insertResult(Connection connection, RunRecord run) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_RESULT, new String[]{GENERATED_COLUMN})) {
             HospitalConfig hospital = run.hospital();
@@ -162,6 +185,11 @@ public class OracleResultDao implements ResultDao {
             statement.setInt(8, hospital.nurses());
             statement.setInt(9, hospital.bloodUnitsPerType());
             statement.setInt(10, hospital.morgueCapacity());
+            if (run.baseRunId() == null) {
+                statement.setNull(11, Types.NUMERIC);
+            } else {
+                statement.setInt(11, run.baseRunId());
+            }
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (!keys.next()) {
@@ -354,6 +382,8 @@ public class OracleResultDao implements ResultDao {
                     header.put("estrategia", rows.getString("estrategia"));
                     header.put("semilla", rows.getLong("semilla"));
                     header.put("escenario", rows.getString("escenario"));
+                    Object base = rows.getObject("id_ejecucion_base");
+                    header.put("id_ejecucion_base", base == null ? null : ((Number) base).intValue());
                     headers.add(header);
                 }
             }
@@ -465,7 +495,8 @@ public class OracleResultDao implements ResultDao {
                     extraDoctors);
             SimulationResult result = new SimulationResult((String) header.get("estrategia"), config,
                     (Integer) header.get("minutos_totales"), outcomes, events);
-            return new RunRecord((Integer) header.get("id_caso"), hospital, result);
+            return new RunRecord((Integer) header.get("id_caso"), hospital, result,
+                    (Integer) header.get("id_ejecucion_base"));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException("Los datos guardados de " + owner + " no son válidos: " + e.getMessage(), e);
         }

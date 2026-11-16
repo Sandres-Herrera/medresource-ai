@@ -11,6 +11,7 @@ import com.medresource.services.strategy.ClinicalPriorityStrategy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -54,5 +55,21 @@ class ReportRequestTest {
                 ClinicalPriorityStrategy::new));
         assertThrows(IllegalArgumentException.class, () -> new ReportRequest(result, trace, hospital,
                 HospitalConfig.small(), null));
+    }
+
+    @Test
+    void aNewSimulationIsNotBasedOnAnotherRun() {
+        assertNull(request().baseRunId());
+    }
+
+    @Test
+    void remembersTheRunItIsBasedOnAndRejectsAnInvalidOne() {
+        ReportRequest plain = request();
+        ReportRequest rerun = new ReportRequest(plain.result(), plain.trace(), plain.hospital(),
+                plain.hospitalConfig(), plain.strategy(), 4);
+
+        assertEquals(4, rerun.baseRunId());
+        assertThrows(IllegalArgumentException.class, () -> new ReportRequest(plain.result(), plain.trace(),
+                plain.hospital(), plain.hospitalConfig(), plain.strategy(), 0));
     }
 }

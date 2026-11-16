@@ -1,6 +1,7 @@
 package com.medresource.services.management;
 
 import com.medresource.model.GeneratedReport;
+import com.medresource.model.RerunPlan;
 import com.medresource.model.SavedReport;
 import com.medresource.model.SavedReportSummary;
 import com.medresource.persistence.ConnectionManager;
@@ -30,6 +31,7 @@ public class ReportArchive {
     private final CaseService cases;
     private final SimulationService runs;
     private final ReportDao reports;
+    private final RerunPlanner planner;
     private boolean catalogReady;
 
     /**
@@ -49,6 +51,7 @@ public class ReportArchive {
         this.cases = cases;
         this.runs = runs;
         this.reports = reports;
+        this.planner = new RerunPlanner(runs);
     }
 
     /**
@@ -85,7 +88,7 @@ public class ReportArchive {
         }
         prepareCatalog();
         int caseId = cases.idFor(request.caseConfig());
-        int resultId = runs.save(caseId, request.hospitalConfig(), request.result());
+        int resultId = runs.save(caseId, request.hospitalConfig(), request.result(), request.baseRunId());
         int reportId;
         try {
             reportId = reports.save(SavedReport.toSave(resultId, report));
@@ -116,6 +119,21 @@ public class ReportArchive {
      */
     public Optional<SavedReport> find(int id) {
         return reports.findById(id);
+    }
+
+    /**
+     * Prepara una simulación nueva del caso de un reporte guardado, con los mismos pacientes, para compararla
+     * después con la original.
+     *
+     * @param saved               reporte guardado
+     * @param withRecommendations {@code true} para aplicar las recomendaciones del reporte; {@code false} para
+     *                            repetir el mismo hospital y la misma estrategia
+     * @return plan de la simulación nueva
+     * @throws IllegalArgumentException si falta el reporte o su ejecución ya no está guardada
+     * @throws DataAccessException      si la base de datos rechaza la operación
+     */
+    public RerunPlan rerunPlan(SavedReport saved, boolean withRecommendations) {
+        return withRecommendations ? planner.withRecommendations(saved) : planner.sameCase(saved);
     }
 
     private void prepareCatalog() {

@@ -2,6 +2,7 @@ package com.medresource.ui.controller;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.RerunPlan;
 import com.medresource.model.Scenario;
 import com.medresource.model.Specialty;
 import com.medresource.services.simulation.CaseGenerator;
@@ -35,6 +36,63 @@ public final class SetupDraft {
     private long seed = 1L;
     private StrategyOption strategy = StrategyOption.CLINICAL_PRIORITY;
     private int speed = SimulationClock.DEFAULT_SPEED;
+    private Integer baseRunId;
+
+    /**
+     * Prepara el borrador para volver a simular el caso de una ejecución guardada: toma el caso, el hospital y la
+     * estrategia del plan y deja el caso fijo (escenario, semilla, pacientes y duración), para que la simulación
+     * nueva tenga los mismos pacientes y se pueda comparar con la original. El hospital, la estrategia y la
+     * velocidad se pueden seguir cambiando.
+     *
+     * @param plan plan de la simulación nueva
+     * @throws IllegalArgumentException si el plan es nulo o su estrategia no es una de las que se pueden elegir
+     */
+    public void applyRerun(RerunPlan plan) {
+        if (plan == null) {
+            throw new IllegalArgumentException("El plan es obligatorio.");
+        }
+        StrategyOption option = StrategyOption.fromStrategyName(plan.strategyName()).orElseThrow(
+                () -> new IllegalArgumentException("La estrategia «" + plan.strategyName()
+                        + "» no se puede elegir."));
+        CaseConfig caseConfig = plan.caseConfig();
+        hospital = plan.hospital();
+        scenario = caseConfig.scenario();
+        patients = caseConfig.patientCount();
+        durationMinutes = caseConfig.durationMinutes();
+        seed = caseConfig.seed();
+        strategy = option;
+        baseRunId = plan.baseRunId();
+    }
+
+    /**
+     * Indica si el caso está fijo porque se vuelve a simular el de una ejecución guardada. Mientras lo está, los
+     * cambios de escenario, semilla, pacientes y duración no tienen efecto.
+     *
+     * @return {@code true} si el caso no se puede cambiar
+     */
+    public boolean isCaseLocked() {
+        return baseRunId != null;
+    }
+
+    /**
+     * Devuelve la ejecución guardada cuyo caso se vuelve a simular.
+     *
+     * @return su identificador, o vacío si es una simulación nueva
+     */
+    public Optional<Integer> getBaseRunId() {
+        return Optional.ofNullable(baseRunId);
+    }
+
+    /**
+     * Describe el caso fijo, para mostrarlo arriba del formulario: por ejemplo «Mismo caso que la ejecución #5:
+     * semilla 7, Catástrofe, 100 pacientes en 480 min».
+     *
+     * @return el aviso, o vacío si es una simulación nueva
+     */
+    public Optional<String> caseNotice() {
+        return getBaseRunId().map(id -> "Mismo caso que la ejecución #" + id + ": semilla " + seed + ", "
+                + scenario.getDisplayName() + ", " + patients + " pacientes en " + durationMinutes + " min");
+    }
 
     public HospitalConfig getHospital() {
         return hospital;
@@ -125,7 +183,7 @@ public final class SetupDraft {
     }
 
     /**
-     * Cambia el escenario.
+     * Cambia el escenario; no tiene efecto si el caso está fijo.
      *
      * @param scenario escenario
      * @throws IllegalArgumentException si es nulo
@@ -134,7 +192,9 @@ public final class SetupDraft {
         if (scenario == null) {
             throw new IllegalArgumentException("El escenario es obligatorio.");
         }
-        this.scenario = scenario;
+        if (!isCaseLocked()) {
+            this.scenario = scenario;
+        }
     }
 
     public int getPatients() {
@@ -142,12 +202,15 @@ public final class SetupDraft {
     }
 
     /**
-     * Cambia la cantidad de pacientes; se ajusta al rango de {@link CaseConfig}.
+     * Cambia la cantidad de pacientes; se ajusta al rango de {@link CaseConfig}. No tiene efecto si el caso está
+     * fijo.
      *
      * @param patients cantidad pedida
      */
     public void setPatients(int patients) {
-        this.patients = Math.max(CaseConfig.MIN_PATIENTS, Math.min(CaseConfig.MAX_PATIENTS, patients));
+        if (!isCaseLocked()) {
+            this.patients = Math.max(CaseConfig.MIN_PATIENTS, Math.min(CaseConfig.MAX_PATIENTS, patients));
+        }
     }
 
     public int getDurationMinutes() {
@@ -155,13 +218,16 @@ public final class SetupDraft {
     }
 
     /**
-     * Cambia el tiempo en que llegan los pacientes; se ajusta al rango de {@link CaseConfig}.
+     * Cambia el tiempo en que llegan los pacientes; se ajusta al rango de {@link CaseConfig}. No tiene efecto si el
+     * caso está fijo.
      *
      * @param minutes minutos pedidos
      */
     public void setDurationMinutes(int minutes) {
-        this.durationMinutes = Math.max(CaseConfig.MIN_DURATION_MINUTES,
-                Math.min(CaseConfig.MAX_DURATION_MINUTES, minutes));
+        if (!isCaseLocked()) {
+            this.durationMinutes = Math.max(CaseConfig.MIN_DURATION_MINUTES,
+                    Math.min(CaseConfig.MAX_DURATION_MINUTES, minutes));
+        }
     }
 
     public long getSeed() {
@@ -169,26 +235,30 @@ public final class SetupDraft {
     }
 
     /**
-     * Cambia la semilla; una negativa se toma como 0.
+     * Cambia la semilla; una negativa se toma como 0. No tiene efecto si el caso está fijo.
      *
      * @param seed semilla pedida
      */
     public void setSeed(long seed) {
-        this.seed = Math.max(0L, seed);
+        if (!isCaseLocked()) {
+            this.seed = Math.max(0L, seed);
+        }
     }
 
     /**
      * Sortea una semilla nueva, de 1 a {@value #MAX_RANDOM_SEED}, para ver otro caso del mismo escenario.
      *
      * @param random generador de números al azar
-     * @return la semilla sorteada
+     * @return la semilla sorteada, o la misma si el caso está fijo
      * @throws IllegalArgumentException si el generador es nulo
      */
     public long rollSeed(Random random) {
         if (random == null) {
             throw new IllegalArgumentException("El generador de números al azar es obligatorio.");
         }
-        seed = 1L + random.nextInt(MAX_RANDOM_SEED);
+        if (!isCaseLocked()) {
+            seed = 1L + random.nextInt(MAX_RANDOM_SEED);
+        }
         return seed;
     }
 
@@ -274,7 +344,7 @@ public final class SetupDraft {
      */
     public SimulationRequest toRequest() {
         CaseConfig caseConfig = new CaseConfig(seed, scenario, patients, durationMinutes);
-        return new SimulationRequest(new SimulationSetup(hospital, caseConfig, strategy), speed);
+        return new SimulationRequest(new SimulationSetup(hospital, caseConfig, strategy, baseRunId), speed);
     }
 
     private int percentOfDuration(int percent) {

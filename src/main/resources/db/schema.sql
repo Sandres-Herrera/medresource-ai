@@ -127,6 +127,10 @@ CREATE TABLE caso_paciente_sintoma (
 
 -- ---------------------------------------------------------------------------
 -- Ejecuciones (una ejecución = un caso + una estrategia + unos recursos)
+--
+-- id_ejecucion_base dice en qué ejecución del mismo caso se basa una ejecución
+-- (por ejemplo, la que se volvió a simular para probar sus recomendaciones). Si
+-- se borra la ejecución base, el enlace queda vacío.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE ejecucion (
@@ -142,8 +146,11 @@ CREATE TABLE ejecucion (
     unidades_sangre_por_tipo NUMBER(3)            NOT NULL,
     capacidad_morgue         NUMBER(3)            NOT NULL,
     ejecutado_en             TIMESTAMP            DEFAULT SYSTIMESTAMP NOT NULL,
+    id_ejecucion_base        NUMBER(10),
     CONSTRAINT pk_ejecucion PRIMARY KEY (id),
     CONSTRAINT fk_ejecucion_caso FOREIGN KEY (id_caso) REFERENCES caso (id) ON DELETE CASCADE,
+    CONSTRAINT fk_ejecucion_base FOREIGN KEY (id_ejecucion_base) REFERENCES ejecucion (id) ON DELETE SET NULL,
+    CONSTRAINT ck_ejecucion_base CHECK (id_ejecucion_base IS NULL OR id_ejecucion_base <> id),
     CONSTRAINT ck_ejecucion_minutos CHECK (minutos_totales >= 0),
     CONSTRAINT ck_ejecucion_camas CHECK (camas BETWEEN 1 AND 200),
     CONSTRAINT ck_ejecucion_uci CHECK (camas_uci BETWEEN 1 AND 50),

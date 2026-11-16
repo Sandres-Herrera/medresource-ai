@@ -126,10 +126,23 @@ class OracleReportDaoTest {
         assertEquals(List.of(
                 new SavedReportSummary(2, 2, FakeReportDatabase.FIRST_SAVE.plusMinutes(1),
                         new CaseConfig(9L, Scenario.CATASTROPHE, 100, 480), "Prioridad clínica", 13,
-                        NarrativeSource.AI),
+                        NarrativeSource.AI, 1, null),
                 new SavedReportSummary(1, 1, FakeReportDatabase.FIRST_SAVE,
-                        new CaseConfig(7L, Scenario.NORMAL, 100, 480), "FIFO", 4, NarrativeSource.AI)),
+                        new CaseConfig(7L, Scenario.NORMAL, 100, 480), "FIFO", 4, NarrativeSource.AI, 1, null)),
                 summaries);
+    }
+
+    @Test
+    void theSummariesSayTheCaseAndTheRunThatEachRunIsBasedOn() {
+        database.linkResult(2, 1, 1);
+        dao.save(SavedReport.toSave(1, report));
+        dao.save(SavedReport.toSave(2, report));
+
+        List<SavedReportSummary> summaries = dao.summaries();
+
+        assertEquals(1, summaries.get(0).caseId());
+        assertEquals(Optional.of(1), summaries.get(0).basedOn());
+        assertEquals(Optional.empty(), summaries.get(1).basedOn());
     }
 
     @Test

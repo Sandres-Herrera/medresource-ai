@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -212,6 +213,20 @@ class SimulationControllerTest {
         assertEquals(HospitalConfig.standard(), request.hospitalConfig());
         assertEquals(controller.metrics().orElseThrow(), new MetricsCalculator().calculate(request.result()));
         assertEquals(controller.getStrategyName(), request.strategy().get().getName());
+    }
+
+    @Test
+    void theReportKnowsTheSavedRunWhoseCaseWasSimulatedAgain() {
+        SimulationSetup rerun = new SimulationSetup(HospitalConfig.standard(), SMALL_CASE, StrategyOption.FIFO, 3);
+        SimulationController again = new SimulationController(rerun, new Renderer2D());
+        SimulationController fresh = controller();
+        while (!again.isFinished() || !fresh.isFinished()) {
+            again.skipToNextEvent();
+            fresh.skipToNextEvent();
+        }
+
+        assertEquals(3, again.reportRequest().orElseThrow().baseRunId());
+        assertNull(fresh.reportRequest().orElseThrow().baseRunId());
     }
 
     @Test

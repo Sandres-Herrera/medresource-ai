@@ -20,9 +20,10 @@ class SavedReportsPanelTest {
 
     private static final SavedReportSummary CATASTROPHE = new SavedReportSummary(4, 9,
             LocalDateTime.of(2026, 11, 15, 14, 5), new CaseConfig(7L, Scenario.CATASTROPHE, 100, 480),
-            "Prioridad clínica (triage)", 13, NarrativeSource.TEMPLATE);
+            "Prioridad clínica (triage)", 13, NarrativeSource.TEMPLATE, 3, null);
     private static final SavedReportSummary NORMAL = new SavedReportSummary(2, 5,
-            LocalDateTime.of(2026, 11, 14, 9, 30), CaseConfig.of(42L, Scenario.NORMAL), "FIFO", 0, NarrativeSource.AI);
+            LocalDateTime.of(2026, 11, 14, 9, 30), CaseConfig.of(42L, Scenario.NORMAL), "FIFO", 0, NarrativeSource.AI,
+            1, null);
 
     @Test
     void startsSearchingForTheReports() {

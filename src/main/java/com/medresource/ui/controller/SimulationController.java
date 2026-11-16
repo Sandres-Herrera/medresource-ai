@@ -247,7 +247,7 @@ public final class SimulationController {
         long seed = setup.caseConfig().seed();
         StrategyOption option = setup.strategy();
         return Optional.of(new ReportRequest(engine.getResult(), engine.getTrace(), engine.getHospital(),
-                setup.hospital(), () -> option.create(seed)));
+                setup.hospital(), () -> option.create(seed), setup.baseRunId()));
     }
 
     /**

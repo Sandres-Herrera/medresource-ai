@@ -69,8 +69,13 @@ class OracleResultDaoIntegrationTest {
             assertSameRun(run, dao.findById(id).orElseThrow());
             assertTrue(dao.findAll().stream().anyMatch(stored -> stored.caseId() == caseId));
 
+            int rerun = dao.save(new RunRecord(caseId, HOSPITAL, result, id));
+            assertEquals(Optional.of(id), dao.findById(rerun).orElseThrow().basedOn());
+
             dao.deleteById(id);
             assertEquals(Optional.empty(), dao.findById(id));
+            assertEquals(Optional.empty(), dao.findById(rerun).orElseThrow().basedOn());
+            dao.deleteById(rerun);
             assertTrue(dao.findIdsByCase(caseId).isEmpty());
         } finally {
             deleteCaseIfPresent(cases);

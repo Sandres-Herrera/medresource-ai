@@ -6,6 +6,7 @@ import com.medresource.model.Scenario;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -32,5 +33,19 @@ class SimulationSetupTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new SimulationSetup(hospital, null, StrategyOption.FIFO));
         assertThrows(IllegalArgumentException.class, () -> new SimulationSetup(hospital, caseConfig, null));
+    }
+
+    @Test
+    void aNewSimulationIsNotBasedOnASavedRun() {
+        assertNull(SimulationSetup.standard(caseConfig).baseRunId());
+    }
+
+    @Test
+    void remembersTheSavedRunWhoseCaseItSimulatesAgain() {
+        SimulationSetup setup = new SimulationSetup(HospitalConfig.standard(), caseConfig, StrategyOption.FIFO, 5);
+
+        assertEquals(5, setup.baseRunId());
+        assertThrows(IllegalArgumentException.class,
+                () -> new SimulationSetup(HospitalConfig.standard(), caseConfig, StrategyOption.FIFO, 0));
     }
 }
