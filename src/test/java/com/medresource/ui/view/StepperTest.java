@@ -121,4 +121,33 @@ class StepperTest {
         assertThrows(IllegalArgumentException.class, () -> new Stepper("Camas", 1, 2, 0, 1));
         assertThrows(IllegalArgumentException.class, () -> stepper.addChangeListener(null));
     }
+
+    @Test
+    void aDisabledStepperCannotBeChangedByTheUserAndLooksGrey() {
+        Stepper stepper = new Stepper("Camas", 1, 10, 1, 5);
+        List<Integer> changes = new ArrayList<>();
+        stepper.addChangeListener(changes::add);
+
+        stepper.setEnabled(false);
+        stepper.plusButton().doClick();
+        stepper.minusButton().doClick();
+
+        assertEquals(5, stepper.getValue());
+        assertTrue(changes.isEmpty());
+        assertFalse(stepper.field().isEditable());
+        assertFalse(stepper.plusButton().isEnabled());
+        assertEquals(HomeTheme.FAINT, stepper.field().getForeground());
+    }
+
+    @Test
+    void enablingItAgainTurnsTheButtonsBackOnInsideTheRange() {
+        Stepper stepper = new Stepper("Camas", 1, 10, 1, 10);
+        stepper.setEnabled(false);
+
+        stepper.setEnabled(true);
+
+        assertTrue(stepper.field().isEditable());
+        assertTrue(stepper.minusButton().isEnabled());
+        assertFalse(stepper.plusButton().isEnabled());
+    }
 }

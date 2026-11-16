@@ -215,10 +215,24 @@ public final class Stepper extends JPanel {
         surface.dispose();
     }
 
+    /**
+     * Activa o desactiva el campo: desactivado no se puede escribir ni usar sus botones, y el número se ve gris.
+     *
+     * @param enabled {@code true} para poder cambiar el número
+     */
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        field.setEditable(enabled);
+        field.setFocusable(enabled);
+        field.setForeground(enabled ? HomeTheme.TEXT : HomeTheme.FAINT);
+        showValue();
+    }
+
     private void showValue() {
         field.setText(String.valueOf(value));
-        minus.setEnabled(value > min);
-        plus.setEnabled(value < max);
+        minus.setEnabled(isEnabled() && value > min);
+        plus.setEnabled(isEnabled() && value < max);
     }
 
     private int clamp(int number) {
