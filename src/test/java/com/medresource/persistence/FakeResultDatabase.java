@@ -18,8 +18,8 @@ import java.util.TreeMap;
  *
  * <p>No es una prueba: reconoce exactamente las sentencias de {@link OracleResultDao} y las ejecuta sobre
  * mapas, con transacciones (confirmar y deshacer), el identificador generado, las claves foráneas (la
- * ejecución necesita su caso y los pacientes su ejecución) y el borrado en cascada que tiene el esquema
- * real. Los casos se declaran con {@link #addCase}; las enfermedades, con {@link #addDisease}. Que el SQL
+ * ejecución necesita su caso, y los médicos extra, los pacientes y los eventos, su ejecución) y el borrado en
+ * cascada que tiene el esquema real. Los casos se declaran con {@link #addCase}; las enfermedades, con {@link #addDisease}. Que el SQL
  * sea válido en Oracle lo comprueba {@code OracleResultDaoIntegrationTest}.</p>
  */
 final class FakeResultDatabase {
@@ -39,6 +39,7 @@ final class FakeResultDatabase {
         final Map<Integer, Map<String, Object>> results = new TreeMap<>();
         final Map<List<Integer>, Map<String, Object>> patients = new TreeMap<>(FakeResultDatabase::compareKeys);
         final Map<List<Integer>, Map<String, Object>> events = new TreeMap<>(FakeResultDatabase::compareKeys);
+        final Map<List<Integer>, String> extraDoctors = new TreeMap<>(FakeResultDatabase::compareKeys);
 
         Tables copy() {
             Tables copy = new Tables();
@@ -46,6 +47,7 @@ final class FakeResultDatabase {
             results.forEach((id, row) -> copy.results.put(id, new LinkedHashMap<>(row)));
             patients.forEach((key, row) -> copy.patients.put(key, new LinkedHashMap<>(row)));
             events.forEach((key, row) -> copy.events.put(key, new LinkedHashMap<>(row)));
+            copy.extraDoctors.putAll(extraDoctors);
             return copy;
         }
     }
@@ -100,6 +102,7 @@ final class FakeResultDatabase {
         committed.results.values().removeIf(row -> row.get("id_caso").equals(caseId));
         committed.patients.keySet().removeIf(key -> !committed.results.containsKey(key.get(0)));
         committed.events.keySet().removeIf(key -> !committed.results.containsKey(key.get(0)));
+        committed.extraDoctors.keySet().removeIf(key -> !committed.results.containsKey(key.get(0)));
         working = committed;
     }
 
@@ -127,6 +130,17 @@ final class FakeResultDatabase {
 
     Object eventColumn(int resultId, int order, String column) {
         return committed.events.get(List.of(resultId, order)).get(column);
+    }
+
+    /** Especialidades guardadas de los médicos extra de una ejecución, en orden. */
+    List<String> extraDoctorsOf(int resultId) {
+        return committed.extraDoctors.entrySet().stream().filter(entry -> entry.getKey().get(0) == resultId)
+                .map(Map.Entry::getValue).toList();
+    }
+
+    /** Cambia a la fuerza la especialidad guardada de un médico extra, para simular datos dañados. */
+    void corruptExtraDoctor(int resultId, int order, String specialty) {
+        committed.extraDoctors.put(List.of(resultId, order), specialty);
     }
 
     /** Cambia a la fuerza un dato guardado de una ejecución, para simular datos dañados. */
@@ -274,8 +288,20 @@ final class FakeResultDatabase {
                 working.events.put(key, row);
                 return 1;
             }
+            case OracleResultDao.INSERT_EXTRA_DOCTOR -> {
+                List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
+                if (!working.results.containsKey(key.get(0))) {
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJEC_MEDICO_EJECUCION) violada");
+                }
+                if (working.extraDoctors.containsKey(key)) {
+                    throw new SQLException("ORA-00001: restricción única (PK_EJECUCION_MEDICO_EXTRA) violada");
+                }
+                working.extraDoctors.put(key, (String) p.get(3));
+                return 1;
+            }
             case OracleResultDao.DELETE_RESULT -> {
                 int id = (Integer) p.get(1);
+                working.extraDoctors.keySet().removeIf(key -> key.get(0) == id);
                 working.patients.keySet().removeIf(key -> key.get(0) == id);
                 working.events.keySet().removeIf(key -> key.get(0) == id);
                 return working.results.remove(id) == null ? 0 : 1;
@@ -316,6 +342,14 @@ final class FakeResultDatabase {
                 working.patients.forEach((key, row) -> {
                     if (only == null || only.equals(key.get(0))) {
                         rows.add(row);
+                    }
+                });
+            }
+            case OracleResultDao.SELECT_EXTRA_DOCTORS, OracleResultDao.SELECT_EXTRA_DOCTORS_OF -> {
+                Integer only = (Integer) p.get(1);
+                working.extraDoctors.forEach((key, specialty) -> {
+                    if (only == null || only.equals(key.get(0))) {
+                        rows.add(Map.of("id_ejecucion", key.get(0), "especialidad", specialty));
                     }
                 });
             }

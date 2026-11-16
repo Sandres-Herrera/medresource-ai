@@ -13,6 +13,7 @@ import com.medresource.model.Scenario;
 import com.medresource.model.Sex;
 import com.medresource.model.SimulationEvent;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 
 import java.sql.Connection;
@@ -31,10 +32,11 @@ import java.util.Optional;
  * Guarda y lee en Oracle las ejecuciones de la simulación, con el resultado de cada paciente y el
  * registro de eventos.
  *
- * <p>Una ejecución ocupa tres tablas: {@code ejecucion} (la estrategia, la duración y los siete recursos
- * del hospital), {@code resultado_paciente} (cómo terminó cada paciente) y {@code evento} (los eventos, en
- * orden). La configuración del caso no se repite: se lee de {@code caso}. Cada operación se hace en una
- * sola transacción y el identificador de la ejecución lo genera Oracle. Los pacientes guardan solo el
+ * <p>Una ejecución ocupa cuatro tablas: {@code ejecucion} (la estrategia, la duración y los siete recursos
+ * del hospital), {@code ejecucion_medico_extra} (los médicos extra del hospital, en orden),
+ * {@code resultado_paciente} (cómo terminó cada paciente) y {@code evento} (los eventos, en orden). La
+ * configuración del caso no se repite: se lee de {@code caso}. Cada operación se hace en una sola transacción
+ * y el identificador de la ejecución lo genera Oracle. Los pacientes guardan solo el
  * número de su enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe
  * el DAO.</p>
  *
@@ -51,6 +53,8 @@ public class OracleResultDao implements ResultDao {
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String INSERT_EVENT = "INSERT INTO evento (id_ejecucion, orden_evento, minuto_evento, tipo_evento, "
             + "codigo_paciente, codigo_recurso, descripcion) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    static final String INSERT_EXTRA_DOCTOR =
+            "INSERT INTO ejecucion_medico_extra (id_ejecucion, orden_medico, especialidad) VALUES (?, ?, ?)";
     static final String DELETE_RESULT = "DELETE FROM ejecucion WHERE id = ?";
 
     static final String SELECT_CASE_CONFIG =
@@ -74,6 +78,10 @@ public class OracleResultDao implements ResultDao {
             + "WHERE id_ejecucion = ? ORDER BY id_paciente";
     static final String SELECT_EVENTS = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
             + "codigo_recurso, descripcion FROM evento ORDER BY id_ejecucion, orden_evento";
+    static final String SELECT_EXTRA_DOCTORS = "SELECT id_ejecucion, especialidad FROM ejecucion_medico_extra "
+            + "ORDER BY id_ejecucion, orden_medico";
+    static final String SELECT_EXTRA_DOCTORS_OF = "SELECT id_ejecucion, especialidad FROM ejecucion_medico_extra "
+            + "WHERE id_ejecucion = ? ORDER BY orden_medico";
     static final String SELECT_EVENTS_OF = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
             + "codigo_recurso, descripcion FROM evento WHERE id_ejecucion = ? ORDER BY orden_evento";
 
@@ -117,6 +125,7 @@ public class OracleResultDao implements ResultDao {
         return transactions.run("guardar la ejecución de " + run.result().strategyName(), connection -> {
             requireSameCase(connection, run);
             int resultId = insertResult(connection, run);
+            insertExtraDoctors(connection, resultId, run.hospital().extraDoctors());
             insertPatients(connection, resultId, run.result().outcomes());
             insertEvents(connection, resultId, run.result().events());
             return resultId;
@@ -160,6 +169,24 @@ public class OracleResultDao implements ResultDao {
                 }
                 return keys.getInt(1);
             }
+        }
+    }
+
+    /** Guarda los médicos extra del hospital, en orden; si no hay, no hace nada. */
+    private static void insertExtraDoctors(Connection connection, int resultId, List<Specialty> doctors)
+            throws SQLException {
+        if (doctors.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_EXTRA_DOCTOR)) {
+            int order = 0;
+            for (Specialty specialty : doctors) {
+                statement.setInt(1, resultId);
+                statement.setInt(2, order++);
+                statement.setString(3, specialty.name());
+                statement.addBatch();
+            }
+            statement.executeBatch();
         }
     }
 
@@ -301,9 +328,11 @@ public class OracleResultDao implements ResultDao {
         diseases.findAll().forEach(disease -> catalog.put(disease.getId(), disease));
         Map<Integer, List<PatientOutcome>> outcomes = readPatients(connection, id, catalog);
         Map<Integer, List<SimulationEvent>> events = readEvents(connection, id);
+        Map<Integer, List<Specialty>> extraDoctors = readExtraDoctors(connection, id);
         for (Map<String, Object> header : headers) {
             int resultId = (Integer) header.get("id");
-            runs.add(toRun(header, outcomes.getOrDefault(resultId, List.of()), events.getOrDefault(resultId, List.of())));
+            runs.add(toRun(header, extraDoctors.getOrDefault(resultId, List.of()),
+                    outcomes.getOrDefault(resultId, List.of()), events.getOrDefault(resultId, List.of())));
         }
         return runs;
     }
@@ -367,6 +396,26 @@ public class OracleResultDao implements ResultDao {
         return result;
     }
 
+    private static Map<Integer, List<Specialty>> readExtraDoctors(Connection connection, Integer id)
+            throws SQLException {
+        Map<Integer, List<Specialty>> result = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                id == null ? SELECT_EXTRA_DOCTORS : SELECT_EXTRA_DOCTORS_OF)) {
+            if (id != null) {
+                statement.setInt(1, id);
+            }
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    int resultId = rows.getInt("id_ejecucion");
+                    Specialty specialty = parse(Specialty.class, rows.getString("especialidad"),
+                            "Un médico extra de la ejecución " + resultId);
+                    result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(specialty);
+                }
+            }
+        }
+        return result;
+    }
+
     /** Arma el resultado del paciente de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
     private static PatientOutcome toOutcome(ResultSet row, int resultId, Map<Integer, Disease> catalog)
             throws SQLException {
@@ -401,8 +450,8 @@ public class OracleResultDao implements ResultDao {
         }
     }
 
-    private static RunRecord toRun(Map<String, Object> header, List<PatientOutcome> outcomes,
-                                   List<SimulationEvent> events) {
+    private static RunRecord toRun(Map<String, Object> header, List<Specialty> extraDoctors,
+                                   List<PatientOutcome> outcomes, List<SimulationEvent> events) {
         int resultId = (Integer) header.get("id");
         String owner = "la ejecución " + resultId;
         try {
@@ -412,7 +461,8 @@ public class OracleResultDao implements ResultDao {
             HospitalConfig hospital = new HospitalConfig((Integer) header.get("camas"),
                     (Integer) header.get("camas_uci"), (Integer) header.get("quirofanos"),
                     (Integer) header.get("medicos"), (Integer) header.get("enfermeros"),
-                    (Integer) header.get("unidades_sangre_por_tipo"), (Integer) header.get("capacidad_morgue"));
+                    (Integer) header.get("unidades_sangre_por_tipo"), (Integer) header.get("capacidad_morgue"),
+                    extraDoctors);
             SimulationResult result = new SimulationResult((String) header.get("estrategia"), config,
                     (Integer) header.get("minutos_totales"), outcomes, events);
             return new RunRecord((Integer) header.get("id_caso"), hospital, result);

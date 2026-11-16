@@ -92,8 +92,9 @@ public record ResourceChange(ExtraResource resource, Specialty specialty) {
     }
 
     /**
-     * Devuelve el hospital con el cambio hecho. Un médico no cambia la configuración, porque la configuración
-     * no dice especialidades: se agrega aparte con {@link #extraDoctors()}.
+     * Devuelve el hospital con el cambio hecho. Los médicos extra que ya tenga el hospital se conservan. Un médico
+     * no cambia la configuración: el especialista se agrega aparte con {@link #extraDoctors()}, como lo hace el
+     * análisis «¿y si…?».
      *
      * @param config hospital original
      * @return hospital con más del recurso
@@ -104,24 +105,16 @@ public record ResourceChange(ExtraResource resource, Specialty specialty) {
             throw new IllegalArgumentException("El cambio pasa del máximo permitido: " + describe() + ".");
         }
         int amount = resource.getAmount();
-        return switch (resource) {
-            case BEDS -> new HospitalConfig(config.hospitalizationBeds() + amount, config.icuBeds(),
-                    config.operatingRooms(), config.doctors(), config.nurses(), config.bloodUnitsPerType(),
-                    config.morgueCapacity());
-            case ICU_BEDS -> new HospitalConfig(config.hospitalizationBeds(), config.icuBeds() + amount,
-                    config.operatingRooms(), config.doctors(), config.nurses(), config.bloodUnitsPerType(),
-                    config.morgueCapacity());
-            case OPERATING_ROOMS -> new HospitalConfig(config.hospitalizationBeds(), config.icuBeds(),
-                    config.operatingRooms() + amount, config.doctors(), config.nurses(), config.bloodUnitsPerType(),
-                    config.morgueCapacity());
-            case DOCTOR -> config;
-            case NURSES -> new HospitalConfig(config.hospitalizationBeds(), config.icuBeds(), config.operatingRooms(),
-                    config.doctors(), config.nurses() + amount, config.bloodUnitsPerType(), config.morgueCapacity());
-            case BLOOD -> new HospitalConfig(config.hospitalizationBeds(), config.icuBeds(), config.operatingRooms(),
-                    config.doctors(), config.nurses(), config.bloodUnitsPerType() + amount, config.morgueCapacity());
-            case MORGUE -> new HospitalConfig(config.hospitalizationBeds(), config.icuBeds(), config.operatingRooms(),
-                    config.doctors(), config.nurses(), config.bloodUnitsPerType(), config.morgueCapacity() + amount);
-        };
+        if (resource == ExtraResource.DOCTOR) {
+            return config;
+        }
+        int beds = config.hospitalizationBeds() + (resource == ExtraResource.BEDS ? amount : 0);
+        int icu = config.icuBeds() + (resource == ExtraResource.ICU_BEDS ? amount : 0);
+        int rooms = config.operatingRooms() + (resource == ExtraResource.OPERATING_ROOMS ? amount : 0);
+        int nurses = config.nurses() + (resource == ExtraResource.NURSES ? amount : 0);
+        int blood = config.bloodUnitsPerType() + (resource == ExtraResource.BLOOD ? amount : 0);
+        int morgue = config.morgueCapacity() + (resource == ExtraResource.MORGUE ? amount : 0);
+        return new HospitalConfig(beds, icu, rooms, config.doctors(), nurses, blood, morgue, config.extraDoctors());
     }
 
     /**

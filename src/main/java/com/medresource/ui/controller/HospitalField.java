@@ -89,7 +89,7 @@ public enum HospitalField {
         int nurses = this == NURSES ? value : config.nurses();
         int blood = this == BLOOD ? value : config.bloodUnitsPerType();
         int morgue = this == MORGUE ? value : config.morgueCapacity();
-        return new HospitalConfig(beds, icu, rooms, doctors, nurses, blood, morgue);
+        return new HospitalConfig(beds, icu, rooms, doctors, nurses, blood, morgue, config.extraDoctors());
     }
 
     /**

@@ -4,6 +4,7 @@ import com.medresource.model.CaseFixtures;
 import com.medresource.model.Disease;
 import com.medresource.model.ResultFixtures;
 import com.medresource.model.RunRecord;
+import com.medresource.model.Specialty;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -73,6 +74,24 @@ class OracleResultDaoTest {
         assertEquals(HOSPITAL.nurses(), database.resultColumn(id, "enfermeros"));
         assertEquals(HOSPITAL.bloodUnitsPerType(), database.resultColumn(id, "unidades_sangre_por_tipo"));
         assertEquals(HOSPITAL.morgueCapacity(), database.resultColumn(id, "capacidad_morgue"));
+    }
+
+    @Test
+    void savesTheExtraDoctorsOfTheHospitalInOrder() {
+        RunRecord run = withExtraDoctors(runOf(1, "FIFO", 77), Specialty.SURGERY, Specialty.PEDIATRICS,
+                Specialty.SURGERY);
+
+        int id = dao.save(run);
+
+        assertEquals(List.of("PEDIATRICS", "SURGERY", "SURGERY"), database.extraDoctorsOf(id));
+        assertEquals(HOSPITAL.doctors(), database.resultColumn(id, "medicos"));
+    }
+
+    @Test
+    void aHospitalWithoutExtraDoctorsSavesNone() {
+        int id = dao.save(runOf(1, "FIFO", 77));
+
+        assertTrue(database.extraDoctorsOf(id).isEmpty());
     }
 
     @Test
@@ -241,6 +260,28 @@ class OracleResultDaoTest {
     }
 
     @Test
+    void findsASavedRunWithItsExtraDoctors() {
+        RunRecord run = withExtraDoctors(runOf(1, "FIFO", 77), Specialty.TRAUMATOLOGY, Specialty.SURGERY);
+        int id = dao.save(run);
+        dao.save(runOf(2, "FIFO", 88));
+
+        assertSameRun(run, dao.findById(id).orElseThrow());
+        assertEquals(List.of(Specialty.SURGERY, Specialty.TRAUMATOLOGY),
+                dao.findAll().get(0).hospital().extraDoctors());
+        assertEquals(List.of(), dao.findAll().get(1).hospital().extraDoctors());
+    }
+
+    @Test
+    void reportsAnExtraDoctorWithAnUnknownSpecialty() {
+        int id = dao.save(withExtraDoctors(runOf(1, "FIFO", 77), Specialty.SURGERY));
+        database.corruptExtraDoctor(id, 0, "BRUJERIA");
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(id));
+
+        assertTrue(error.getMessage().contains("BRUJERIA"));
+    }
+
+    @Test
     void findsNothingForAMissingId() {
         dao.save(runOf(1, "FIFO", 77));
 
@@ -395,8 +436,8 @@ class OracleResultDaoTest {
 
         assertEquals(connections + 1, database.connectionsOpened);
         assertEquals(database.connectionsOpened, database.connectionsClosed);
-        assertEquals(statements + 3, database.statementsClosed);
-        assertEquals(results + 3, database.resultSetsClosed);
+        assertEquals(statements + 4, database.statementsClosed);
+        assertEquals(results + 4, database.resultSetsClosed);
     }
 
     // ---------- cambiar y borrar ----------
@@ -422,6 +463,15 @@ class OracleResultDaoTest {
         assertTrue(database.patientIds(id).isEmpty());
         assertEquals(0, database.eventCount(id));
         assertEquals(Optional.empty(), dao.findById(id));
+    }
+
+    @Test
+    void deletingARunDeletesItsExtraDoctors() {
+        int id = dao.save(withExtraDoctors(runOf(1, "FIFO", 77), Specialty.SURGERY));
+
+        dao.deleteById(id);
+
+        assertTrue(database.extraDoctorsOf(id).isEmpty());
     }
 
     @Test
@@ -461,5 +511,9 @@ class OracleResultDaoTest {
         assertEquals("No se pudo borrar la ejecución " + id + ": fallo simulado", error.getMessage());
         assertEquals(List.of(id), database.resultIds());
         assertEquals(database.connectionsOpened, database.connectionsClosed);
+    }
+
+    private static RunRecord withExtraDoctors(RunRecord run, Specialty... doctors) {
+        return new RunRecord(run.caseId(), run.hospital().withExtraDoctors(List.of(doctors)), run.result());
     }
 }

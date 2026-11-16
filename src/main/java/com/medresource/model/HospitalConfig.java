@@ -1,5 +1,9 @@
 package com.medresource.model;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Tamaño del hospital que se simula: cuántos recursos tiene de cada tipo.
  *
@@ -15,9 +19,12 @@ package com.medresource.model;
  * @param bloodUnitsPerType   unidades de sangre de cada uno de los 8 tipos,
  *                            de 0 a {@value #MAX_BLOOD_UNITS_PER_TYPE}
  * @param morgueCapacity      cupos de la morgue, de 1 a {@value #MAX_MORGUE_CAPACITY}
+ * @param extraDoctors        especialidad de cada médico extra, que se suma a los {@code doctors}; hasta
+ *                            {@value #MAX_EXTRA_DOCTORS}, en el orden de {@link Specialty}
  */
 public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operatingRooms,
-                             int doctors, int nurses, int bloodUnitsPerType, int morgueCapacity) {
+                             int doctors, int nurses, int bloodUnitsPerType, int morgueCapacity,
+                             List<Specialty> extraDoctors) {
 
     /** Máximo de camas de hospitalización. */
     public static final int MAX_BEDS = 200;
@@ -40,10 +47,18 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
     /** Máximo de cupos de la morgue. */
     public static final int MAX_MORGUE_CAPACITY = 50;
 
+    /** Máximo de médicos extra (especialistas que se suman a los médicos del hospital). */
+    public static final int MAX_EXTRA_DOCTORS = 12;
+
     /**
-     * Valida que cada cantidad esté dentro de su rango.
+     * Valida que cada cantidad esté dentro de su rango y ordena los médicos extra por especialidad, para que dos
+     * hospitales con los mismos especialistas sean iguales aunque se hayan agregado en otro orden.
      *
-     * @throws IllegalArgumentException si alguna cantidad está fuera de rango
+     * <p>Si no se indican médicos extra ({@code null}), el hospital no tiene ninguno; así se pueden leer también los
+     * reportes guardados antes de que existieran.</p>
+     *
+     * @throws IllegalArgumentException si alguna cantidad está fuera de rango, si hay más de
+     *                                  {@value #MAX_EXTRA_DOCTORS} médicos extra o si alguno no tiene especialidad
      */
     public HospitalConfig {
         requireRange(hospitalizationBeds, 1, MAX_BEDS, "camas de hospitalización");
@@ -53,6 +68,80 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
         requireRange(nurses, 1, MAX_NURSES, "enfermeros");
         requireRange(bloodUnitsPerType, 0, MAX_BLOOD_UNITS_PER_TYPE, "unidades de sangre por tipo");
         requireRange(morgueCapacity, 1, MAX_MORGUE_CAPACITY, "cupos de la morgue");
+        extraDoctors = sortedExtraDoctors(extraDoctors);
+    }
+
+    /**
+     * Crea un hospital sin médicos extra.
+     *
+     * @param hospitalizationBeds camas de hospitalización
+     * @param icuBeds             camas de UCI
+     * @param operatingRooms      quirófanos
+     * @param doctors             médicos
+     * @param nurses              enfermeros
+     * @param bloodUnitsPerType   unidades de sangre de cada tipo
+     * @param morgueCapacity      cupos de la morgue
+     * @throws IllegalArgumentException si alguna cantidad está fuera de rango
+     */
+    public HospitalConfig(int hospitalizationBeds, int icuBeds, int operatingRooms,
+                          int doctors, int nurses, int bloodUnitsPerType, int morgueCapacity) {
+        this(hospitalizationBeds, icuBeds, operatingRooms, doctors, nurses, bloodUnitsPerType, morgueCapacity,
+                List.of());
+    }
+
+    /**
+     * Devuelve el mismo hospital con otros médicos extra.
+     *
+     * @param doctors especialidad de cada médico extra; vacía para no tener ninguno
+     * @return hospital con los mismos recursos y esos médicos extra
+     * @throws IllegalArgumentException si la lista es nula, tiene más de {@value #MAX_EXTRA_DOCTORS} médicos o
+     *                                  alguno no tiene especialidad
+     */
+    public HospitalConfig withExtraDoctors(List<Specialty> doctors) {
+        if (doctors == null) {
+            throw new IllegalArgumentException("La lista de médicos extra es obligatoria.");
+        }
+        return new HospitalConfig(hospitalizationBeds, icuBeds, operatingRooms, this.doctors, nurses,
+                bloodUnitsPerType, morgueCapacity, doctors);
+    }
+
+    /**
+     * Cuenta los médicos extra de una especialidad.
+     *
+     * @param specialty especialidad
+     * @return cuántos médicos extra la tienen
+     * @throws IllegalArgumentException si la especialidad es nula
+     */
+    public int extraDoctorsOf(Specialty specialty) {
+        if (specialty == null) {
+            throw new IllegalArgumentException("La especialidad es obligatoria.");
+        }
+        return Collections.frequency(extraDoctors, specialty);
+    }
+
+    /**
+     * Devuelve todos los médicos del hospital: los de la configuración más los extra.
+     *
+     * @return cantidad total de médicos
+     */
+    public int totalDoctors() {
+        return doctors + extraDoctors.size();
+    }
+
+    /**
+     * Describe los médicos extra para mostrarlos, por ejemplo «1 de Cirugía, 2 de Pediatría».
+     *
+     * @return descripción, o «ninguno» si no hay
+     */
+    public String describeExtraDoctors() {
+        List<String> parts = new ArrayList<>();
+        for (Specialty specialty : Specialty.values()) {
+            int count = extraDoctorsOf(specialty);
+            if (count > 0) {
+                parts.add(count + " de " + specialty.getDisplayName());
+            }
+        }
+        return parts.isEmpty() ? "ninguno" : String.join(", ", parts);
     }
 
     /**
@@ -92,6 +181,21 @@ public record HospitalConfig(int hospitalizationBeds, int icuBeds, int operating
      */
     public static HospitalConfig large() {
         return new HospitalConfig(60, 12, 8, 32, 48, 20, 10);
+    }
+
+    private static List<Specialty> sortedExtraDoctors(List<Specialty> doctors) {
+        if (doctors == null) {
+            return List.of();
+        }
+        if (doctors.stream().anyMatch(specialty -> specialty == null)) {
+            throw new IllegalArgumentException("Cada médico extra debe tener especialidad.");
+        }
+        if (doctors.size() > MAX_EXTRA_DOCTORS) {
+            throw new IllegalArgumentException("Puede haber hasta " + MAX_EXTRA_DOCTORS + " médicos extra.");
+        }
+        List<Specialty> sorted = new ArrayList<>(doctors);
+        Collections.sort(sorted);
+        return List.copyOf(sorted);
     }
 
     private static void requireRange(int value, int min, int max, String name) {

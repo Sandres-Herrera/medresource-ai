@@ -16,6 +16,7 @@ import com.medresource.model.StaffMember;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -249,5 +250,42 @@ class HospitalFactoryTest {
         assertThrows(IllegalArgumentException.class, () -> factory.create(HospitalConfig.standard(), null));
         assertThrows(IllegalArgumentException.class, () -> factory.create(HospitalConfig.standard(), withNull));
         assertThrows(IllegalArgumentException.class, () -> factory.create(null, List.of()));
+    }
+
+    @Test
+    void buildsTheExtraDoctorsOfTheConfiguration() {
+        HospitalConfig config = HospitalConfig.standard()
+                .withExtraDoctors(List.of(Specialty.PEDIATRICS, Specialty.SURGERY));
+
+        List<Doctor> doctors = factory.create(config).getDoctors();
+
+        assertEquals(18, doctors.size());
+        assertEquals("D17", doctors.get(16).getCode());
+        assertEquals(Specialty.PEDIATRICS, doctors.get(16).getSpecialty());
+        assertEquals(Specialty.SURGERY, doctors.get(17).getSpecialty());
+    }
+
+    @Test
+    void theIndicatedExtraDoctorsGoAfterTheOnesOfTheConfiguration() {
+        HospitalConfig config = HospitalConfig.standard().withExtraDoctors(List.of(Specialty.PEDIATRICS));
+
+        List<Doctor> doctors = factory.create(config, List.of(Specialty.TRAUMATOLOGY)).getDoctors();
+
+        assertEquals(18, doctors.size());
+        assertEquals(Specialty.PEDIATRICS, doctors.get(16).getSpecialty());
+        assertEquals(Specialty.TRAUMATOLOGY, doctors.get(17).getSpecialty());
+        assertEquals("D18", doctors.get(17).getCode());
+    }
+
+    @Test
+    void theLargestHospitalWithEveryExtraDoctorHasNoRepeatedCodes() {
+        HospitalConfig config = new HospitalConfig(HospitalConfig.MAX_BEDS, HospitalConfig.MAX_ICU_BEDS,
+                HospitalConfig.MAX_OPERATING_ROOMS, HospitalConfig.MAX_DOCTORS, HospitalConfig.MAX_NURSES,
+                HospitalConfig.MAX_BLOOD_UNITS_PER_TYPE, HospitalConfig.MAX_MORGUE_CAPACITY,
+                Collections.nCopies(HospitalConfig.MAX_EXTRA_DOCTORS, Specialty.SURGERY));
+
+        Hospital hospital = factory.create(config, List.of(Specialty.PEDIATRICS));
+
+        assertEquals(HospitalConfig.MAX_DOCTORS + HospitalConfig.MAX_EXTRA_DOCTORS + 1, hospital.getDoctors().size());
     }
 }

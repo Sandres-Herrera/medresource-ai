@@ -69,4 +69,14 @@ class ResourceChangeTest {
                 () -> new ResourceChange(ExtraResource.BEDS, Specialty.SURGERY));
         assertThrows(IllegalArgumentException.class, () -> new ResourceChange(null, null));
     }
+
+    @Test
+    void everyChangeKeepsTheExtraDoctorsOfTheHospital() {
+        HospitalConfig hospital = HospitalConfig.standard().withExtraDoctors(List.of(Specialty.SURGERY));
+
+        for (ResourceChange change : ResourceChange.allFor(hospital)) {
+            assertEquals(List.of(Specialty.SURGERY), change.applyTo(hospital).extraDoctors(), change.describe());
+        }
+        assertEquals(35, ResourceChange.of(ExtraResource.BEDS).applyTo(hospital).hospitalizationBeds());
+    }
 }

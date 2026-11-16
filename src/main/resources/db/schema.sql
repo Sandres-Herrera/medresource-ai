@@ -156,6 +156,20 @@ CREATE TABLE ejecucion (
 
 CREATE INDEX idx_ejecucion_caso ON ejecucion (id_caso);
 
+-- Médicos extra de una ejecución: especialistas que se sumaron a los médicos del
+-- hospital, uno por fila y en orden (el primero recibe el código siguiente al
+-- del último médico).
+CREATE TABLE ejecucion_medico_extra (
+    id_ejecucion             NUMBER(10)           NOT NULL,
+    orden_medico             NUMBER(3)            NOT NULL,
+    especialidad             VARCHAR2(30)         NOT NULL,
+    CONSTRAINT pk_ejecucion_medico_extra PRIMARY KEY (id_ejecucion, orden_medico),
+    CONSTRAINT fk_ejec_medico_ejecucion FOREIGN KEY (id_ejecucion) REFERENCES ejecucion (id) ON DELETE CASCADE,
+    CONSTRAINT ck_ejec_medico_orden CHECK (orden_medico >= 0 AND orden_medico < 12),
+    CONSTRAINT ck_ejec_medico_especialidad CHECK (especialidad IN (
+        'GENERAL_MEDICINE', 'PEDIATRICS', 'INTERNAL_MEDICINE', 'SURGERY', 'TRAUMATOLOGY', 'EMERGENCY_MEDICINE'))
+);
+
 CREATE TABLE resultado_paciente (
     id_ejecucion             NUMBER(10)           NOT NULL,
     id_paciente              NUMBER(5)            NOT NULL,

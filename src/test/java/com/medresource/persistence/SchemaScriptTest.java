@@ -223,6 +223,13 @@ class SchemaScriptTest {
     }
 
     @Test
+    void theExtraDoctorsOfAnExecutionHaveAKnownSpecialtyAndAtMostTheMaximum() throws IOException {
+        assertMatches("ck_ejec_medico_especialidad", Specialty.values());
+        assertTrue(constraint("ck_ejec_medico_orden").contains("< " + HospitalConfig.MAX_EXTRA_DOCTORS));
+        assertTrue(createdTables().indexOf("ejecucion_medico_extra") > createdTables().indexOf("ejecucion"));
+    }
+
+    @Test
     void theEventTypesMatchTheEnumeration() throws IOException {
         assertMatches("ck_evento_tipo", EventType.values());
     }
@@ -279,15 +286,16 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesTenTablesAndOneIndex() throws IOException {
-        assertEquals(10, createdTables().size());
-        assertEquals(11, statements().size());
+    void theScriptCreatesElevenTablesAndOneIndex() throws IOException {
+        assertEquals(11, createdTables().size());
+        assertEquals(12, statements().size());
     }
 
     @Test
     void theTablesHaveSpanishNames() throws IOException {
         assertEquals(List.of("enfermedad", "enfermedad_especialidad_sec", "enfermedad_sintoma", "caso",
-                "caso_paciente", "caso_paciente_sintoma", "ejecucion", "resultado_paciente", "evento", "reporte"),
+                "caso_paciente", "caso_paciente_sintoma", "ejecucion", "ejecucion_medico_extra", "resultado_paciente",
+                "evento", "reporte"),
                 createdTables());
     }
 
