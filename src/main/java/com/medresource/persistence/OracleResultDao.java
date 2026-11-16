@@ -31,9 +31,9 @@ import java.util.Optional;
  * Guarda y lee en Oracle las ejecuciones de la simulación, con el resultado de cada paciente y el
  * registro de eventos.
  *
- * <p>Una ejecución ocupa tres tablas: {@code sim_result} (la estrategia, la duración y los siete recursos
- * del hospital), {@code patient_result} (cómo terminó cada paciente) y {@code sim_event} (los eventos, en
- * orden). La configuración del caso no se repite: se lee de {@code sim_case}. Cada operación se hace en una
+ * <p>Una ejecución ocupa tres tablas: {@code ejecucion} (la estrategia, la duración y los siete recursos
+ * del hospital), {@code resultado_paciente} (cómo terminó cada paciente) y {@code evento} (los eventos, en
+ * orden). La configuración del caso no se repite: se lee de {@code caso}. Cada operación se hace en una
  * sola transacción y el identificador de la ejecución lo genera Oracle. Los pacientes guardan solo el
  * número de su enfermedad; al leer, la enfermedad se toma del {@link GenericDao} de enfermedades que recibe
  * el DAO.</p>
@@ -42,38 +42,40 @@ import java.util.Optional;
  */
 public class OracleResultDao implements ResultDao {
 
-    static final String INSERT_RESULT = "INSERT INTO sim_result (case_id, strategy_name, total_minutes, beds, "
-            + "icu_beds, operating_rooms, doctors, nurses, blood_units_per_type, morgue_capacity) "
+    static final String INSERT_RESULT = "INSERT INTO ejecucion (id_caso, estrategia, minutos_totales, camas, "
+            + "camas_uci, quirofanos, medicos, enfermeros, unidades_sangre_por_tipo, capacidad_morgue) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_PATIENT = "INSERT INTO patient_result (result_id, patient_id, patient_code, age, "
-            + "sex, triage, disease_id, arrival_minute, treatment_start_minute, outcome_minute, status, "
-            + "cause_of_death, care_level, irrecoverable, final_health) "
+    static final String INSERT_PATIENT = "INSERT INTO resultado_paciente (id_ejecucion, id_paciente, "
+            + "codigo_paciente, edad, sexo, nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, "
+            + "minuto_desenlace, estado, causa_muerte, nivel_atencion, irrecuperable, salud_final) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_EVENT = "INSERT INTO sim_event (result_id, event_order, event_minute, event_type, "
-            + "patient_code, resource_code, description) VALUES (?, ?, ?, ?, ?, ?, ?)";
-    static final String DELETE_RESULT = "DELETE FROM sim_result WHERE id = ?";
+    static final String INSERT_EVENT = "INSERT INTO evento (id_ejecucion, orden_evento, minuto_evento, tipo_evento, "
+            + "codigo_paciente, codigo_recurso, descripcion) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    static final String DELETE_RESULT = "DELETE FROM ejecucion WHERE id = ?";
 
     static final String SELECT_CASE_CONFIG =
-            "SELECT seed, scenario, patient_count, duration_minutes FROM sim_case WHERE id = ?";
-    static final String SELECT_RESULTS = "SELECT r.id, r.case_id, r.strategy_name, r.total_minutes, r.beds, "
-            + "r.icu_beds, r.operating_rooms, r.doctors, r.nurses, r.blood_units_per_type, r.morgue_capacity, "
-            + "c.seed, c.scenario, c.patient_count, c.duration_minutes "
-            + "FROM sim_result r JOIN sim_case c ON c.id = r.case_id ORDER BY r.id";
-    static final String SELECT_RESULT = "SELECT r.id, r.case_id, r.strategy_name, r.total_minutes, r.beds, "
-            + "r.icu_beds, r.operating_rooms, r.doctors, r.nurses, r.blood_units_per_type, r.morgue_capacity, "
-            + "c.seed, c.scenario, c.patient_count, c.duration_minutes "
-            + "FROM sim_result r JOIN sim_case c ON c.id = r.case_id WHERE r.id = ?";
-    static final String SELECT_IDS_BY_CASE = "SELECT id FROM sim_result WHERE case_id = ? ORDER BY id";
-    static final String SELECT_PATIENTS = "SELECT result_id, patient_id, patient_code, age, sex, triage, "
-            + "disease_id, arrival_minute, treatment_start_minute, outcome_minute, status, cause_of_death, "
-            + "care_level, irrecoverable, final_health FROM patient_result ORDER BY result_id, patient_id";
-    static final String SELECT_PATIENTS_OF = "SELECT result_id, patient_id, patient_code, age, sex, triage, "
-            + "disease_id, arrival_minute, treatment_start_minute, outcome_minute, status, cause_of_death, "
-            + "care_level, irrecoverable, final_health FROM patient_result WHERE result_id = ? ORDER BY patient_id";
-    static final String SELECT_EVENTS = "SELECT result_id, event_minute, event_type, patient_code, resource_code, "
-            + "description FROM sim_event ORDER BY result_id, event_order";
-    static final String SELECT_EVENTS_OF = "SELECT result_id, event_minute, event_type, patient_code, "
-            + "resource_code, description FROM sim_event WHERE result_id = ? ORDER BY event_order";
+            "SELECT semilla, escenario, cantidad_pacientes, duracion_minutos FROM caso WHERE id = ?";
+    static final String SELECT_RESULTS = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
+            + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
+            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
+            + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso ORDER BY r.id";
+    static final String SELECT_RESULT = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
+            + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
+            + "c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
+            + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso WHERE r.id = ?";
+    static final String SELECT_IDS_BY_CASE = "SELECT id FROM ejecucion WHERE id_caso = ? ORDER BY id";
+    static final String SELECT_PATIENTS = "SELECT id_ejecucion, id_paciente, codigo_paciente, edad, sexo, "
+            + "nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, minuto_desenlace, estado, "
+            + "causa_muerte, nivel_atencion, irrecuperable, salud_final FROM resultado_paciente "
+            + "ORDER BY id_ejecucion, id_paciente";
+    static final String SELECT_PATIENTS_OF = "SELECT id_ejecucion, id_paciente, codigo_paciente, edad, sexo, "
+            + "nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, minuto_desenlace, estado, "
+            + "causa_muerte, nivel_atencion, irrecuperable, salud_final FROM resultado_paciente "
+            + "WHERE id_ejecucion = ? ORDER BY id_paciente";
+    static final String SELECT_EVENTS = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
+            + "codigo_recurso, descripcion FROM evento ORDER BY id_ejecucion, orden_evento";
+    static final String SELECT_EVENTS_OF = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
+            + "codigo_recurso, descripcion FROM evento WHERE id_ejecucion = ? ORDER BY orden_evento";
 
     /** Nombre de la columna que Oracle genera al insertar una ejecución. */
     private static final String GENERATED_COLUMN = "ID";
@@ -219,8 +221,8 @@ public class OracleResultDao implements ResultDao {
 
     private static CaseConfig readConfig(ResultSet row, String owner) throws SQLException {
         try {
-            return new CaseConfig(row.getLong("seed"), parse(Scenario.class, row.getString("scenario"), owner),
-                    row.getInt("patient_count"), row.getInt("duration_minutes"));
+            return new CaseConfig(row.getLong("semilla"), parse(Scenario.class, row.getString("escenario"), owner),
+                    row.getInt("cantidad_pacientes"), row.getInt("duracion_minutos"));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException("Los datos guardados del " + owner + " no son válidos: " + e.getMessage(), e);
         }
@@ -315,14 +317,14 @@ public class OracleResultDao implements ResultDao {
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
                     Map<String, Object> header = new HashMap<>();
-                    for (String column : List.of("id", "case_id", "total_minutes", "beds", "icu_beds",
-                            "operating_rooms", "doctors", "nurses", "blood_units_per_type", "morgue_capacity",
-                            "patient_count", "duration_minutes")) {
+                    for (String column : List.of("id", "id_caso", "minutos_totales", "camas", "camas_uci",
+                            "quirofanos", "medicos", "enfermeros", "unidades_sangre_por_tipo", "capacidad_morgue",
+                            "cantidad_pacientes", "duracion_minutos")) {
                         header.put(column, rows.getInt(column));
                     }
-                    header.put("strategy_name", rows.getString("strategy_name"));
-                    header.put("seed", rows.getLong("seed"));
-                    header.put("scenario", rows.getString("scenario"));
+                    header.put("estrategia", rows.getString("estrategia"));
+                    header.put("semilla", rows.getLong("semilla"));
+                    header.put("escenario", rows.getString("escenario"));
                     headers.add(header);
                 }
             }
@@ -340,7 +342,7 @@ public class OracleResultDao implements ResultDao {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    int resultId = rows.getInt("result_id");
+                    int resultId = rows.getInt("id_ejecucion");
                     result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toOutcome(rows, resultId, catalog));
                 }
             }
@@ -357,7 +359,7 @@ public class OracleResultDao implements ResultDao {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    int resultId = rows.getInt("result_id");
+                    int resultId = rows.getInt("id_ejecucion");
                     result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toEvent(rows, resultId));
                 }
             }
@@ -368,21 +370,21 @@ public class OracleResultDao implements ResultDao {
     /** Arma el resultado del paciente de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
     private static PatientOutcome toOutcome(ResultSet row, int resultId, Map<Integer, Disease> catalog)
             throws SQLException {
-        int patientId = row.getInt("patient_id");
+        int patientId = row.getInt("id_paciente");
         String owner = "El paciente " + patientId + " de la ejecución " + resultId;
-        Disease disease = catalog.get(row.getInt("disease_id"));
+        Disease disease = catalog.get(row.getInt("id_enfermedad"));
         if (disease == null) {
-            throw new DataAccessException(owner + " usa la enfermedad " + row.getInt("disease_id")
+            throw new DataAccessException(owner + " usa la enfermedad " + row.getInt("id_enfermedad")
                     + ", que no está guardada.");
         }
         try {
-            return new PatientOutcome(patientId, row.getString("patient_code"), row.getInt("age"),
-                    parse(Sex.class, row.getString("sex"), owner), triage(row.getInt("triage"), owner), disease,
-                    row.getInt("arrival_minute"), row.getInt("treatment_start_minute"), row.getInt("outcome_minute"),
-                    parse(PatientStatus.class, row.getString("status"), owner),
-                    parseOrNull(CauseOfDeath.class, row.getString("cause_of_death"), owner),
-                    parseOrNull(CompatibilityLevel.class, row.getString("care_level"), owner),
-                    row.getInt("irrecoverable") == 1, row.getDouble("final_health"));
+            return new PatientOutcome(patientId, row.getString("codigo_paciente"), row.getInt("edad"),
+                    parse(Sex.class, row.getString("sexo"), owner), triage(row.getInt("nivel_triage"), owner), disease,
+                    row.getInt("minuto_llegada"), row.getInt("minuto_inicio_atencion"), row.getInt("minuto_desenlace"),
+                    parse(PatientStatus.class, row.getString("estado"), owner),
+                    parseOrNull(CauseOfDeath.class, row.getString("causa_muerte"), owner),
+                    parseOrNull(CompatibilityLevel.class, row.getString("nivel_atencion"), owner),
+                    row.getInt("irrecuperable") == 1, row.getDouble("salud_final"));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
         }
@@ -391,9 +393,9 @@ public class OracleResultDao implements ResultDao {
     private static SimulationEvent toEvent(ResultSet row, int resultId) throws SQLException {
         String owner = "Un evento de la ejecución " + resultId;
         try {
-            return new SimulationEvent(row.getInt("event_minute"),
-                    parse(EventType.class, row.getString("event_type"), owner), row.getString("patient_code"),
-                    row.getString("resource_code"), row.getString("description"));
+            return new SimulationEvent(row.getInt("minuto_evento"),
+                    parse(EventType.class, row.getString("tipo_evento"), owner), row.getString("codigo_paciente"),
+                    row.getString("codigo_recurso"), row.getString("descripcion"));
         } catch (IllegalArgumentException e) {
             throw new DataAccessException(owner + " no tiene datos válidos: " + e.getMessage(), e);
         }
@@ -404,16 +406,16 @@ public class OracleResultDao implements ResultDao {
         int resultId = (Integer) header.get("id");
         String owner = "la ejecución " + resultId;
         try {
-            CaseConfig config = new CaseConfig((Long) header.get("seed"),
-                    parse(Scenario.class, (String) header.get("scenario"), owner),
-                    (Integer) header.get("patient_count"), (Integer) header.get("duration_minutes"));
-            HospitalConfig hospital = new HospitalConfig((Integer) header.get("beds"),
-                    (Integer) header.get("icu_beds"), (Integer) header.get("operating_rooms"),
-                    (Integer) header.get("doctors"), (Integer) header.get("nurses"),
-                    (Integer) header.get("blood_units_per_type"), (Integer) header.get("morgue_capacity"));
-            SimulationResult result = new SimulationResult((String) header.get("strategy_name"), config,
-                    (Integer) header.get("total_minutes"), outcomes, events);
-            return new RunRecord((Integer) header.get("case_id"), hospital, result);
+            CaseConfig config = new CaseConfig((Long) header.get("semilla"),
+                    parse(Scenario.class, (String) header.get("escenario"), owner),
+                    (Integer) header.get("cantidad_pacientes"), (Integer) header.get("duracion_minutos"));
+            HospitalConfig hospital = new HospitalConfig((Integer) header.get("camas"),
+                    (Integer) header.get("camas_uci"), (Integer) header.get("quirofanos"),
+                    (Integer) header.get("medicos"), (Integer) header.get("enfermeros"),
+                    (Integer) header.get("unidades_sangre_por_tipo"), (Integer) header.get("capacidad_morgue"));
+            SimulationResult result = new SimulationResult((String) header.get("estrategia"), config,
+                    (Integer) header.get("minutos_totales"), outcomes, events);
+            return new RunRecord((Integer) header.get("id_caso"), hospital, result);
         } catch (IllegalArgumentException e) {
             throw new DataAccessException("Los datos guardados de " + owner + " no son válidos: " + e.getMessage(), e);
         }

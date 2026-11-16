@@ -24,13 +24,13 @@ import java.util.TreeMap;
  */
 final class FakeResultDatabase {
 
-    private static final List<String> PATIENT_COLUMNS = List.of("result_id", "patient_id", "patient_code", "age",
-            "sex", "triage", "disease_id", "arrival_minute", "treatment_start_minute", "outcome_minute", "status",
-            "cause_of_death", "care_level", "irrecoverable", "final_health");
-    private static final List<String> EVENT_COLUMNS = List.of("result_id", "event_order", "event_minute",
-            "event_type", "patient_code", "resource_code", "description");
-    private static final List<String> RESULT_COLUMNS = List.of("case_id", "strategy_name", "total_minutes", "beds",
-            "icu_beds", "operating_rooms", "doctors", "nurses", "blood_units_per_type", "morgue_capacity");
+    private static final List<String> PATIENT_COLUMNS = List.of("id_ejecucion", "id_paciente", "codigo_paciente",
+            "edad", "sexo", "nivel_triage", "id_enfermedad", "minuto_llegada", "minuto_inicio_atencion",
+            "minuto_desenlace", "estado", "causa_muerte", "nivel_atencion", "irrecuperable", "salud_final");
+    private static final List<String> EVENT_COLUMNS = List.of("id_ejecucion", "orden_evento", "minuto_evento",
+            "tipo_evento", "codigo_paciente", "codigo_recurso", "descripcion");
+    private static final List<String> RESULT_COLUMNS = List.of("id_caso", "estrategia", "minutos_totales", "camas",
+            "camas_uci", "quirofanos", "medicos", "enfermeros", "unidades_sangre_por_tipo", "capacidad_morgue");
 
     /** Contenido de las tablas y el siguiente identificador. */
     private static final class Tables {
@@ -82,10 +82,10 @@ final class FakeResultDatabase {
     void addCase(int caseId, long seed, String scenario, int patientCount, int durationMinutes) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", caseId);
-        row.put("seed", seed);
-        row.put("scenario", scenario);
-        row.put("patient_count", patientCount);
-        row.put("duration_minutes", durationMinutes);
+        row.put("semilla", seed);
+        row.put("escenario", scenario);
+        row.put("cantidad_pacientes", patientCount);
+        row.put("duracion_minutos", durationMinutes);
         cases.put(caseId, row);
     }
 
@@ -97,7 +97,7 @@ final class FakeResultDatabase {
     /** Borra el caso y, en cascada, sus ejecuciones. */
     void removeCase(int caseId) {
         cases.remove(caseId);
-        committed.results.values().removeIf(row -> row.get("case_id").equals(caseId));
+        committed.results.values().removeIf(row -> row.get("id_caso").equals(caseId));
         committed.patients.keySet().removeIf(key -> !committed.results.containsKey(key.get(0)));
         committed.events.keySet().removeIf(key -> !committed.results.containsKey(key.get(0)));
         working = committed;
@@ -227,7 +227,7 @@ final class FakeResultDatabase {
         switch (sql) {
             case OracleResultDao.INSERT_RESULT -> {
                 if (!cases.containsKey((Integer) p.get(1))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_SIM_RESULT_CASE) violada");
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_CASO) violada");
                 }
                 int id = working.nextId++;
                 Map<String, Object> row = new LinkedHashMap<>();
@@ -242,13 +242,15 @@ final class FakeResultDatabase {
             case OracleResultDao.INSERT_PATIENT -> {
                 List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
                 if (!working.results.containsKey(key.get(0))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_PATIENT_RESULT_RESULT) violada");
+                    throw new SQLException(
+                            "ORA-02291: restricción de integridad (FK_RESULTADO_PAC_EJECUCION) violada");
                 }
                 if (!knownDiseases.contains((Integer) p.get(7))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_PATIENT_RESULT_DISEASE) violada");
+                    throw new SQLException(
+                            "ORA-02291: restricción de integridad (FK_RESULTADO_PAC_ENFERMEDAD) violada");
                 }
                 if (working.patients.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_PATIENT_RESULT) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_RESULTADO_PACIENTE) violada");
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 0; i < PATIENT_COLUMNS.size(); i++) {
@@ -260,10 +262,10 @@ final class FakeResultDatabase {
             case OracleResultDao.INSERT_EVENT -> {
                 List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
                 if (!working.results.containsKey(key.get(0))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_SIM_EVENT_RESULT) violada");
+                    throw new SQLException("ORA-02291: restricción de integridad (FK_EVENTO_EJECUCION) violada");
                 }
                 if (working.events.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_SIM_EVENT) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_EVENTO) violada");
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 0; i < EVENT_COLUMNS.size(); i++) {
@@ -298,17 +300,17 @@ final class FakeResultDatabase {
                 working.results.forEach((id, row) -> {
                     if (only == null || only.equals(id)) {
                         Map<String, Object> joined = new LinkedHashMap<>(row);
-                        Map<String, Object> theCase = cases.get((Integer) row.get("case_id"));
-                        joined.put("seed", theCase.get("seed"));
-                        joined.put("scenario", theCase.get("scenario"));
-                        joined.put("patient_count", theCase.get("patient_count"));
-                        joined.put("duration_minutes", theCase.get("duration_minutes"));
+                        Map<String, Object> theCase = cases.get((Integer) row.get("id_caso"));
+                        joined.put("semilla", theCase.get("semilla"));
+                        joined.put("escenario", theCase.get("escenario"));
+                        joined.put("cantidad_pacientes", theCase.get("cantidad_pacientes"));
+                        joined.put("duracion_minutos", theCase.get("duracion_minutos"));
                         rows.add(joined);
                     }
                 });
             }
             case OracleResultDao.SELECT_IDS_BY_CASE -> working.results.values().stream()
-                    .filter(row -> row.get("case_id").equals(p.get(1))).forEach(rows::add);
+                    .filter(row -> row.get("id_caso").equals(p.get(1))).forEach(rows::add);
             case OracleResultDao.SELECT_PATIENTS, OracleResultDao.SELECT_PATIENTS_OF -> {
                 Integer only = (Integer) p.get(1);
                 working.patients.forEach((key, row) -> {
