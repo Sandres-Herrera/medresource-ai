@@ -3,6 +3,7 @@ package com.medresource.ui.view;
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.Scenario;
+import com.medresource.services.management.ComparisonArchive;
 import com.medresource.services.management.ReportArchive;
 import com.medresource.ui.controller.SimulationController;
 import com.medresource.ui.controller.SimulationSetup;
@@ -59,7 +60,9 @@ public final class MainWindow extends JFrame {
                         () -> CaseConfigDialog.ask(this).ifPresent(request -> open(request.setup(), request.speed())),
                         () -> open(SimulationSetup.standard(QUICK_CASE), DEMO_SPEED),
                         () -> open(SimulationSetup.standard(DEMO_CASE), DEMO_SPEED),
-                        () -> SavedReportsWindow.open(ReportArchive::fromConfiguration),
+                        () -> SavedReportsWindow.open(ReportArchive::fromConfiguration,
+                                ComparisonArchive::fromConfiguration,
+                                request -> open(request.setup(), request.speed())),
                         this::dispose));
         home.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "salir");
         home.getActionMap().put("salir", new AbstractAction() {

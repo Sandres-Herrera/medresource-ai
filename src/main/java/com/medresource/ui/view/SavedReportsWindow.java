@@ -1,24 +1,40 @@
 package com.medresource.ui.view;
 
+import com.medresource.model.SavedComparison;
 import com.medresource.model.SavedReport;
 import com.medresource.model.SavedReportSummary;
+import com.medresource.services.management.ComparisonArchive;
 import com.medresource.services.management.ReportArchive;
+import com.medresource.ui.controller.SetupDraft;
+import com.medresource.ui.controller.SimulationRequest;
+import com.medresource.ui.view.SavedResultsPanel.Tab;
 
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.WindowConstants;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
+import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
+import java.awt.Window;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Ventana con los reportes guardados en la base de datos ({@link SavedReportsPanel}).
+ * Ventana con lo guardado en la base de datos, en dos pestañas ({@link SavedResultsPanel}): los reportes de las
+ * simulaciones y las comparaciones.
  *
- * <p>Al abrirse consulta la base de datos en segundo plano ({@link ArchiveWorker}). «Abrir» trae el reporte
- * completo y lo muestra en su propia ventana ({@link ReportWindow#showingSaved(SavedReport)}), donde se puede
- * descargar. Si el equipo no tiene configurada la base de datos o la consulta falla, la ventana lo explica.</p>
+ * <p>Al abrirse consulta la base de datos en segundo plano ({@link ArchiveWorker}); la lista de comparaciones se
+ * vuelve a leer cada vez que se elige su pestaña, para que aparezcan las que se acaban de guardar. «Abrir» muestra
+ * el reporte ({@link ReportWindow}) o la comparación ({@link ComparisonWindow}) en su propia ventana.</p>
+ *
+ * <p>Desde un reporte abierto se puede volver a simular su caso, con los mismos pacientes: «Reutilizar caso» repite
+ * el hospital y la estrategia, y «Probar recomendaciones» les aplica las recomendaciones del reporte. En ambos casos
+ * se abre el formulario de la simulación con el caso fijo para cambiar lo que se quiera probar, y la simulación
+ * empieza como cualquier otra. Si el equipo no tiene configurada la base de datos o la consulta falla, la ventana lo
+ * explica.</p>
  */
 public final class SavedReportsWindow extends JFrame {
 
@@ -29,49 +45,75 @@ public final class SavedReportsWindow extends JFrame {
     /** Mensaje cuando el equipo no tiene configurada la base de datos. */
     public static final String NO_DATABASE_TEXT = "Este equipo no tiene configurada la base de datos "
             + "(falta src/main/resources/db.properties), así que no hay reportes guardados.";
+    /** Mensaje de la pestaña de comparaciones cuando el equipo no tiene configurada la base de datos. */
+    public static final String NO_DATABASE_COMPARISONS_TEXT = "Este equipo no tiene configurada la base de datos "
+            + "(falta src/main/resources/db.properties), así que no hay comparaciones guardadas.";
     /** Mensaje cuando la consulta falla, antes del detalle. */
     public static final String ERROR_TEXT = "No se pudieron leer los reportes guardados: ";
+    /** Mensaje cuando la consulta de comparaciones falla, antes del detalle. */
+    public static final String COMPARISONS_ERROR_TEXT = "No se pudieron leer las comparaciones guardadas: ";
 
     private static final Dimension SIZE = new Dimension(1120, 640);
     private static final Dimension MIN_SIZE = new Dimension(720, 420);
 
-    private final SavedReportsPanel panel = new SavedReportsPanel();
-    private final transient Supplier<Optional<ReportArchive>> archives;
+    private final SavedResultsPanel results = new SavedResultsPanel();
+    private final transient Supplier<Optional<ReportArchive>> reportArchives;
+    private final transient Supplier<Optional<ComparisonArchive>> comparisonArchives;
+    private final transient Consumer<SimulationRequest> onSimulate;
     private transient ReportArchive archive;
+    private transient ComparisonArchive comparisons;
 
-    private SavedReportsWindow(Supplier<Optional<ReportArchive>> archives) {
+    private SavedReportsWindow(Supplier<Optional<ReportArchive>> reportArchives,
+                               Supplier<Optional<ComparisonArchive>> comparisonArchives,
+                               Consumer<SimulationRequest> onSimulate) {
         super(TITLE);
-        this.archives = archives;
-        setContentPane(panel);
+        this.reportArchives = reportArchives;
+        this.comparisonArchives = comparisonArchives;
+        this.onSimulate = onSimulate;
+        setContentPane(results);
         setIconImages(List.of(LogoBadge.image(16), LogoBadge.image(32), LogoBadge.image(64)));
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         Rectangle usable = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
         setMinimumSize(ScreenFit.fit(MIN_SIZE, usable));
         setBounds(ScreenFit.centered(ScreenFit.fit(SIZE, usable), usable));
-        panel.onOpen(this::open);
+        results.reports().onOpen(this::openReport);
+        results.comparisons().onOpen(this::openComparison);
+        results.onTab(tab -> {
+            if (tab == Tab.COMPARISONS) {
+                loadComparisons();
+            }
+        });
     }
 
     /**
-     * Abre la ventana y empieza a buscar los reportes.
+     * Abre la ventana y empieza a buscar los reportes y las comparaciones.
      *
-     * @param archives da el archivo de reportes, o vacío si no hay base de datos; se pide en segundo plano
+     * @param reportArchives     da el archivo de reportes, o vacío si no hay base de datos; se pide en segundo plano
+     * @param comparisonArchives da el archivo de comparaciones, o vacío si no hay base de datos
+     * @param onSimulate         empieza la simulación nueva que el usuario preparó desde un reporte guardado
      * @return la ventana ya visible
-     * @throws IllegalArgumentException si es nulo
+     * @throws IllegalArgumentException si falta algún dato
      */
-    public static SavedReportsWindow open(Supplier<Optional<ReportArchive>> archives) {
-        if (archives == null) {
-            throw new IllegalArgumentException("El archivo de reportes es obligatorio.");
+    public static SavedReportsWindow open(Supplier<Optional<ReportArchive>> reportArchives,
+                                          Supplier<Optional<ComparisonArchive>> comparisonArchives,
+                                          Consumer<SimulationRequest> onSimulate) {
+        if (reportArchives == null || comparisonArchives == null || onSimulate == null) {
+            throw new IllegalArgumentException("Faltan datos para abrir los reportes guardados.");
         }
-        SavedReportsWindow window = new SavedReportsWindow(archives);
-        window.load();
+        SavedReportsWindow window = new SavedReportsWindow(reportArchives, comparisonArchives, onSimulate);
+        window.loadReports();
+        window.loadComparisons();
         window.setVisible(true);
         return window;
     }
 
+    // ---------- simulaciones ----------
+
     /** Busca los reportes en segundo plano. */
-    private void load() {
+    private void loadReports() {
+        SavedReportsPanel panel = results.reports();
         panel.showLoading();
-        new ArchiveWorker<>(() -> archives.get().map(found -> new Loaded(found, found.summaries())), loaded -> {
+        new ArchiveWorker<>(() -> reportArchives.get().map(found -> new Loaded(found, found.summaries())), loaded -> {
             if (loaded.isEmpty()) {
                 panel.showNotice(NO_DATABASE_TEXT);
                 return;
@@ -82,18 +124,72 @@ public final class SavedReportsWindow extends JFrame {
     }
 
     /** Trae el reporte completo en segundo plano y lo muestra. */
-    private void open(int id) {
+    private void openReport(int id) {
         if (archive == null) {
             return;
         }
         ReportArchive current = archive;
+        SavedReportsPanel panel = results.reports();
         new ArchiveWorker<>(() -> current.find(id), found -> {
             if (found.isPresent()) {
-                ReportWindow.showingSaved(found.get());
+                SavedReport saved = found.get();
+                ReportWindow.showingSaved(saved, withRecommendations -> rerun(current, saved, withRecommendations));
             } else {
                 panel.showError("El reporte " + id + " ya no está guardado. Cierra y vuelve a abrir esta ventana.");
             }
         }, error -> panel.showError("No se pudo abrir el reporte " + id + ": " + detail(error))).execute();
+    }
+
+    /**
+     * Prepara en segundo plano la simulación nueva del caso del reporte, abre el formulario con el caso fijo y,
+     * si el usuario la confirma, la empieza.
+     */
+    private void rerun(ReportArchive current, SavedReport saved, boolean withRecommendations) {
+        Window owner = focusedOr(this);
+        new ArchiveWorker<>(() -> current.rerunPlan(saved, withRecommendations), plan -> {
+            SetupDraft draft = new SetupDraft();
+            draft.applyRerun(plan);
+            CaseConfigDialog.ask(owner, draft).ifPresent(onSimulate);
+        }, error -> JOptionPane.showMessageDialog(owner, detail(error), "No se pudo preparar la simulación",
+                JOptionPane.ERROR_MESSAGE)).execute();
+    }
+
+    private static Window focusedOr(Window fallback) {
+        Window focused = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
+        return focused == null ? fallback : focused;
+    }
+
+    // ---------- comparaciones ----------
+
+    /** Busca las comparaciones en segundo plano. */
+    private void loadComparisons() {
+        SavedComparisonsPanel panel = results.comparisons();
+        panel.showLoading();
+        new ArchiveWorker<>(() -> comparisonArchives.get().map(found -> new LoadedComparisons(found, found.saved())),
+                loaded -> {
+                    if (loaded.isEmpty()) {
+                        panel.showNotice(NO_DATABASE_COMPARISONS_TEXT);
+                        return;
+                    }
+                    comparisons = loaded.get().archive();
+                    panel.showComparisons(loaded.get().comparisons());
+                }, error -> panel.showError(COMPARISONS_ERROR_TEXT + detail(error))).execute();
+    }
+
+    /** Trae la comparación guardada en segundo plano y la muestra. */
+    private void openComparison(int id) {
+        if (comparisons == null) {
+            return;
+        }
+        ComparisonArchive current = comparisons;
+        SavedComparisonsPanel panel = results.comparisons();
+        new ArchiveWorker<>(() -> current.find(id), found -> {
+            if (found.isPresent()) {
+                ComparisonWindow.showingSaved(found.get());
+            } else {
+                panel.showError("La comparación " + id + " ya no está guardada. Vuelve a elegir la pestaña.");
+            }
+        }, error -> panel.showError("No se pudo abrir la comparación " + id + ": " + detail(error))).execute();
     }
 
     private static String detail(Throwable error) {
@@ -101,15 +197,19 @@ public final class SavedReportsWindow extends JFrame {
     }
 
     /**
-     * Devuelve la lista que muestra la ventana.
+     * Devuelve el contenido de la ventana, con sus dos pestañas.
      *
-     * @return el panel de la lista
+     * @return el panel con las pestañas
      */
-    public SavedReportsPanel getPanel() {
-        return panel;
+    public SavedResultsPanel getResults() {
+        return results;
     }
 
     /** El archivo con el que se leyó la lista y los reportes que tenía. */
     private record Loaded(ReportArchive archive, List<SavedReportSummary> summaries) {
+    }
+
+    /** El archivo con el que se leyeron las comparaciones y las que tenía. */
+    private record LoadedComparisons(ComparisonArchive archive, List<SavedComparison> comparisons) {
     }
 }
