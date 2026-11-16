@@ -20,42 +20,43 @@ import java.util.Set;
 /**
  * Guarda y lee las enfermedades del catálogo en Oracle.
  *
- * <p>Una enfermedad ocupa tres tablas: {@code disease} (sus datos), {@code disease_secondary_specialty}
- * (sus especialidades secundarias) y {@code disease_symptom} (sus síntomas, en orden). Cada operación
+ * <p>Una enfermedad ocupa tres tablas: {@code enfermedad} (sus datos), {@code enfermedad_especialidad_sec}
+ * (sus especialidades secundarias) y {@code enfermedad_sintoma} (sus síntomas, en orden). Cada operación
  * se hace en una sola transacción: o se guarda todo o no se guarda nada. Los valores de las
  * enumeraciones se guardan con el nombre de la constante y los booleanos como 0 o 1.</p>
  */
 public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
 
-    static final String INSERT_DISEASE = "INSERT INTO disease (id, name, main_specialty, treatment, curable, "
-            + "requires_blood, requires_icu, deterioration_rate, irreducible_mortality, min_duration_minutes, "
-            + "max_duration_minutes, min_age, max_age, frequency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    static final String INSERT_DISEASE = "INSERT INTO enfermedad (id, nombre, especialidad_principal, tratamiento, "
+            + "curable, requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, "
+            + "duracion_max_minutos, edad_minima, edad_maxima, frecuencia) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String INSERT_SECONDARY =
-            "INSERT INTO disease_secondary_specialty (disease_id, specialty) VALUES (?, ?)";
+            "INSERT INTO enfermedad_especialidad_sec (id_enfermedad, especialidad) VALUES (?, ?)";
     static final String INSERT_SYMPTOM =
-            "INSERT INTO disease_symptom (disease_id, symptom_order, symptom) VALUES (?, ?, ?)";
-    static final String UPDATE_DISEASE = "UPDATE disease SET name = ?, main_specialty = ?, treatment = ?, "
-            + "curable = ?, requires_blood = ?, requires_icu = ?, deterioration_rate = ?, "
-            + "irreducible_mortality = ?, min_duration_minutes = ?, max_duration_minutes = ?, min_age = ?, "
-            + "max_age = ?, frequency = ? WHERE id = ?";
-    static final String DELETE_SECONDARY = "DELETE FROM disease_secondary_specialty WHERE disease_id = ?";
-    static final String DELETE_SYMPTOMS = "DELETE FROM disease_symptom WHERE disease_id = ?";
-    static final String DELETE_DISEASE = "DELETE FROM disease WHERE id = ?";
+            "INSERT INTO enfermedad_sintoma (id_enfermedad, orden_sintoma, sintoma) VALUES (?, ?, ?)";
+    static final String UPDATE_DISEASE = "UPDATE enfermedad SET nombre = ?, especialidad_principal = ?, "
+            + "tratamiento = ?, curable = ?, requiere_sangre = ?, requiere_uci = ?, tasa_deterioro = ?, "
+            + "mortalidad_irreducible = ?, duracion_min_minutos = ?, duracion_max_minutos = ?, edad_minima = ?, "
+            + "edad_maxima = ?, frecuencia = ? WHERE id = ?";
+    static final String DELETE_SECONDARY = "DELETE FROM enfermedad_especialidad_sec WHERE id_enfermedad = ?";
+    static final String DELETE_SYMPTOMS = "DELETE FROM enfermedad_sintoma WHERE id_enfermedad = ?";
+    static final String DELETE_DISEASE = "DELETE FROM enfermedad WHERE id = ?";
 
-    static final String SELECT_DISEASES = "SELECT id, name, main_specialty, treatment, curable, requires_blood, "
-            + "requires_icu, deterioration_rate, irreducible_mortality, min_duration_minutes, max_duration_minutes, "
-            + "min_age, max_age, frequency FROM disease ORDER BY id";
-    static final String SELECT_DISEASE = "SELECT id, name, main_specialty, treatment, curable, requires_blood, "
-            + "requires_icu, deterioration_rate, irreducible_mortality, min_duration_minutes, max_duration_minutes, "
-            + "min_age, max_age, frequency FROM disease WHERE id = ?";
-    static final String SELECT_SECONDARY = "SELECT disease_id, specialty FROM disease_secondary_specialty "
-            + "ORDER BY disease_id, specialty";
-    static final String SELECT_SECONDARY_OF = "SELECT disease_id, specialty FROM disease_secondary_specialty "
-            + "WHERE disease_id = ? ORDER BY specialty";
-    static final String SELECT_SYMPTOMS = "SELECT disease_id, symptom FROM disease_symptom "
-            + "ORDER BY disease_id, symptom_order";
-    static final String SELECT_SYMPTOMS_OF = "SELECT disease_id, symptom FROM disease_symptom "
-            + "WHERE disease_id = ? ORDER BY symptom_order";
+    static final String SELECT_DISEASES = "SELECT id, nombre, especialidad_principal, tratamiento, curable, "
+            + "requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, duracion_max_minutos, "
+            + "edad_minima, edad_maxima, frecuencia FROM enfermedad ORDER BY id";
+    static final String SELECT_DISEASE = "SELECT id, nombre, especialidad_principal, tratamiento, curable, "
+            + "requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, duracion_max_minutos, "
+            + "edad_minima, edad_maxima, frecuencia FROM enfermedad WHERE id = ?";
+    static final String SELECT_SECONDARY = "SELECT id_enfermedad, especialidad FROM enfermedad_especialidad_sec "
+            + "ORDER BY id_enfermedad, especialidad";
+    static final String SELECT_SECONDARY_OF = "SELECT id_enfermedad, especialidad FROM enfermedad_especialidad_sec "
+            + "WHERE id_enfermedad = ? ORDER BY especialidad";
+    static final String SELECT_SYMPTOMS = "SELECT id_enfermedad, sintoma FROM enfermedad_sintoma "
+            + "ORDER BY id_enfermedad, orden_sintoma";
+    static final String SELECT_SYMPTOMS_OF = "SELECT id_enfermedad, sintoma FROM enfermedad_sintoma "
+            + "WHERE id_enfermedad = ? ORDER BY orden_sintoma";
 
     private final TransactionRunner transactions;
 
@@ -190,8 +191,9 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    result.computeIfAbsent(rows.getInt("disease_id"), key -> EnumSet.noneOf(Specialty.class))
-                            .add(parse(Specialty.class, rows.getString("specialty"), rows.getInt("disease_id")));
+                    result.computeIfAbsent(rows.getInt("id_enfermedad"), key -> EnumSet.noneOf(Specialty.class))
+                            .add(parse(Specialty.class, rows.getString("especialidad"),
+                                    rows.getInt("id_enfermedad")));
                 }
             }
         }
@@ -206,8 +208,8 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
             }
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    result.computeIfAbsent(rows.getInt("disease_id"), key -> new ArrayList<>())
-                            .add(parse(Symptom.class, rows.getString("symptom"), rows.getInt("disease_id")));
+                    result.computeIfAbsent(rows.getInt("id_enfermedad"), key -> new ArrayList<>())
+                            .add(parse(Symptom.class, rows.getString("sintoma"), rows.getInt("id_enfermedad")));
                 }
             }
         }
@@ -219,18 +221,18 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
                                      Map<Integer, List<Symptom>> symptoms) throws SQLException {
         int id = row.getInt("id");
         try {
-            return Disease.builder(id, row.getString("name"))
-                    .mainSpecialty(parse(Specialty.class, row.getString("main_specialty"), id))
+            return Disease.builder(id, row.getString("nombre"))
+                    .mainSpecialty(parse(Specialty.class, row.getString("especialidad_principal"), id))
                     .secondarySpecialties(secondary.getOrDefault(id, Set.of()).toArray(new Specialty[0]))
-                    .treatment(parse(TreatmentType.class, row.getString("treatment"), id))
+                    .treatment(parse(TreatmentType.class, row.getString("tratamiento"), id))
                     .curable(row.getInt("curable") == 1)
-                    .requiresBlood(row.getInt("requires_blood") == 1)
-                    .requiresIcu(row.getInt("requires_icu") == 1)
-                    .deteriorationRate(row.getDouble("deterioration_rate"))
-                    .irreducibleMortality(row.getDouble("irreducible_mortality"))
-                    .durationMinutes(row.getInt("min_duration_minutes"), row.getInt("max_duration_minutes"))
-                    .ageRange(row.getInt("min_age"), row.getInt("max_age"))
-                    .frequency(row.getDouble("frequency"))
+                    .requiresBlood(row.getInt("requiere_sangre") == 1)
+                    .requiresIcu(row.getInt("requiere_uci") == 1)
+                    .deteriorationRate(row.getDouble("tasa_deterioro"))
+                    .irreducibleMortality(row.getDouble("mortalidad_irreducible"))
+                    .durationMinutes(row.getInt("duracion_min_minutos"), row.getInt("duracion_max_minutos"))
+                    .ageRange(row.getInt("edad_minima"), row.getInt("edad_maxima"))
+                    .frequency(row.getDouble("frecuencia"))
                     .symptoms(symptoms.getOrDefault(id, List.of()).toArray(new Symptom[0]))
                     .build();
         } catch (IllegalArgumentException e) {

@@ -23,9 +23,9 @@ import java.util.TreeMap;
  */
 final class FakeDiseaseDatabase {
 
-    private static final List<String> DISEASE_COLUMNS = List.of("id", "name", "main_specialty", "treatment",
-            "curable", "requires_blood", "requires_icu", "deterioration_rate", "irreducible_mortality",
-            "min_duration_minutes", "max_duration_minutes", "min_age", "max_age", "frequency");
+    private static final List<String> DISEASE_COLUMNS = List.of("id", "nombre", "especialidad_principal", "tratamiento",
+            "curable", "requiere_sangre", "requiere_uci", "tasa_deterioro", "mortalidad_irreducible",
+            "duracion_min_minutos", "duracion_max_minutos", "edad_minima", "edad_maxima", "frecuencia");
 
     /** Contenido de las tres tablas. */
     private static final class Tables {
@@ -152,7 +152,7 @@ final class FakeDiseaseDatabase {
             case OracleDiseaseDao.INSERT_DISEASE -> {
                 int id = (Integer) p.get(1);
                 if (working.diseases.containsKey(id)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_DISEASE) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_ENFERMEDAD) violada");
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 0; i < DISEASE_COLUMNS.size(); i++) {
@@ -166,7 +166,7 @@ final class FakeDiseaseDatabase {
                 int id = requireParent((Integer) p.get(1));
                 List<String> list = working.secondary.computeIfAbsent(id, key -> new ArrayList<>());
                 if (list.contains((String) p.get(2))) {
-                    throw new SQLException("ORA-00001: restricción única (PK_DISEASE_SECONDARY) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_ENF_ESPECIALIDAD_SEC) violada");
                 }
                 list.add((String) p.get(2));
                 return 1;
@@ -175,7 +175,7 @@ final class FakeDiseaseDatabase {
                 int id = requireParent((Integer) p.get(1));
                 TreeMap<Integer, String> map = working.symptoms.computeIfAbsent(id, key -> new TreeMap<>());
                 if (map.containsKey((Integer) p.get(2))) {
-                    throw new SQLException("ORA-00001: restricción única (PK_DISEASE_SYMPTOM) violada");
+                    throw new SQLException("ORA-00001: restricción única (PK_ENFERMEDAD_SINTOMA) violada");
                 }
                 map.put((Integer) p.get(2), (String) p.get(3));
                 return 1;
@@ -220,8 +220,8 @@ final class FakeDiseaseDatabase {
 
     private void requireUniqueName(Map<String, Object> candidate) throws SQLException {
         for (Map<String, Object> other : working.diseases.values()) {
-            if (!other.get("id").equals(candidate.get("id")) && other.get("name").equals(candidate.get("name"))) {
-                throw new SQLException("ORA-00001: restricción única (UQ_DISEASE_NAME) violada");
+            if (!other.get("id").equals(candidate.get("id")) && other.get("nombre").equals(candidate.get("nombre"))) {
+                throw new SQLException("ORA-00001: restricción única (UQ_ENFERMEDAD_NOMBRE) violada");
             }
         }
     }
@@ -242,7 +242,8 @@ final class FakeDiseaseDatabase {
                 Integer only = (Integer) p.get(1);
                 new TreeMap<>(working.secondary).forEach((id, list) -> {
                     if (only == null || only.equals(id)) {
-                        list.stream().sorted().forEach(name -> rows.add(Map.of("disease_id", id, "specialty", name)));
+                        list.stream().sorted()
+                                .forEach(name -> rows.add(Map.of("id_enfermedad", id, "especialidad", name)));
                     }
                 });
             }
@@ -250,7 +251,7 @@ final class FakeDiseaseDatabase {
                 Integer only = (Integer) p.get(1);
                 new TreeMap<>(working.symptoms).forEach((id, map) -> {
                     if (only == null || only.equals(id)) {
-                        map.values().forEach(name -> rows.add(Map.of("disease_id", id, "symptom", name)));
+                        map.values().forEach(name -> rows.add(Map.of("id_enfermedad", id, "sintoma", name)));
                     }
                 });
             }

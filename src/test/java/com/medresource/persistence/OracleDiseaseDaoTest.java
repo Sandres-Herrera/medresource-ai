@@ -39,19 +39,19 @@ class OracleDiseaseDaoTest {
     void savesEveryAttributeOfTheDisease() {
         dao.save(full(5, "Neumonía grave"));
 
-        assertEquals("Neumonía grave", database.column(5, "name"));
-        assertEquals("INTERNAL_MEDICINE", database.column(5, "main_specialty"));
-        assertEquals("HOSPITALIZATION", database.column(5, "treatment"));
+        assertEquals("Neumonía grave", database.column(5, "nombre"));
+        assertEquals("INTERNAL_MEDICINE", database.column(5, "especialidad_principal"));
+        assertEquals("HOSPITALIZATION", database.column(5, "tratamiento"));
         assertEquals(0, database.column(5, "curable"));
-        assertEquals(1, database.column(5, "requires_blood"));
-        assertEquals(1, database.column(5, "requires_icu"));
-        assertEquals(0.125, (Double) database.column(5, "deterioration_rate"), 0.0);
-        assertEquals(0.25, (Double) database.column(5, "irreducible_mortality"), 0.0);
-        assertEquals(45, database.column(5, "min_duration_minutes"));
-        assertEquals(120, database.column(5, "max_duration_minutes"));
-        assertEquals(2, database.column(5, "min_age"));
-        assertEquals(90, database.column(5, "max_age"));
-        assertEquals(7.5, (Double) database.column(5, "frequency"), 0.0);
+        assertEquals(1, database.column(5, "requiere_sangre"));
+        assertEquals(1, database.column(5, "requiere_uci"));
+        assertEquals(0.125, (Double) database.column(5, "tasa_deterioro"), 0.0);
+        assertEquals(0.25, (Double) database.column(5, "mortalidad_irreducible"), 0.0);
+        assertEquals(45, database.column(5, "duracion_min_minutos"));
+        assertEquals(120, database.column(5, "duracion_max_minutos"));
+        assertEquals(2, database.column(5, "edad_minima"));
+        assertEquals(90, database.column(5, "edad_maxima"));
+        assertEquals(7.5, (Double) database.column(5, "frecuencia"), 0.0);
     }
 
     @Test
@@ -59,8 +59,8 @@ class OracleDiseaseDaoTest {
         dao.save(simple(6, "Gripa"));
 
         assertEquals(1, database.column(6, "curable"));
-        assertEquals(0, database.column(6, "requires_blood"));
-        assertEquals(0, database.column(6, "requires_icu"));
+        assertEquals(0, database.column(6, "requiere_sangre"));
+        assertEquals(0, database.column(6, "requiere_uci"));
     }
 
     @Test
@@ -109,7 +109,7 @@ class OracleDiseaseDaoTest {
         assertTrue(error.getMessage().contains("5"), error.getMessage());
         assertTrue(error.getMessage().contains("ORA-00001"), error.getMessage());
         assertEquals(List.of(5), database.diseaseIds());
-        assertEquals("Neumonía grave", database.column(5, "name"));
+        assertEquals("Neumonía grave", database.column(5, "nombre"));
         assertEquals(1, database.rollbacks);
     }
 
@@ -123,7 +123,7 @@ class OracleDiseaseDaoTest {
 
     @Test
     void aFailureWhileSavingTheSymptomsUndoesTheWholeDisease() {
-        database.failWhenContaining = "disease_symptom";
+        database.failWhenContaining = "enfermedad_sintoma";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(full(5, "Neumonía grave")));
 
@@ -243,7 +243,7 @@ class OracleDiseaseDaoTest {
     @Test
     void anUnknownValueInTheDatabaseIsReportedWithTheDisease() {
         dao.save(simple(6, "Gripa"));
-        database.corruptColumn(6, "main_specialty", "NO_EXISTE");
+        database.corruptColumn(6, "especialidad_principal", "NO_EXISTE");
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.findById(6));
 
@@ -265,7 +265,7 @@ class OracleDiseaseDaoTest {
     @Test
     void aFailureWhileReadingIsReported() {
         dao.save(simple(6, "Gripa"));
-        database.failWhenContaining = "FROM disease_symptom";
+        database.failWhenContaining = "FROM enfermedad_sintoma";
 
         assertThrows(DataAccessException.class, () -> dao.findAll());
         assertThrows(DataAccessException.class, () -> dao.findById(6));
@@ -329,7 +329,7 @@ class OracleDiseaseDaoTest {
     void aFailureWhileUpdatingKeepsTheOldData() {
         Disease original = full(5, "Neumonía grave");
         dao.save(original);
-        database.failWhenContaining = "INSERT INTO disease_symptom";
+        database.failWhenContaining = "INSERT INTO enfermedad_sintoma";
 
         assertThrows(DataAccessException.class, () -> dao.update(simple(5, "Neumonía leve")));
 
@@ -371,7 +371,7 @@ class OracleDiseaseDaoTest {
     @Test
     void aFailureWhileDeletingKeepsTheDisease() {
         dao.save(simple(6, "Gripa"));
-        database.failWhenContaining = "DELETE FROM disease";
+        database.failWhenContaining = "DELETE FROM enfermedad";
 
         assertThrows(DataAccessException.class, () -> dao.deleteById(6));
 
