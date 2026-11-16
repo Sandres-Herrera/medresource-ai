@@ -8,6 +8,7 @@ import com.medresource.model.RunRecord;
 import com.medresource.model.Scenario;
 import com.medresource.model.SimulationCase;
 import com.medresource.model.SimulationResult;
+import com.medresource.model.Specialty;
 import com.medresource.services.simulation.CaseGenerator;
 import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.SimulationEngine;
@@ -34,7 +35,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class OracleResultDaoIntegrationTest {
 
     private static final CaseConfig CONFIG = new CaseConfig(987_654_323L, Scenario.CATASTROPHE, 20, 240);
-    private static final HospitalConfig HOSPITAL = new HospitalConfig(6, 2, 1, 3, 4, 2, 2);
+    private static final HospitalConfig HOSPITAL = new HospitalConfig(6, 2, 1, 3, 4, 2, 2,
+            List.of(Specialty.SURGERY, Specialty.PEDIATRICS));
     private static final String TABLE_MISSING = "ORA-00942";
 
     @Test
