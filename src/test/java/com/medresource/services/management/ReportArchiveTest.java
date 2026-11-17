@@ -150,6 +150,44 @@ class ReportArchiveTest {
         assertEquals(Optional.empty(), archive.find(99));
     }
 
+    @Test
+    void deletingASavedReportDeletesItsSimulationAndKeepsTheOthers() {
+        SavedReport first = archive.save(request, report);
+        SavedReport second = archive.save(request, report);
+
+        archive.delete(summaryOf(first));
+
+        assertEquals(Optional.empty(), results.findById(first.resultId()));
+        assertTrue(results.findById(second.resultId()).isPresent());
+        assertEquals(1, caseDao.saved.size());
+    }
+
+    @Test
+    void aReportWhoseSimulationIsNoLongerSavedCannotBeDeletedAgain() {
+        SavedReport saved = archive.save(request, report);
+        archive.delete(summaryOf(saved));
+
+        assertThrows(IllegalArgumentException.class, () -> archive.delete(summaryOf(saved)));
+        assertThrows(IllegalArgumentException.class, () -> archive.delete(null));
+    }
+
+    @Test
+    void ifTheDatabaseFailsTheSimulationIsKept() {
+        SavedReport saved = archive.save(request, report);
+        results.failOnDelete = true;
+
+        DataAccessException error = assertThrows(DataAccessException.class, () -> archive.delete(summaryOf(saved)));
+
+        assertTrue(error.getMessage().contains("Oracle apagado"));
+        assertTrue(results.findById(saved.resultId()).isPresent());
+    }
+
+    /** Resumen de un reporte guardado, como lo trae la lista de reportes. */
+    private SavedReportSummary summaryOf(SavedReport saved) {
+        return new SavedReportSummary(saved.id(), saved.resultId(), SAVED_AT, request.caseConfig(),
+                request.result().strategyName(), 0, NarrativeSource.AI, 1, null);
+    }
+
     /** Enfermedades en memoria que cuentan cuántas se guardaron. */
     private static final class InMemoryDiseases implements GenericDao<Disease, Integer> {
 
