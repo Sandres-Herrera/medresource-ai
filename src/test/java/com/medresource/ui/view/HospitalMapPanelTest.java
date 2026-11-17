@@ -59,6 +59,22 @@ class HospitalMapPanelTest {
         return new LayoutFactory().create(new HospitalFactory().create(config));
     }
 
+    /** El plano tal como lo dibuja el renderizador, sin panel ni cámara. */
+    private BufferedImage world() {
+        Dimension size = renderer.worldSize(standard);
+        BufferedImage picture = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = picture.createGraphics();
+        renderer.render(graphics, standard);
+        graphics.dispose();
+        return picture;
+    }
+
+    /** Un punto del piso del primer pasillo, lejos de sus líneas y de sus muebles. */
+    private Point2D corridorFloor() {
+        Position slot = standard.areasOf(ZoneType.CORRIDOR).get(0).slot(0);
+        return new Point2D.Double(slot.col() * CELL_W + 54, slot.row() * CELL_H + 30);
+    }
+
     @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> new HospitalMapPanel(null, renderer));
@@ -94,9 +110,12 @@ class HospitalMapPanelTest {
         BufferedImage image = panel.toImage(world.width + 2 * MARGIN, world.height + 2 * MARGIN);
 
         Position bed = standard.positionOf("H1-C1").orElseThrow();
+        BufferedImage plan = world();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 40, MARGIN + 5));
-        assertEquals(Palette.CARD.getRGB(), image.getRGB(MARGIN + bed.col() * CELL_W + 12, MARGIN + bed.row() * CELL_H + 12));
+        assertEquals(plan.getRGB(40, 5), image.getRGB(MARGIN + 40, MARGIN + 5));
+        int bedX = bed.col() * CELL_W + 27;
+        int bedY = bed.row() * CELL_H + 23;
+        assertEquals(plan.getRGB(bedX, bedY), image.getRGB(MARGIN + bedX, MARGIN + bedY));
         assertEquals(Palette.BACKGROUND.getRGB(), image.getRGB(MARGIN - 1, MARGIN - 1));
     }
 
@@ -104,8 +123,10 @@ class HospitalMapPanelTest {
     void thePlanShrinksToFitASmallerPicture() {
         Dimension world = renderer.worldSize(standard);
         BufferedImage image = panel.toImage(world.width / 2 + 2 * MARGIN, world.height / 2 + 2 * MARGIN);
+        Point2D floor = corridorFloor();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 20, MARGIN + 3));
+        assertEquals(world().getRGB((int) floor.getX(), (int) floor.getY()),
+                image.getRGB(MARGIN + (int) floor.getX() / 2, MARGIN + (int) floor.getY() / 2));
         assertEquals(Palette.BACKGROUND.getRGB(), image.getRGB(MARGIN - 1, MARGIN - 1));
     }
 
@@ -128,7 +149,7 @@ class HospitalMapPanelTest {
         panel.paint(graphics);
         graphics.dispose();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 40, MARGIN + 5));
+        assertEquals(world().getRGB(40, 5), image.getRGB(MARGIN + 40, MARGIN + 5));
     }
 
     @Test
@@ -883,5 +904,91 @@ class HospitalMapPanelTest {
         assertTrue(center.getX() > 0);
         graphics.dispose();
         panel.setAnimated(false);
+    }
+
+    // ---------- pacientes acostados en la vista 2D ----------
+
+    /** Pone a un paciente de triage I quieto en el centro de la cama H1-C1 y devuelve la casilla de esa cama. */
+    private Position showOnePatientInTheFirstBed() {
+        Position bed = standard.positionOf("H1-C1").orElseThrow();
+        Point2D center = renderer.centerOf(bed);
+        panel.showPatients(List.of(new PatientMarker("P001", TriageLevel.I, Sex.FEMALE, false, false,
+                center.getX(), center.getY())), 0);
+        return bed;
+    }
+
+    /**
+     * Cuenta los píxeles de un color en una franja vertical de la casilla de una cama, en un dibujo de tamaño
+     * real; la franja va desde {@code fromX} hasta {@code toX} píxeles del borde izquierdo de la casilla.
+     */
+    private static int countInBed(BufferedImage image, int color, Position bed, int fromX, int toX) {
+        int total = 0;
+        for (int y = 0; y < CELL_H; y++) {
+            for (int x = fromX; x < toX; x++) {
+                if (image.getRGB(MARGIN + bed.col() * CELL_W + x, MARGIN + bed.row() * CELL_H + y) == color) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    @Test
+    void in2dAClickOnTheBedFindsThePatientLyingOnIt() {
+        Position bed = showOnePatientInTheFirstBed();
+        fullSizePanel();
+
+        int x = MARGIN + bed.col() * CELL_W + 70;
+        int y = MARGIN + bed.row() * CELL_H + 40;
+        assertEquals("P001", panel.patientAt(x, y).orElseThrow());
+    }
+
+    @Test
+    void in2dThePatientInBedEndsUpUnderASheetOfTheColorOfItsTriage() throws InterruptedException {
+        Position bed = showOnePatientInTheFirstBed();
+        Thread.sleep(500);
+
+        int sheet = fullSizePicture().getRGB(MARGIN + bed.col() * CELL_W + 51, MARGIN + bed.row() * CELL_H + 29);
+
+        int red = (sheet >> 16) & 0xFF;
+        int blue = sheet & 0xFF;
+        assertTrue(red > blue + 40, Integer.toHexString(sheet));
+    }
+
+    @Test
+    void in2dTheSelectionRingSurroundsTheBedOfThePatient() {
+        Position bed = showOnePatientInTheFirstBed();
+        // El anillo rodea la cama: su lado izquierdo pasa por el borde de la cama, lejos del centro de la casilla.
+        assertEquals(0, countInBed(fullSizePicture(), Palette.SELECTION.getRGB(), bed, 19, 25));
+
+        panel.select("P001");
+
+        assertTrue(countInBed(fullSizePicture(), Palette.SELECTION.getRGB(), bed, 19, 25) > 0);
+    }
+
+    @Test
+    void in25dThePatientInBedIsStillFoundByItsBody() {
+        showOnePatientInTheFirstBed();
+        panel.setIsometric(true);
+        panel.setSize(1200, 800);
+        Point2D center = renderer.centerOf(standard.positionOf("H1-C1").orElseThrow());
+        Point2D body = new IsometricRenderer(renderer).focusOf(standard, new PatientMarker("P001", TriageLevel.I,
+                Sex.FEMALE, false, false, center.getX(), center.getY()));
+        Point2D onScreen = panel.cameraFor(1200, 800).orElseThrow().toScreen(body.getX(), body.getY());
+
+        assertEquals("P001", panel.patientAt((int) onScreen.getX(), (int) onScreen.getY()).orElseThrow());
+    }
+
+    @Test
+    void showingAPlanAgainForgetsWhoWasLyingInTheBeds() {
+        Position bed = showOnePatientInTheFirstBed();
+        fullSizePanel();
+        int x = MARGIN + bed.col() * CELL_W + 70;
+        int y = MARGIN + bed.row() * CELL_H + 40;
+        assertEquals("P001", panel.patientAt(x, y).orElseThrow());
+
+        panel.showLayout(standard);
+
+        assertTrue(panel.patientAt(x, y).isEmpty());
     }
 }
