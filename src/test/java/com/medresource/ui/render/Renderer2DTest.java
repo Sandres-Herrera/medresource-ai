@@ -66,6 +66,8 @@ class Renderer2DTest {
     private static final int DOOR_FRAME = 0xFF37657C;
     /** Cabezal de la lámpara de cada quirófano. */
     private static final int SURGICAL_LAMP = 0xFF2F6675;
+    /** Manija de cada cajón de la morgue. */
+    private static final int DRAWER_HANDLE = 0xFF607587;
 
     private final Renderer2D renderer = new Renderer2D();
     private final HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
@@ -359,9 +361,29 @@ class Renderer2DTest {
     }
 
     @Test
+    void twoNeighbourSeatsShareOneBench() {
+        Position first = layout.getWaitingSpots().get(0);
+        Position second = layout.getWaitingSpots().get(1);
+        assertEquals(first.row(), second.row());
+        assertEquals(first.col() + 1, second.col());
+
+        // El borde entre las dos casillas cae sobre el cojín del medio de la banca.
+        int middle = image.getRGB(second.col() * CELL_W, second.row() * CELL_H + CELL_H / 2);
+
+        assertTrue(blue(middle) > red(middle) + 60, Integer.toHexString(middle));
+    }
+
+    @Test
     void drawsADrawerForEachPlaceOfTheMorgue() {
         for (Position spot : layout.getMorgueSpots()) {
             assertEquals(MORGUE_DRAWER, pixelIn(spot, 9, 21), spot.toString());
+        }
+    }
+
+    @Test
+    void eachDrawerOfTheMorgueHasAHandle() {
+        for (Position spot : layout.getMorgueSpots()) {
+            assertEquals(DRAWER_HANDLE, pixelIn(spot, 44, 26), spot.toString());
         }
     }
 
