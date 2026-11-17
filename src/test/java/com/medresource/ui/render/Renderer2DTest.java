@@ -11,14 +11,19 @@ import com.medresource.services.simulation.HospitalFactory;
 import com.medresource.services.simulation.LayoutFactory;
 import org.junit.jupiter.api.Test;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.Stroke;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +43,8 @@ class Renderer2DTest {
     private static final int WALL = 0xFF263F65;
     /** Color del texto de los títulos y de los códigos. */
     private static final int INK = 0xFF15283E;
+    /** Color de los íconos que acompañan el título de cada sala. */
+    private static final int ICON = 0xFF1F4863;
     /** Piso de los pasillos y franja de su borde. */
     private static final int CORRIDOR_FLOOR = 0xFFFAFCFF;
     private static final int CORRIDOR_EDGE = 0xFFA7BBD0;
@@ -194,6 +201,17 @@ class Renderer2DTest {
     }
 
     @Test
+    void drawsAnIconBesideTheTitleOfEveryRoom() {
+        for (Area area : layout.getAreas()) {
+            if (!area.hasTitleRow()) {
+                continue;
+            }
+            assertTrue(count(ICON, area.col() * CELL_W + 14, area.row() * CELL_H + 14, 34, 34) > 0,
+                    "Ícono de " + area.title());
+        }
+    }
+
+    @Test
     void paintsTheCorridorsFromEdgeToEdgeWithoutATitle() {
         for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
             int x = corridor.col() * CELL_W;
@@ -204,6 +222,25 @@ class Renderer2DTest {
             assertEquals(CORRIDOR_EDGE, image.getRGB(x + 10, y + 1));
             assertEquals(0, count(INK, x, y, 2 * CELL_W, 40));
         }
+    }
+
+    @Test
+    void doesNotChangeTheBrushOfWhoeverAsksForTheDrawing() {
+        BufferedImage picture = new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = picture.createGraphics();
+        Font font = new Font(Font.MONOSPACED, Font.ITALIC, 7);
+        Stroke stroke = new BasicStroke(3f);
+        graphics.setFont(font);
+        graphics.setStroke(stroke);
+        graphics.setColor(Color.MAGENTA);
+
+        renderer.render(graphics, layout);
+
+        assertSame(font, graphics.getFont());
+        assertSame(stroke, graphics.getStroke());
+        assertEquals(Color.MAGENTA, graphics.getColor());
+        assertEquals(null, graphics.getClip());
+        graphics.dispose();
     }
 
     @Test
