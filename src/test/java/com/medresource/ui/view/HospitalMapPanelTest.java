@@ -59,6 +59,22 @@ class HospitalMapPanelTest {
         return new LayoutFactory().create(new HospitalFactory().create(config));
     }
 
+    /** El plano tal como lo dibuja el renderizador, sin panel ni cámara. */
+    private BufferedImage world() {
+        Dimension size = renderer.worldSize(standard);
+        BufferedImage picture = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = picture.createGraphics();
+        renderer.render(graphics, standard);
+        graphics.dispose();
+        return picture;
+    }
+
+    /** Un punto del piso del primer pasillo, lejos de sus líneas y de sus muebles. */
+    private Point2D corridorFloor() {
+        Position slot = standard.areasOf(ZoneType.CORRIDOR).get(0).slot(0);
+        return new Point2D.Double(slot.col() * CELL_W + 54, slot.row() * CELL_H + 30);
+    }
+
     @Test
     void rejectsMissingData() {
         assertThrows(IllegalArgumentException.class, () -> new HospitalMapPanel(null, renderer));
@@ -94,9 +110,12 @@ class HospitalMapPanelTest {
         BufferedImage image = panel.toImage(world.width + 2 * MARGIN, world.height + 2 * MARGIN);
 
         Position bed = standard.positionOf("H1-C1").orElseThrow();
+        BufferedImage plan = world();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 40, MARGIN + 5));
-        assertEquals(Palette.CARD.getRGB(), image.getRGB(MARGIN + bed.col() * CELL_W + 12, MARGIN + bed.row() * CELL_H + 12));
+        assertEquals(plan.getRGB(40, 5), image.getRGB(MARGIN + 40, MARGIN + 5));
+        int bedX = bed.col() * CELL_W + 27;
+        int bedY = bed.row() * CELL_H + 23;
+        assertEquals(plan.getRGB(bedX, bedY), image.getRGB(MARGIN + bedX, MARGIN + bedY));
         assertEquals(Palette.BACKGROUND.getRGB(), image.getRGB(MARGIN - 1, MARGIN - 1));
     }
 
@@ -104,8 +123,10 @@ class HospitalMapPanelTest {
     void thePlanShrinksToFitASmallerPicture() {
         Dimension world = renderer.worldSize(standard);
         BufferedImage image = panel.toImage(world.width / 2 + 2 * MARGIN, world.height / 2 + 2 * MARGIN);
+        Point2D floor = corridorFloor();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 20, MARGIN + 3));
+        assertEquals(world().getRGB((int) floor.getX(), (int) floor.getY()),
+                image.getRGB(MARGIN + (int) floor.getX() / 2, MARGIN + (int) floor.getY() / 2));
         assertEquals(Palette.BACKGROUND.getRGB(), image.getRGB(MARGIN - 1, MARGIN - 1));
     }
 
@@ -128,7 +149,7 @@ class HospitalMapPanelTest {
         panel.paint(graphics);
         graphics.dispose();
 
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), image.getRGB(MARGIN + 40, MARGIN + 5));
+        assertEquals(world().getRGB(40, 5), image.getRGB(MARGIN + 40, MARGIN + 5));
     }
 
     @Test

@@ -23,15 +23,34 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pruebas del dibujo del plano como tablero de salas.
+ * Pruebas del dibujo del plano en la vista 2D.
  *
- * <p>Dibuja el hospital estándar en una imagen en memoria y comprueba el color de los píxeles.</p>
+ * <p>Dibuja el hospital estándar en una imagen en memoria y comprueba el color de los píxeles. Los colores
+ * que se comprueban son los de los muebles y los muros que dibuja {@link Renderer2D}.</p>
  */
 class Renderer2DTest {
 
     private static final int CELL_W = Renderer2D.CELL_W;
     private static final int CELL_H = Renderer2D.CELL_H;
     private static final int BLACK = 0xFF000000;
+
+    /** Muro oscuro que rodea cada sala. */
+    private static final int WALL = 0xFF263F65;
+    /** Color del texto de los títulos y de los códigos. */
+    private static final int INK = 0xFF15283E;
+    /** Piso de los pasillos y franja de su borde. */
+    private static final int CORRIDOR_FLOOR = 0xFFFAFCFF;
+    private static final int CORRIDOR_EDGE = 0xFFA7BBD0;
+    /** Marco de cada cama y canto de cada mesa de cirugía. */
+    private static final int BED_FRAME = 0xFF344E63;
+    /** Mesa de la sala del personal y carpeta de cada puesto. */
+    private static final int STAFF_TABLE = 0xFF6B9DA2;
+    /** Marco del escritorio de cada consultorio. */
+    private static final int CONSULT_DESK = 0xFF455E86;
+    /** Marco de cada unidad del banco de sangre. */
+    private static final int BLOOD_UNIT = 0xFF841C2F;
+    /** Marco y vidrio de cada puerta. */
+    private static final int DOOR_FRAME = 0xFF37657C;
 
     private final Renderer2D renderer = new Renderer2D();
     private final HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
@@ -56,10 +75,43 @@ class Renderer2DTest {
         return image.getRGB(position.col() * CELL_W + 12, position.row() * CELL_H + 12);
     }
 
-    /** Píxel de la esquina de arriba a la izquierda de una tarjeta pequeña, fuera de la flecha de la entrada. */
-    private int smallCornerOf(Position position) {
-        return image.getRGB(position.col() * CELL_W + 17, position.row() * CELL_H + 17);
+    /** Cuenta los píxeles del color del texto dentro de un rectángulo de la imagen. */
+    private int countLabelPixels(int x, int y, int width, int height) {
+        int count = 0;
+        for (int dy = 0; dy < height; dy++) {
+            for (int dx = 0; dx < width; dx++) {
+                if (image.getRGB(x + dx, y + dy) == Palette.LABEL.getRGB()) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
+
+    /** Píxel de una casilla, contado desde su esquina de arriba a la izquierda. */
+    private int pixelIn(Position position, int dx, int dy) {
+        return image.getRGB(position.col() * CELL_W + dx, position.row() * CELL_H + dy);
+    }
+
+    /** Cuenta los píxeles de un color dentro de un rectángulo de la imagen. */
+    private int count(int color, int x, int y, int width, int height) {
+        int total = 0;
+        for (int dy = 0; dy < height; dy++) {
+            for (int dx = 0; dx < width; dx++) {
+                if (image.getRGB(x + dx, y + dy) == color) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    /** Cuenta los píxeles de un color dentro de una casilla. */
+    private int countInCell(int color, Position position) {
+        return count(color, position.col() * CELL_W, position.row() * CELL_H, CELL_W, CELL_H);
+    }
+
+    // ---------- tamaño, casillas y datos obligatorios ----------
 
     @Test
     void theWorldIsOneCellBigForEachSquareOfThePlan() {
@@ -89,20 +141,69 @@ class Renderer2DTest {
     }
 
     @Test
-    void paintsEveryAreaWithTheColorOfItsZone() {
-        for (Area area : layout.getAreas()) {
-            int pixel = image.getRGB(area.col() * CELL_W + 40, area.row() * CELL_H + 5);
+    void theTwoSeatsOfATableAreAQuarterOfACellLeftAndRightOfItsCenter() {
+        Position table = new Position(2, 3);
+        Point2D center = renderer.centerOf(table);
 
-            assertEquals(Palette.zone(area.zone()).getRGB(), pixel, "Área " + area.title());
+        assertEquals(center.getX() - CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 0)).getX(), 0.0);
+        assertEquals(center.getX() + CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 1)).getX(), 0.0);
+        assertEquals(center.getY(), renderer.seatOf(new StaffSeat(table, 1)).getY(), 0.0);
+        assertThrows(IllegalArgumentException.class, () -> renderer.seatOf(null));
+    }
+
+    @Test
+    void drawsTheSameWhenItIsDrawnAgain() {
+        BufferedImage second = draw();
+
+        for (int y = 0; y < image.getHeight(); y += 7) {
+            for (int x = 0; x < image.getWidth(); x += 5) {
+                assertEquals(image.getRGB(x, y), second.getRGB(x, y));
+            }
+        }
+        assertNotEquals(BLACK, image.getRGB(40, 5));
+    }
+
+    // ---------- salas y pasillos ----------
+
+    @Test
+    void surroundsEveryRoomWithADarkWall() {
+        for (Area area : layout.getAreas()) {
+            if (area.hasTitleRow()) {
+                assertEquals(WALL, image.getRGB(area.col() * CELL_W + 40, area.row() * CELL_H + 5), area.title());
+            }
         }
     }
 
     @Test
     void doesNotPaintWhereThereIsNoArea() {
-        // Fuera del borde de las cajas: la esquina del plano y la franja entre el triage y la sala de espera.
+        // Fuera de los muros: la esquina del plano y la franja entre el triage y la sala de espera.
         Area waiting = layout.areasOf(ZoneType.WAITING_ROOM).get(0);
         assertEquals(BLACK, image.getRGB(0, 0));
         assertEquals(BLACK, image.getRGB(waiting.col() * CELL_W, 40));
+    }
+
+    @Test
+    void writesTheTitleOfEveryAreaThatHasATitleRow() {
+        for (Area area : layout.getAreas()) {
+            if (!area.hasTitleRow()) {
+                continue;
+            }
+            assertTrue(count(INK, area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W, 40) > 0,
+                    "Título de " + area.title());
+        }
+    }
+
+    @Test
+    void paintsTheCorridorsFromEdgeToEdgeWithoutATitle() {
+        for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
+            int x = corridor.col() * CELL_W;
+            int y = corridor.row() * CELL_H;
+
+            assertEquals(CORRIDOR_FLOOR, image.getRGB(x + 1, y + corridor.rows() * CELL_H / 2));
+            assertEquals(CORRIDOR_FLOOR, pixelAtCenterOf(corridor.slot(0)));
+            assertEquals(CORRIDOR_EDGE, image.getRGB(x + 10, y + 1));
+            assertEquals(0, count(INK, x, y, 2 * CELL_W, 40));
+        }
     }
 
     @Test
@@ -117,6 +218,36 @@ class Renderer2DTest {
     @Test
     void drawsAnOperatingTableWhereEachOperatingRoomIs() {
         assertEquals(Palette.OPERATING_TABLE.getRGB(), cardCornerOf(layout.positionOf("Q1").orElseThrow()));
+    }
+
+    @Test
+    void writesTheCodeOnEachCard() {
+        Position bed = layout.positionOf("H1-C1").orElseThrow();
+
+        assertTrue(countLabelPixels(bed.col() * CELL_W, bed.row() * CELL_H, CELL_W, CELL_H) > 0);
+    }
+
+    @Test
+    void anUnusedSquareOfAnAreaHasNoBed() {
+        Position bed = layout.positionOf("H1-C1").orElseThrow();
+        Position unused = new Position(bed.col() + 1, bed.row());
+
+        assertNotEquals(BED_FRAME, pixelIn(unused, 27, 23));
+        assertEquals(0, countInCell(INK, unused));
+    }
+
+    @Test
+    void drawsAChairForEachSeatOfTheWaitingRoom() {
+        for (Position spot : layout.getWaitingSpots()) {
+            assertEquals(Palette.WAITING_SEAT.getRGB(), pixelAtCenterOf(spot));
+        }
+    }
+
+    @Test
+    void drawsASlabForEachPlaceOfTheMorgue() {
+        for (Position spot : layout.getMorgueSpots()) {
+            assertEquals(Palette.MORGUE_SLAB.getRGB(), pixelAtCenterOf(spot));
+        }
     }
 
     @Test
@@ -135,28 +266,11 @@ class Renderer2DTest {
     }
 
     @Test
-    void theTwoSeatsOfATableAreAQuarterOfACellLeftAndRightOfItsCenter() {
-        Position table = new Position(2, 3);
-        Point2D center = renderer.centerOf(table);
+    void drawsADeskWithTheCodeOfEachDoctorInTheConsultingRooms() {
+        Position desk = layout.consultDeskOf("D01").orElseThrow();
 
-        assertEquals(center.getX() - CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 0)).getX(), 0.0);
-        assertEquals(center.getX() + CELL_W / 4.0, renderer.seatOf(new StaffSeat(table, 1)).getX(), 0.0);
-        assertEquals(center.getY(), renderer.seatOf(new StaffSeat(table, 1)).getY(), 0.0);
-        assertThrows(IllegalArgumentException.class, () -> renderer.seatOf(null));
-    }
-
-    @Test
-    void drawsASlabForEachPlaceOfTheMorgue() {
-        for (Position spot : layout.getMorgueSpots()) {
-            assertEquals(Palette.MORGUE_SLAB.getRGB(), pixelAtCenterOf(spot));
-        }
-    }
-
-    @Test
-    void drawsAChairForEachSeatOfTheWaitingRoom() {
-        for (Position spot : layout.getWaitingSpots()) {
-            assertEquals(Palette.WAITING_SEAT.getRGB(), pixelAtCenterOf(spot));
-        }
+        assertEquals(Palette.CONSULT_DESK.getRGB(), cardCornerOf(desk));
+        assertTrue(countLabelPixels(desk.col() * CELL_W, desk.row() * CELL_H, CELL_W, CELL_H) > 0);
     }
 
     @Test
@@ -194,80 +308,6 @@ class Renderer2DTest {
     }
 
     @Test
-    void marksTheEntranceWithAGreenArrow() {
-        Position entrance = layout.getEntrance();
-
-        assertEquals(Palette.ENTRANCE.getRGB(), image.getRGB(entrance.col() * CELL_W + 11, entrance.row() * CELL_H + 24));
-        assertEquals(Palette.zone(ZoneType.TRIAGE).getRGB(), smallCornerOf(entrance));
-    }
-
-    @Test
-    void anUnusedSquareOfAnAreaHasNoCard() {
-        Area hospitalization = layout.areasOf(ZoneType.HOSPITALIZATION).get(0);
-        Position bed = layout.positionOf("H1-C1").orElseThrow();
-        Position unused = new Position(bed.col() + 1, bed.row());
-
-        assertEquals(Palette.zone(ZoneType.HOSPITALIZATION).getRGB(), cardCornerOf(unused));
-        assertEquals(0, countLabelPixels(unused.col() * CELL_W, unused.row() * CELL_H, CELL_W, CELL_H));
-    }
-
-    @Test
-    void writesTheTitleOfEveryAreaThatHasATitleRow() {
-        for (Area area : layout.getAreas()) {
-            if (!area.hasTitleRow()) {
-                continue;
-            }
-            assertTrue(countLabelPixels(area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W, 30) > 0,
-                    "Título de " + area.title());
-        }
-    }
-
-    @Test
-    void writesTheCodeOnEachCard() {
-        Position bed = layout.positionOf("H1-C1").orElseThrow();
-
-        assertTrue(countLabelPixels(bed.col() * CELL_W, bed.row() * CELL_H, CELL_W, CELL_H) > 0);
-    }
-
-    @Test
-    void drawsTheSameWhenItIsDrawnAgain() {
-        BufferedImage second = draw();
-
-        for (int y = 0; y < image.getHeight(); y += 7) {
-            for (int x = 0; x < image.getWidth(); x += 5) {
-                assertEquals(image.getRGB(x, y), second.getRGB(x, y));
-            }
-        }
-        assertNotEquals(BLACK, image.getRGB(40, 5));
-    }
-
-    /** Cuenta los píxeles del color del texto dentro de un rectángulo de la imagen. */
-    private int countLabelPixels(int x, int y, int width, int height) {
-        int count = 0;
-        for (int dy = 0; dy < height; dy++) {
-            for (int dx = 0; dx < width; dx++) {
-                if (image.getRGB(x + dx, y + dy) == Palette.LABEL.getRGB()) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
-    // ---------- pasillos, puertas y consultorios ----------
-
-    @Test
-    void paintsTheCorridorsFromEdgeToEdgeWithoutATitle() {
-        for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
-            int color = Palette.zone(ZoneType.CORRIDOR).getRGB();
-
-            assertEquals(color, image.getRGB(corridor.col() * CELL_W + 1, corridor.row() * CELL_H + CELL_H / 2));
-            assertEquals(color, pixelAtCenterOf(corridor.slot(0)));
-            assertEquals(color, image.getRGB(corridor.col() * CELL_W + 10, corridor.row() * CELL_H + 10));
-        }
-    }
-
-    @Test
     void marksEachDoorOnTheEdgeBetweenItsRoomAndTheCorridor() {
         for (Door door : layout.getDoors()) {
             int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
@@ -292,10 +332,9 @@ class Renderer2DTest {
     }
 
     @Test
-    void drawsADeskWithTheCodeOfEachDoctorInTheConsultingRooms() {
-        Position desk = layout.consultDeskOf("D01").orElseThrow();
+    void marksTheEntranceWithAGreenArrow() {
+        Position entrance = layout.getEntrance();
 
-        assertEquals(Palette.CONSULT_DESK.getRGB(), cardCornerOf(desk));
-        assertTrue(countLabelPixels(desk.col() * CELL_W, desk.row() * CELL_H, CELL_W, CELL_H) > 0);
+        assertEquals(Palette.ENTRANCE.getRGB(), image.getRGB(entrance.col() * CELL_W + 11, entrance.row() * CELL_H + 24));
     }
 }
