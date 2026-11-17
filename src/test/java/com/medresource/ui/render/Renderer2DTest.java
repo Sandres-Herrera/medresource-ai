@@ -48,6 +48,9 @@ class Renderer2DTest {
     /** Piso de los pasillos y franja de su borde. */
     private static final int CORRIDOR_FLOOR = 0xFFFAFCFF;
     private static final int CORRIDOR_EDGE = 0xFFA7BBD0;
+    /** Rojo de los extintores de los pasillos y café de las macetas. */
+    private static final int EXTINGUISHER = 0xFFFA343F;
+    private static final int POT = 0xFF895B36;
     /** Marco de cada cama y canto de cada mesa de cirugía. */
     private static final int BED_FRAME = 0xFF344E63;
     /** Mesa de la sala del personal y carpeta de cada puesto. */
@@ -241,6 +244,35 @@ class Renderer2DTest {
         assertEquals(Color.MAGENTA, graphics.getColor());
         assertEquals(null, graphics.getClip());
         graphics.dispose();
+    }
+
+    // ---------- piezas decorativas ----------
+
+    @Test
+    void putsAFireExtinguisherOnEveryLongCorridor() {
+        for (Area corridor : layout.areasOf(ZoneType.CORRIDOR)) {
+            if (corridor.cols() * CELL_W > 4 * CELL_W + 120) {
+                assertTrue(count(EXTINGUISHER, corridor.col() * CELL_W, corridor.row() * CELL_H,
+                        corridor.cols() * CELL_W, corridor.rows() * CELL_H) > 0, corridor.toString());
+            }
+        }
+    }
+
+    @Test
+    void putsPlantsInTheTriageAndTheWaitingRoom() {
+        for (ZoneType zone : List.of(ZoneType.TRIAGE, ZoneType.WAITING_ROOM)) {
+            Area area = layout.areasOf(zone).get(0);
+
+            assertTrue(count(POT, area.col() * CELL_W, area.row() * CELL_H, area.cols() * CELL_W,
+                    area.rows() * CELL_H) > 0, area.title());
+        }
+    }
+
+    @Test
+    void theDecorationLeavesTheBedsAndTheOperatingTablesFree() {
+        for (String code : layout.getResourceCodes()) {
+            assertEquals(0, countInCell(POT, layout.positionOf(code).orElseThrow()), code);
+        }
     }
 
     @Test
