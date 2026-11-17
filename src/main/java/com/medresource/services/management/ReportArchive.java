@@ -24,6 +24,9 @@ import java.util.Optional;
  * con el resultado de cada paciente y, por último, el reporte. Cada parte se guarda en su propia transacción; si
  * el reporte no se puede guardar, se borra la ejecución recién guardada para no dejarla huérfana. Antes del primer
  * guardado se cargan las enfermedades del catálogo inicial que falten, porque los pacientes las necesitan.</p>
+ *
+ * <p>Borrar un reporte borra también su simulación ({@link #delete}): un reporte y su ejecución se guardan y se
+ * muestran juntos, así que no queda una ejecución sin reporte que ninguna pantalla muestre.</p>
  */
 public class ReportArchive {
 
@@ -119,6 +122,25 @@ public class ReportArchive {
      */
     public Optional<SavedReport> find(int id) {
         return reports.findById(id);
+    }
+
+    /**
+     * Borra un reporte guardado junto con la simulación de la que salió: la ejecución, el resultado y los eventos de
+     * cada paciente, los médicos extra y las comparaciones que usan esa ejecución. Lo hace la base de datos en una
+     * sola operación, al borrar la ejecución, y deja anotado el borrado del reporte en su auditoría.
+     *
+     * <p>Las simulaciones que se hicieron a partir de esta se conservan, pero ya no dicen de cuál vienen. El caso
+     * simulado también se conserva, porque otras simulaciones pueden usarlo.</p>
+     *
+     * @param summary reporte guardado, tal como se ve en la lista
+     * @throws IllegalArgumentException si falta el reporte o su ejecución ya no está guardada
+     * @throws DataAccessException      si la base de datos rechaza la operación; en ese caso no se borra nada
+     */
+    public void delete(SavedReportSummary summary) {
+        if (summary == null) {
+            throw new IllegalArgumentException("El reporte que se va a borrar es obligatorio.");
+        }
+        runs.delete(summary.resultId());
     }
 
     /**
