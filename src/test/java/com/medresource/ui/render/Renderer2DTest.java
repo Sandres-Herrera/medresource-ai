@@ -69,6 +69,8 @@ class Renderer2DTest {
     private static final int SURGICAL_LAMP = 0xFF2F6675;
     /** Manija de cada cajón de la morgue. */
     private static final int DRAWER_HANDLE = 0xFF607587;
+    /** Pantalla del computador de cada escritorio de los consultorios. */
+    private static final int DESK_SCREEN = 0xFF8CD4E3;
 
     private final Renderer2D renderer = new Renderer2D();
     private final HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
@@ -398,6 +400,22 @@ class Renderer2DTest {
 
         assertEquals(CONSULT_DESK, pixelIn(desk, 3, 20));
         assertTrue(countInCell(INK, desk) > 0);
+    }
+
+    @Test
+    void eachDeskOfTheConsultingRoomsHasAScreen() {
+        for (String code : List.of("D01", "D16")) {
+            assertEquals(DESK_SCREEN, pixelIn(layout.consultDeskOf(code).orElseThrow(), 56, 12), code);
+        }
+    }
+
+    @Test
+    void theFurnitureOfTheStaffRoomDrawsNobody() {
+        // Las personas las dibuja quien pinta al personal; el plano solo deja las mesas vacías.
+        Area staffRoom = layout.areasOf(ZoneType.STAFF_ROOM).get(0);
+
+        assertEquals(0, count(Palette.PATIENT_HEAD.getRGB(), staffRoom.col() * CELL_W, staffRoom.row() * CELL_H,
+                staffRoom.cols() * CELL_W, staffRoom.rows() * CELL_H));
     }
 
     @Test
