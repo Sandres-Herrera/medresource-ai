@@ -62,6 +62,8 @@ class Renderer2DTest {
     private static final int BLOOD_UNIT = 0xFF841C2F;
     /** Marco y vidrio de cada puerta. */
     private static final int DOOR_FRAME = 0xFF37657C;
+    /** Cabezal de la lámpara de cada quirófano. */
+    private static final int SURGICAL_LAMP = 0xFF2F6675;
 
     private final Renderer2D renderer = new Renderer2D();
     private final HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
@@ -120,6 +122,14 @@ class Renderer2DTest {
     /** Cuenta los píxeles de un color dentro de una casilla. */
     private int countInCell(int color, Position position) {
         return count(color, position.col() * CELL_W, position.row() * CELL_H, CELL_W, CELL_H);
+    }
+
+    private static int red(int rgb) {
+        return (rgb >> 16) & 0xFF;
+    }
+
+    private static int blue(int rgb) {
+        return rgb & 0xFF;
     }
 
     // ---------- tamaño, casillas y datos obligatorios ----------
@@ -288,11 +298,30 @@ class Renderer2DTest {
     }
 
     @Test
+    void theBlanketIsBlueInHospitalizationAndPinkInTheIntensiveCareUnit() {
+        int hospitalization = pixelIn(layout.positionOf("H1-C1").orElseThrow(), 51, 31);
+        int intensiveCare = pixelIn(layout.positionOf("UCI-C1").orElseThrow(), 51, 31);
+
+        assertTrue(blue(hospitalization) > red(hospitalization), "Hospitalización");
+        assertTrue(red(intensiveCare) > blue(intensiveCare), "UCI");
+    }
+
+    @Test
     void drawsAnOperatingTableWhereEachOperatingRoomIs() {
         for (String code : List.of("Q1", "Q2", "Q3", "Q4")) {
             Position table = layout.positionOf(code).orElseThrow();
 
             assertEquals(OPERATING_TABLE_SIDE, pixelIn(table, 46, 32), code);
+        }
+    }
+
+    @Test
+    void eachOperatingTableHasALampOverIt() {
+        for (String code : List.of("Q1", "Q2", "Q3", "Q4")) {
+            Position table = layout.positionOf(code).orElseThrow();
+
+            assertTrue(count(SURGICAL_LAMP, table.col() * CELL_W, table.row() * CELL_H, 2 * CELL_W, CELL_H) > 0,
+                    code);
         }
     }
 
