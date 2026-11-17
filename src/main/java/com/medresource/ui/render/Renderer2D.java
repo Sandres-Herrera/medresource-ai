@@ -21,6 +21,7 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -104,8 +105,8 @@ public class Renderer2D implements SceneRenderer {
             paintResources(g, layout);
             paintStaffTables(g, layout);
             paintConsultDesks(g, layout);
-            for (Position spot : layout.getMorgueSpots()) card(g, spot, SMALL_INSET, Palette.MORGUE_SLAB);
-            for (Position spot : layout.getWaitingSpots()) card(g, spot, SMALL_INSET, Palette.WAITING_SEAT);
+            for (Position spot : layout.getMorgueSpots()) paintMorgueDrawer(g, spot);
+            paintWaitingGroups(g, layout.getWaitingSpots());
             for (Position spot : layout.getTriageSpots()) {
                 card(g, spot, SMALL_INSET, Palette.TRIAGE_STATION);
                 paintTriageNurse(g, spot);
@@ -799,6 +800,72 @@ public class Renderer2D implements SceneRenderer {
         g.setColor(new Color(45, 88, 116, 100));
         g.drawRoundRect(cx - width / 2, cy - size + 1, width, size + 4, 5, 5);
         g.setColor(INK); g.drawString(code, cx - g.getFontMetrics().stringWidth(code) / 2, cy + 1);
+    }
+
+    /**
+     * Cada par de sillas contiguas de la sala de espera se dibuja como un módulo de tres butacas; una silla
+     * sin pareja, como una butaca sola. Las casillas de las sillas no cambian.
+     */
+    private static void paintWaitingGroups(Graphics2D g, List<Position> spots) {
+        Map<Integer, List<Position>> rows = new TreeMap<>();
+        for (Position spot : spots) {
+            rows.computeIfAbsent(spot.row(), unused -> new ArrayList<>()).add(spot);
+        }
+        for (List<Position> row : rows.values()) {
+            row.sort(Comparator.comparingInt(Position::col));
+            for (int i = 0; i < row.size();) {
+                Position first = row.get(i);
+                boolean paired = i + 1 < row.size() && row.get(i + 1).col() == first.col() + 1;
+                int width = paired ? 112 : 53;
+                int x = first.col() * CELL_W + (paired ? (2 * CELL_W - width) / 2 : (CELL_W - width) / 2);
+                int y = first.row() * CELL_H + 8;
+                int count = paired ? 3 : 1;
+                int seatW = (width - 10) / count;
+                g.setColor(new Color(13, 43, 70, 30));
+                g.fillOval(x + 1, y + 33, width, 8);
+                g.setColor(new Color(0x284761));
+                g.fillRoundRect(x, y + 4, width, 33, 7, 7);
+                g.setColor(new Color(0x18394F));
+                g.fillRect(x + 5, y + 34, 5, 6);
+                g.fillRect(x + width - 10, y + 34, 5, 6);
+                for (int k = 0; k < count; k++) {
+                    int sx = x + 5 + k * seatW;
+                    int cw = seatW - 3;
+                    g.setColor(new Color(0x214C77));
+                    g.fillRoundRect(sx, y + 4, cw, 26, 7, 7);
+                    g.setPaint(new GradientPaint(sx, y + 6, new Color(0x79C5F0),
+                            sx, y + 29, new Color(0x2776AE)));
+                    g.fillRoundRect(sx + 2, y + 6, cw - 4, 21, 5, 5);
+                    g.setColor(new Color(255, 255, 255, 106));
+                    g.drawLine(sx + 5, y + 8, sx + cw - 6, y + 8);
+                    g.setColor(new Color(0x15507F));
+                    g.fillRoundRect(sx + 1, y + 26, cw - 2, 7, 3, 3);
+                    g.setColor(new Color(0x5AA5D4));
+                    g.drawLine(sx + 4, y + 28, sx + cw - 5, y + 28);
+                }
+            i += paired ? 2 : 1;
+            }
+        }
+    }
+
+    /** Cada cajón corresponde exactamente a un puesto real de la morgue. */
+    private static void paintMorgueDrawer(Graphics2D g, Position spot) {
+        int x = spot.col() * CELL_W + 8, y = spot.row() * CELL_H + 5;
+        g.setColor(new Color(25, 46, 66, 38));
+        g.fillRoundRect(x + 5, y + 8, 72, 35, 4, 4);
+        g.setColor(new Color(0x40546A));
+        g.fillRoundRect(x, y, 74, 33, 5, 5);
+        g.setPaint(new GradientPaint(x + 2, y + 1, new Color(0xF6FAFF),
+                x + 2, y + 30, new Color(0x90A7B9)));
+        g.fillRoundRect(x + 3, y + 3, 68, 26, 4, 4);
+        g.setColor(new Color(0x6D8192));
+        g.drawRoundRect(x + 3, y + 3, 68, 26, 4, 4);
+        g.setColor(WHITE);
+        g.drawLine(x + 8, y + 6, x + 65, y + 6);
+        g.setColor(new Color(0x607587));
+        g.fillRoundRect(x + 28, y + 19, 18, 4, 2, 2);
+        g.setColor(new Color(0xD9E5EF));
+        g.drawLine(x + 30, y + 19, x + 42, y + 19);
     }
 
     /** Dibuja cada mesa de la sala del personal con una silla en cada puesto. */

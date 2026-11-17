@@ -54,6 +54,8 @@ class Renderer2DTest {
     /** Marco de cada cama y canto de cada mesa de cirugía. */
     private static final int BED_FRAME = 0xFF344E63;
     private static final int OPERATING_TABLE_SIDE = 0xFF2B6979;
+    /** Marco de cada cajón de la morgue. */
+    private static final int MORGUE_DRAWER = 0xFF40546A;
     /** Mesa de la sala del personal y carpeta de cada puesto. */
     private static final int STAFF_TABLE = 0xFF6B9DA2;
     /** Marco del escritorio de cada consultorio. */
@@ -345,17 +347,21 @@ class Renderer2DTest {
         assertEquals(0, countInCell(INK, unused));
     }
 
+    // ---------- sala de espera y morgue ----------
+
     @Test
-    void drawsAChairForEachSeatOfTheWaitingRoom() {
+    void eachSeatOfTheWaitingRoomIsACushionOfABench() {
         for (Position spot : layout.getWaitingSpots()) {
-            assertEquals(Palette.WAITING_SEAT.getRGB(), pixelAtCenterOf(spot));
+            int cushion = pixelAtCenterOf(spot);
+
+            assertTrue(blue(cushion) > red(cushion) + 60, spot.toString());
         }
     }
 
     @Test
-    void drawsASlabForEachPlaceOfTheMorgue() {
+    void drawsADrawerForEachPlaceOfTheMorgue() {
         for (Position spot : layout.getMorgueSpots()) {
-            assertEquals(Palette.MORGUE_SLAB.getRGB(), pixelAtCenterOf(spot));
+            assertEquals(MORGUE_DRAWER, pixelIn(spot, 9, 21), spot.toString());
         }
     }
 
