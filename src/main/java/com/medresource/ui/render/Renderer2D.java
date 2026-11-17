@@ -23,7 +23,6 @@ import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -60,7 +59,6 @@ public class Renderer2D implements SceneRenderer {
     private static final Color WHITE = new Color(0xFFFFFF);
     private static final int CARD_INSET = 5;
     private static final int SMALL_INSET = 14;
-    private static final int CHAIR_SIZE = 18;
 
     @Override
     public Dimension worldSize(HospitalLayout layout) {
@@ -868,46 +866,69 @@ public class Renderer2D implements SceneRenderer {
         g.drawLine(x + 30, y + 19, x + 42, y + 19);
     }
 
-    /** Dibuja cada mesa de la sala del personal con una silla en cada puesto. */
-    private void paintStaffTables(Graphics2D graphics, HospitalLayout layout) {
-        Set<Position> tables = new TreeSet<>(
-                Comparator.comparingInt(Position::row).thenComparingInt(Position::col));
-        Set<StaffSeat> seats = new HashSet<>();
+    /** Los puestos son muebles VACÍOS: solo StaffPainter dibuja personas en tiempo real. */
+    private static void paintStaffTables(Graphics2D g, HospitalLayout layout) {
+        Set<Position> tables = new TreeSet<>(Comparator.comparingInt(Position::row)
+                .thenComparingInt(Position::col));
         for (String code : layout.getStaffCodes()) {
-            StaffSeat seat = layout.staffSeatOf(code).orElseThrow();
-            tables.add(seat.table());
-            seats.add(seat);
+            tables.add(layout.staffSeatOf(code).orElseThrow().table());
         }
         for (Position table : tables) {
-            card(graphics, table, CARD_INSET, Palette.STAFF_TABLE);
+            int x = table.col() * CELL_W, y = table.row() * CELL_H;
+            g.setColor(new Color(42, 80, 81, 25));
+            g.fillOval(x + 5, y + 37, CELL_W - 10, 7);
+            g.setColor(new Color(0x6B9DA2));
+            g.fillRoundRect(x + 4, y + 7, CELL_W - 8, CELL_H - 13, 8, 8);
+            g.setPaint(new GradientPaint(x + 5, y + 8, new Color(0xFCFFFA),
+                    x + 5, y + 38, new Color(0xD8EAD7)));
+            g.fillRoundRect(x + 7, y + 8, CELL_W - 14, CELL_H - 17, 6, 6);
+            g.setColor(new Color(0xA3C3BE));
+            g.drawLine(x + CELL_W/2, y + 11, x + CELL_W/2, y + 34);
+            // Carpetas o tarjetas en reposo, sin dibujar siluetas humanas.
             for (int side = 0; side < StaffSeat.SEATS_PER_TABLE; side++) {
-                StaffSeat seat = new StaffSeat(table, side);
-                if (seats.contains(seat)) {
-                    Point2D at = seatOf(seat);
-                    RoundRectangle2D chair = new RoundRectangle2D.Double(at.getX() - CHAIR_SIZE / 2.0,
-                            at.getY() - CHAIR_SIZE / 2.0, CHAIR_SIZE, CHAIR_SIZE, 6, 6);
-                    graphics.setColor(Palette.STAFF_SEAT);
-                    graphics.fill(chair);
-                    graphics.setColor(Palette.CARD_BORDER);
-                    graphics.draw(chair);
-                }
+                int cx = (int) Math.round(table.col() * CELL_W + CELL_W / 2.0 +
+                        (side == 0 ? -SEAT_OFFSET : SEAT_OFFSET));
+                int cy = (int) Math.round(table.row() * CELL_H + CELL_H / 2.0);
+                g.setColor(new Color(0xE5F4F8));
+                g.fillRoundRect(cx - 9, cy - 10, 18, 12, 3, 3);
+                g.setColor(new Color(0x95B6C4));
+                g.drawRoundRect(cx - 9, cy - 10, 18, 12, 3, 3);
+                g.setColor(new Color(0x7CA9B4));
+                g.fillRect(cx - 5, cy - 7, 10, 2);
+                g.setColor(new Color(0x7EA4A0));
+                g.fillRoundRect(cx - 10, cy + 5, 20, 9, 4, 4);
             }
         }
     }
 
-    /** Dibuja el escritorio de cada médico en los consultorios, con su código. */
-    private void paintConsultDesks(Graphics2D graphics, HospitalLayout layout) {
+    private static void paintConsultDesks(Graphics2D g, HospitalLayout layout) {
         Map<String, Position> desks = new TreeMap<>();
         for (String code : layout.getStaffCodes()) {
             layout.consultDeskOf(code).ifPresent(desk -> desks.put(code, desk));
         }
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, CODE_SIZE));
-        for (Map.Entry<String, Position> desk : desks.entrySet()) {
-            Position spot = desk.getValue();
-            card(graphics, spot, CARD_INSET, Palette.CONSULT_DESK);
-            graphics.setColor(Palette.LABEL);
-            graphics.drawString(desk.getKey(), spot.col() * CELL_W + CARD_INSET + 5,
-                    spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
+        for (Map.Entry<String, Position> item : desks.entrySet()) {
+            int x = item.getValue().col() * CELL_W, y = item.getValue().row() * CELL_H;
+            g.setColor(new Color(14, 38, 69, 27));
+            g.fillRoundRect(x + 6, y + 10, 77, 36, 6, 6);
+            g.setColor(new Color(0x455E86));
+            g.fillRoundRect(x + 2, y + 5, 80, 38, 6, 6);
+            g.setPaint(new GradientPaint(x + 4, y + 6, new Color(0xFDFEFF),
+                    x + 5, y + 38, new Color(0xC2D1EA)));
+            g.fillRoundRect(x + 5, y + 7, 74, 33, 5, 5);
+            // Tablero diagonal, silla y pantalla.
+            g.setColor(new Color(0xA1B7CF));
+            g.drawArc(x + 10, y + 21, 25, 23, 0, 185);
+            g.setColor(new Color(0x7B9EB5));
+            g.fillOval(x + 9, y + 31, 6, 5);
+            g.setColor(new Color(0x405F79));
+            g.fillRoundRect(x + 53, y + 9, 21, 16, 3, 3);
+            g.setColor(new Color(0x8CD4E3));
+            g.fillRoundRect(x + 55, y + 11, 17, 11, 2, 2);
+            g.setColor(WHITE);
+            g.drawLine(x + 58, y + 14, x + 67, y + 14);
+            g.setColor(new Color(0x6E889B));
+            g.fillRect(x + 61, y + 25, 5, 4);
+            paintCodePill(g, item.getKey(), x + 40, y + 38, 9);
         }
     }
 

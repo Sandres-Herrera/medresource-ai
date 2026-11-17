@@ -58,6 +58,7 @@ class Renderer2DTest {
     private static final int MORGUE_DRAWER = 0xFF40546A;
     /** Mesa de la sala del personal y carpeta de cada puesto. */
     private static final int STAFF_TABLE = 0xFF6B9DA2;
+    private static final int STAFF_FOLDER = 0xFFE5F4F8;
     /** Marco del escritorio de cada consultorio. */
     private static final int CONSULT_DESK = 0xFF455E86;
     /** Marco de cada unidad del banco de sangre. */
@@ -90,19 +91,6 @@ class Renderer2DTest {
     /** Píxel de la esquina de arriba a la izquierda de una tarjeta grande, donde no hay texto. */
     private int cardCornerOf(Position position) {
         return image.getRGB(position.col() * CELL_W + 12, position.row() * CELL_H + 12);
-    }
-
-    /** Cuenta los píxeles del color del texto dentro de un rectángulo de la imagen. */
-    private int countLabelPixels(int x, int y, int width, int height) {
-        int count = 0;
-        for (int dy = 0; dy < height; dy++) {
-            for (int dx = 0; dx < width; dx++) {
-                if (image.getRGB(x + dx, y + dy) == Palette.LABEL.getRGB()) {
-                    count++;
-                }
-            }
-        }
-        return count;
     }
 
     /** Píxel de una casilla, contado desde su esquina de arriba a la izquierda. */
@@ -387,18 +375,20 @@ class Renderer2DTest {
         }
     }
 
+    // ---------- sala del personal y consultorios ----------
+
     @Test
     void drawsATableForEveryTwoMembersOfTheStaff() {
-        assertEquals(Palette.STAFF_TABLE.getRGB(), cardCornerOf(layout.positionOf("D01").orElseThrow()));
-        assertEquals(Palette.STAFF_TABLE.getRGB(), cardCornerOf(layout.positionOf("E01").orElseThrow()));
+        assertEquals(STAFF_TABLE, pixelIn(layout.positionOf("D01").orElseThrow(), 5, 20));
+        assertEquals(STAFF_TABLE, pixelIn(layout.positionOf("E01").orElseThrow(), 5, 20));
     }
 
     @Test
-    void drawsAChairWhereEachMemberOfTheStaffSits() {
+    void leavesAFolderWhereEachMemberOfTheStaffSits() {
         for (String code : List.of("D01", "D02", "E01", "E24")) {
             Point2D seat = renderer.seatOf(layout.staffSeatOf(code).orElseThrow());
 
-            assertEquals(Palette.STAFF_SEAT.getRGB(), image.getRGB((int) seat.getX(), (int) seat.getY()), code);
+            assertEquals(STAFF_FOLDER, image.getRGB((int) seat.getX(), (int) seat.getY() - 3), code);
         }
     }
 
@@ -406,8 +396,8 @@ class Renderer2DTest {
     void drawsADeskWithTheCodeOfEachDoctorInTheConsultingRooms() {
         Position desk = layout.consultDeskOf("D01").orElseThrow();
 
-        assertEquals(Palette.CONSULT_DESK.getRGB(), cardCornerOf(desk));
-        assertTrue(countLabelPixels(desk.col() * CELL_W, desk.row() * CELL_H, CELL_W, CELL_H) > 0);
+        assertEquals(CONSULT_DESK, pixelIn(desk, 3, 20));
+        assertTrue(countInCell(INK, desk) > 0);
     }
 
     @Test
