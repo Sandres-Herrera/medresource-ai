@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas de la lista de comparaciones guardadas.
@@ -62,6 +63,53 @@ class SavedComparisonsPanelTest {
     }
 
     @Test
+    void deletingAComparisonGivesTheWholeRowAndDoesNotDeleteItByItself() {
+        List<SavedComparison> deleted = new ArrayList<>();
+        panel.onDelete(deleted::add);
+        panel.showComparisons(List.of(STRATEGIES, RESOURCES));
+
+        panel.deleteButton(1).doClick();
+
+        assertEquals(List.of(RESOURCES), deleted);
+        assertEquals(2, panel.rowCount());
+        assertEquals(SavedComparisonsPanel.DELETE, panel.deleteButton(0).getText());
+    }
+
+    @Test
+    void openingAndDeletingAreDifferentButtons() {
+        List<Integer> opened = new ArrayList<>();
+        List<SavedComparison> deleted = new ArrayList<>();
+        panel.onOpen(opened::add);
+        panel.onDelete(deleted::add);
+        panel.showComparisons(List.of(STRATEGIES));
+
+        panel.openButton(0).doClick();
+
+        assertEquals(List.of(3), opened);
+        assertEquals(List.of(), deleted);
+    }
+
+    @Test
+    void theQuestionBeforeDeletingSaysThatTheSimulationsAreKept() {
+        String question = SavedComparisonsPanel.deleteQuestion(RESOURCES);
+
+        assertTrue(question.startsWith("¿Eliminar la comparación #1 (ejecuciones #4 vs #6)?"), question);
+        assertTrue(question.contains("se conservan"), question);
+        assertTrue(question.endsWith("Esto no se puede deshacer."), question);
+    }
+
+    @Test
+    void whileDeletingAMessageIsShownInsteadOfTheList() {
+        panel.showComparisons(List.of(STRATEGIES, RESOURCES));
+
+        panel.showDeleting(STRATEGIES);
+
+        assertEquals("Eliminando la comparación #3…", panel.messageText());
+        assertEquals(HomeTheme.MUTED, panel.messageColor());
+        assertEquals(0, panel.rowCount());
+    }
+
+    @Test
     void withoutComparisonsItSaysHowToMakeOne() {
         panel.showComparisons(List.of());
 
@@ -83,8 +131,11 @@ class SavedComparisonsPanelTest {
     }
 
     @Test
-    void needsAListAndAnOpenAction() {
+    void needsAListAndItsActions() {
         assertThrows(IllegalArgumentException.class, () -> panel.showComparisons(null));
         assertThrows(IllegalArgumentException.class, () -> panel.onOpen(null));
+        assertThrows(IllegalArgumentException.class, () -> panel.onDelete(null));
+        assertThrows(IllegalArgumentException.class, () -> panel.showDeleting(null));
+        assertThrows(IllegalArgumentException.class, () -> SavedComparisonsPanel.deleteQuestion(null));
     }
 }
