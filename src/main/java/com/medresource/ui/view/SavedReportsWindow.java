@@ -38,8 +38,9 @@ import java.util.function.Supplier;
  *
  * <p>«Eliminar» pregunta primero, diciendo qué más se borra; si el usuario confirma, borra el reporte con su
  * simulación en segundo plano ({@link ReportArchive#delete}) y vuelve a leer las dos listas, porque también se borran
- * las comparaciones que usaban esa simulación. Si la base de datos rechaza el borrado, lo explica y no se pierde
- * nada.</p>
+ * las comparaciones que usaban esa simulación. En la pestaña de comparaciones, «Eliminar» borra solo la comparación
+ * ({@link ComparisonArchive#delete}); las simulaciones y sus reportes se conservan. Si la base de datos rechaza un
+ * borrado, lo explica y no se pierde nada.</p>
  */
 public final class SavedReportsWindow extends JFrame {
 
@@ -61,6 +62,10 @@ public final class SavedReportsWindow extends JFrame {
     public static final String DELETE_TITLE = "Eliminar reporte guardado";
     /** Título del aviso cuando no se pudo eliminar un reporte. */
     public static final String DELETE_ERROR_TITLE = "No se pudo eliminar el reporte";
+    /** Título de la pregunta antes de eliminar una comparación. */
+    public static final String DELETE_COMPARISON_TITLE = "Eliminar comparación guardada";
+    /** Título del aviso cuando no se pudo eliminar una comparación. */
+    public static final String DELETE_COMPARISON_ERROR_TITLE = "No se pudo eliminar la comparación";
     /** Botón que cancela la eliminación; es el que queda elegido al abrir la pregunta. */
     public static final String CANCEL = "Cancelar";
 
@@ -90,6 +95,7 @@ public final class SavedReportsWindow extends JFrame {
         results.reports().onOpen(this::openReport);
         results.reports().onDelete(this::deleteReport);
         results.comparisons().onOpen(this::openComparison);
+        results.comparisons().onDelete(this::deleteComparison);
         results.onTab(tab -> {
             if (tab == Tab.COMPARISONS) {
                 loadComparisons();
@@ -154,7 +160,7 @@ public final class SavedReportsWindow extends JFrame {
 
     /** Pregunta antes de eliminar un reporte y, si el usuario confirma, lo borra en segundo plano. */
     private void deleteReport(SavedReportSummary summary) {
-        if (archive == null || !confirmDelete(summary)) {
+        if (archive == null || !confirmDelete(DELETE_TITLE, SavedReportsPanel.deleteQuestion(summary))) {
             return;
         }
         ReportArchive current = archive;
@@ -174,10 +180,10 @@ public final class SavedReportsWindow extends JFrame {
     }
 
     /** Muestra la pregunta con «Eliminar» y «Cancelar»; «Cancelar» queda elegido para no borrar por accidente. */
-    private boolean confirmDelete(SavedReportSummary summary) {
+    private boolean confirmDelete(String title, String question) {
         Object[] options = {SavedReportsPanel.DELETE, CANCEL};
-        int answer = JOptionPane.showOptionDialog(this, SavedReportsPanel.deleteQuestion(summary), DELETE_TITLE,
-                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[1]);
+        int answer = JOptionPane.showOptionDialog(this, question, title, JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE, null, options, options[1]);
         return answer == 0;
     }
 
@@ -231,6 +237,25 @@ public final class SavedReportsWindow extends JFrame {
                 panel.showError("La comparación " + id + " ya no está guardada. Vuelve a elegir la pestaña.");
             }
         }, error -> panel.showError("No se pudo abrir la comparación " + id + ": " + detail(error))).execute();
+    }
+
+    /** Pregunta antes de eliminar una comparación y, si el usuario confirma, la borra en segundo plano. */
+    private void deleteComparison(SavedComparison saved) {
+        if (comparisons == null
+                || !confirmDelete(DELETE_COMPARISON_TITLE, SavedComparisonsPanel.deleteQuestion(saved))) {
+            return;
+        }
+        ComparisonArchive current = comparisons;
+        SavedComparisonsPanel panel = results.comparisons();
+        panel.showDeleting(saved);
+        new ArchiveWorker<>(() -> {
+            current.delete(saved.id());
+            return current.saved();
+        }, panel::showComparisons, error -> {
+            JOptionPane.showMessageDialog(this, "No se pudo eliminar la comparación #" + saved.id() + ": "
+                    + detail(error), DELETE_COMPARISON_ERROR_TITLE, JOptionPane.ERROR_MESSAGE);
+            loadComparisons();
+        }).execute();
     }
 
     private static String detail(Throwable error) {
