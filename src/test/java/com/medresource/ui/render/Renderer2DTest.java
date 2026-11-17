@@ -76,6 +76,8 @@ class Renderer2DTest {
     private static final int DRAWER_HANDLE = 0xFF607587;
     /** Pantalla del computador de cada escritorio de los consultorios. */
     private static final int DESK_SCREEN = 0xFF8CD4E3;
+    /** Línea clara que divide el vidrio de cada puerta en dos hojas. */
+    private static final int DOOR_LEAF_LINE = 0xFFEFFDFD;
     private static final int WHITE = 0xFFFFFFFF;
 
     private final Renderer2D renderer = new Renderer2D();
@@ -468,6 +470,16 @@ class Renderer2DTest {
     }
 
     @Test
+    void theGlassOfEachDoorIsSplitInTwoLeaves() {
+        for (Door door : layout.getDoors()) {
+            int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
+            int center = door.inside().col() * CELL_W + CELL_W / 2;
+
+            assertEquals(DOOR_LEAF_LINE, image.getRGB(center, edge), door.toString());
+        }
+    }
+
+    @Test
     void marksTheEntranceWithAGreenSign() {
         Position entrance = layout.getEntrance();
         int left = entrance.col() * CELL_W + 8;
@@ -475,5 +487,15 @@ class Renderer2DTest {
 
         assertEquals(ENTRANCE_SIGN, image.getRGB(left + 30, middle - 7));
         assertEquals(ENTRANCE_SIGN, image.getRGB(left + 2, middle));
+    }
+
+    @Test
+    void theEntranceSignHasAWhiteArrowAndText() {
+        Position entrance = layout.getEntrance();
+        int left = entrance.col() * CELL_W + 8;
+        int middle = entrance.row() * CELL_H + CELL_H / 2;
+
+        assertEquals(WHITE, image.getRGB(left + 7, middle));
+        assertTrue(count(WHITE, left + 18, middle - 9, 42, 18) > 0);
     }
 }
