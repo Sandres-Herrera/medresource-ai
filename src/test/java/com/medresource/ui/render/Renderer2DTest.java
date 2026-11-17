@@ -61,16 +61,22 @@ class Renderer2DTest {
     private static final int STAFF_FOLDER = 0xFFE5F4F8;
     /** Marco del escritorio de cada consultorio. */
     private static final int CONSULT_DESK = 0xFF455E86;
+    /** Marco de la camilla de triage. */
+    private static final int TRIAGE_STRETCHER = 0xFF526F82;
     /** Marco de cada unidad del banco de sangre. */
     private static final int BLOOD_UNIT = 0xFF841C2F;
     /** Marco y vidrio de cada puerta. */
     private static final int DOOR_FRAME = 0xFF37657C;
+    private static final int DOOR_GLASS = 0xFF77BFAF;
+    /** Verde del letrero de la entrada. */
+    private static final int ENTRANCE_SIGN = 0xFF35B97E;
     /** Cabezal de la lámpara de cada quirófano. */
     private static final int SURGICAL_LAMP = 0xFF2F6675;
     /** Manija de cada cajón de la morgue. */
     private static final int DRAWER_HANDLE = 0xFF607587;
     /** Pantalla del computador de cada escritorio de los consultorios. */
     private static final int DESK_SCREEN = 0xFF8CD4E3;
+    private static final int WHITE = 0xFFFFFFFF;
 
     private final Renderer2D renderer = new Renderer2D();
     private final HospitalLayout layout = new LayoutFactory().create(new HospitalFactory().create(HospitalConfig.standard()));
@@ -88,11 +94,6 @@ class Renderer2DTest {
     private int pixelAtCenterOf(Position position) {
         Point2D center = renderer.centerOf(position);
         return image.getRGB((int) center.getX(), (int) center.getY());
-    }
-
-    /** Píxel de la esquina de arriba a la izquierda de una tarjeta grande, donde no hay texto. */
-    private int cardCornerOf(Position position) {
-        return image.getRGB(position.col() * CELL_W + 12, position.row() * CELL_H + 12);
     }
 
     /** Píxel de una casilla, contado desde su esquina de arriba a la izquierda. */
@@ -418,10 +419,12 @@ class Renderer2DTest {
                 staffRoom.cols() * CELL_W, staffRoom.rows() * CELL_H));
     }
 
+    // ---------- triage, banco de sangre, puertas y entrada ----------
+
     @Test
-    void drawsAnOrangeStationForEachTriagePlace() {
+    void drawsAStretcherForEachTriagePlace() {
         for (Position spot : layout.getTriageSpots()) {
-            assertEquals(Palette.TRIAGE_STATION.getRGB(), pixelAtCenterOf(spot));
+            assertEquals(TRIAGE_STRETCHER, pixelIn(spot, 9, 25), spot.toString());
         }
     }
 
@@ -435,21 +438,11 @@ class Renderer2DTest {
     }
 
     @Test
-    void drawsARedCardWithTheLabelForEachBloodType() {
+    void drawsARedUnitWithTheLabelForEachBloodType() {
         for (Position spot : layout.getBloodSpots()) {
-            assertEquals(Palette.BLOOD_UNIT.getRGB(), cardCornerOf(spot));
+            assertEquals(BLOOD_UNIT, pixelIn(spot, 6, 20), spot.toString());
+            assertTrue(countInCell(WHITE, spot) > 0, spot.toString());
         }
-        Position first = layout.getBloodSpots().get(0);
-        int white = 0;
-        for (int y = 0; y < CELL_H; y++) {
-            for (int x = 0; x < CELL_W; x++) {
-                if (image.getRGB(first.col() * CELL_W + x, first.row() * CELL_H + y) == Palette.CARD.getRGB()) {
-                    white++;
-                }
-            }
-        }
-
-        assertTrue(white > 0);
     }
 
     @Test
@@ -458,28 +451,29 @@ class Renderer2DTest {
             int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
             int center = door.inside().col() * CELL_W + CELL_W / 2;
 
-            assertEquals(Palette.DOOR.getRGB(), image.getRGB(center - 10, edge), door.toString());
-            assertEquals(Palette.DOOR.getRGB(), image.getRGB(center + 10, edge), door.toString());
+            assertEquals(DOOR_GLASS, image.getRGB(center - 10, edge), door.toString());
+            assertEquals(DOOR_GLASS, image.getRGB(center + 10, edge), door.toString());
         }
     }
 
     @Test
-    void eachDoorHasAFrameAndALineThatSplitsItInTwoLeaves() {
+    void eachDoorHasAFrameAroundItsGlass() {
         for (Door door : layout.getDoors()) {
             int edge = Math.max(door.inside().row(), door.outside().row()) * CELL_H;
             int left = door.inside().col() * CELL_W + CELL_W / 4;
 
-            assertEquals(Palette.DOOR_FRAME.getRGB(), image.getRGB(left + CELL_W / 4, edge), door.toString());
-            assertEquals(Palette.DOOR_FRAME.getRGB(), image.getRGB(left, edge), door.toString());
-            assertEquals(Palette.DOOR_FRAME.getRGB(),
-                    image.getRGB(left + 10, edge - Renderer2D.DOOR_THICKNESS / 2), door.toString());
+            assertEquals(DOOR_FRAME, image.getRGB(left, edge), door.toString());
+            assertEquals(DOOR_FRAME, image.getRGB(left + CELL_W / 2 - 1, edge), door.toString());
         }
     }
 
     @Test
-    void marksTheEntranceWithAGreenArrow() {
+    void marksTheEntranceWithAGreenSign() {
         Position entrance = layout.getEntrance();
+        int left = entrance.col() * CELL_W + 8;
+        int middle = entrance.row() * CELL_H + CELL_H / 2;
 
-        assertEquals(Palette.ENTRANCE.getRGB(), image.getRGB(entrance.col() * CELL_W + 11, entrance.row() * CELL_H + 24));
+        assertEquals(ENTRANCE_SIGN, image.getRGB(left + 30, middle - 7));
+        assertEquals(ENTRANCE_SIGN, image.getRGB(left + 2, middle));
     }
 }

@@ -57,8 +57,6 @@ public class Renderer2D implements SceneRenderer {
     private static final Color FRAME = new Color(0x263F65);
     private static final Color ICE = new Color(0xEAF8FF);
     private static final Color WHITE = new Color(0xFFFFFF);
-    private static final int CARD_INSET = 5;
-    private static final int SMALL_INSET = 14;
 
     @Override
     public Dimension worldSize(HospitalLayout layout) {
@@ -106,7 +104,7 @@ public class Renderer2D implements SceneRenderer {
             for (Position spot : layout.getMorgueSpots()) paintMorgueDrawer(g, spot);
             paintWaitingGroups(g, layout.getWaitingSpots());
             for (Position spot : layout.getTriageSpots()) {
-                card(g, spot, SMALL_INSET, Palette.TRIAGE_STATION);
+                paintTriageStation(g, spot);
                 paintTriageNurse(g, spot);
             }
             paintBlood(g, layout.getBloodSpots());
@@ -932,100 +930,117 @@ public class Renderer2D implements SceneRenderer {
         }
     }
 
-    /**
-     * Dibuja a la enfermera de triage de un puesto, a la izquierda de su tarjeta: uniforme lila y gorro. No es
-     * personal del motor; siempre está en su puesto.
-     */
-    private void paintTriageNurse(Graphics2D graphics, Position spot) {
+    private static void paintTriageStation(Graphics2D g, Position spot) {
+        int x = spot.col() * CELL_W, y = spot.row() * CELL_H;
+        // Mesa de exploración naranja: estructura y ruedas bajo el colchón, con caída de luz.
+        g.setColor(new Color(0,0,0,35));
+        g.fillOval(x + 9, y + 34, 72, 8);
+        g.setColor(new Color(0x526F82));
+        g.fillRoundRect(x + 8, y + 13, 72, 24, 6, 6);
+        g.setPaint(new GradientPaint(x + 15,y + 15,new Color(0xFFDAB5),
+                x + 15,y + 36,new Color(0xE78135)));
+        g.fillRoundRect(x + 12, y + 16, 65, 17, 4, 4);
+        g.setColor(new Color(0xBA6227));
+        g.fillRoundRect(x + 14, y + 32, 63, 3, 2, 2);
+        g.setColor(new Color(0xF9F6F0));
+        g.fillRoundRect(x + 16, y + 12, 22, 11, 5, 5);
+        g.setColor(new Color(0xC8D9E1));
+        g.drawRoundRect(x + 16, y + 12, 22, 11, 5, 5);
+        g.setColor(new Color(0x4D7186));
+        g.fillRect(x + 16, y + 35, 5, 4); g.fillRect(x + 69, y + 35, 5, 4);
+        g.setColor(new Color(0x253F51));
+        g.fillOval(x + 15, y + 38, 9, 4); g.fillOval(x + 67, y + 38, 9, 4);
+        // Consola de constantes: un equipo visible junto a la cabeza de la camilla.
+        g.setColor(new Color(0x41647D));
+        g.fillRoundRect(x + 47, y + 2, 29, 16, 3, 3);
+        g.setColor(new Color(0xCEEFFF));
+        g.fillRoundRect(x + 49, y + 4, 25, 12, 2, 2);
+        g.setColor(new Color(0x4D9FB6));
+        g.drawPolyline(new int[]{x+51,x+55,x+57,x+61,x+63,x+70},
+                new int[]{y+11,y+11,y+7,y+14,y+10,y+10},6);
+    }
+
+    /** Enfermera decorativa original en el mismo lugar: no es una entidad del motor. */
+    private static void paintTriageNurse(Graphics2D g, Position spot) {
         double cx = spot.col() * CELL_W + TRIAGE_NURSE_X;
         double cy = spot.row() * CELL_H + CELL_H / 2.0 - 2;
-        PatientPainter.paintShadow(graphics, cx, cy, 1.0);
-        graphics.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
-        outlined(graphics, new RoundRectangle2D.Double(cx - 5, cy - 3, 10, 14, 4, 4), Palette.TRIAGE_NURSE);
-        outlined(graphics, new Ellipse2D.Double(cx - 5, cy - 14, 10, 10), Palette.PATIENT_HEAD);
-        outlined(graphics, new RoundRectangle2D.Double(cx - 4, cy - 16, 8, 3, 2, 2),
-                Palette.TRIAGE_NURSE.darker());
+        g.setColor(new Color(0, 0, 0, 45)); g.fill(new Ellipse2D.Double(cx - 10, cy + 10, 20, 4));
+        g.setStroke(new BasicStroke(Palette.OUTLINE_WIDTH));
+        outlined(g, new RoundRectangle2D.Double(cx - 5, cy - 3, 10, 14, 4, 4), Palette.TRIAGE_NURSE);
+        outlined(g, new Ellipse2D.Double(cx - 5, cy - 14, 10, 10), Palette.PATIENT_HEAD);
+        outlined(g, new RoundRectangle2D.Double(cx - 4, cy - 16, 8, 3, 2, 2), Palette.TRIAGE_NURSE.darker());
     }
 
-    private static void outlined(Graphics2D graphics, Shape shape, Color color) {
-        graphics.setColor(color);
-        graphics.fill(shape);
-        graphics.setColor(Palette.PATIENT_OUTLINE);
-        graphics.draw(shape);
+    private static void outlined(Graphics2D g, Shape shape, Color color) {
+        g.setColor(color); g.fill(shape);
+        g.setColor(Palette.PATIENT_OUTLINE); g.draw(shape);
     }
 
-    /** Dibuja una tarjeta roja con el tipo de sangre en cada lugar del banco de sangre. */
-    private void paintBlood(Graphics2D graphics, List<Position> spots) {
+    private static void paintBlood(Graphics2D g, List<Position> spots) {
         BloodType[] types = BloodType.values();
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, CODE_SIZE));
-        for (int index = 0; index < spots.size() && index < types.length; index++) {
-            Position spot = spots.get(index);
-            card(graphics, spot, CARD_INSET, Palette.BLOOD_UNIT);
-            graphics.setColor(Palette.CARD);
-            graphics.drawString(types[index].getLabel(), spot.col() * CELL_W + CARD_INSET + 8,
-                    spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
+        for (int i = 0; i < spots.size() && i < types.length; i++) {
+            Position spot = spots.get(i);
+            int x = spot.col() * CELL_W, y = spot.row() * CELL_H;
+            g.setColor(new Color(0, 0, 0, 39)); g.fillRoundRect(x + 5, y + 35, 75, 5, 3, 3);
+            g.setColor(new Color(0x841C2F)); g.fillRoundRect(x + 5, y + 7, 74, 29, 5, 5);
+            g.setPaint(new GradientPaint(x, y + 9, new Color(0xF14D58), x, y + 34,
+                    new Color(0xB51C30)));
+            g.fillRoundRect(x + 8, y + 9, 68, 24, 4, 4);
+            g.setColor(new Color(255,255,255,100)); g.drawLine(x + 13, y + 12, x + 70, y + 12);
+            g.setColor(new Color(0xF5DEE2));
+            g.fillRoundRect(x + 12, y + 16, 10, 11, 3, 3);
+            g.setColor(new Color(0xB01D32)); g.fillRect(x + 16, y + 18, 3, 7);
+            g.fillRect(x + 14, y + 20, 7, 3);
+            String label = types[i].getLabel();
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
+            g.setColor(WHITE); g.drawString(label, x + 32, y + 27);
         }
     }
 
-    /**
-     * Dibuja una puerta doble sobre el borde que comparten su sala y el pasillo: una sombra suave alrededor, la
-     * barra café con un marco más oscuro y una línea en el centro que la divide en dos hojas.
-     */
-    private void paintDoor(Graphics2D graphics, Door door) {
-        Position inside = door.inside();
-        Position outside = door.outside();
-        boolean across = inside.col() == outside.col();
-        int x;
-        int y;
-        int width;
-        int height;
-        if (across) {
+    /** La puerta continúa en el borde de sus casillas original; solo cambia su apariencia. */
+    private static void paintDoor(Graphics2D g, Door door) {
+        Position inside = door.inside(), outside = door.outside();
+        boolean horizontal = inside.col() == outside.col();
+        int x, y, w, h;
+        if (horizontal) {
             int edge = Math.max(inside.row(), outside.row()) * CELL_H;
             x = inside.col() * CELL_W + CELL_W / 4;
             y = edge - DOOR_THICKNESS / 2;
-            width = CELL_W / 2;
-            height = DOOR_THICKNESS;
+            w = CELL_W / 2;
+            h = DOOR_THICKNESS;
         } else {
             int edge = Math.max(inside.col(), outside.col()) * CELL_W;
             x = edge - DOOR_THICKNESS / 2;
             y = inside.row() * CELL_H + CELL_H / 4;
-            width = DOOR_THICKNESS;
-            height = CELL_H / 2;
+            w = DOOR_THICKNESS;
+            h = CELL_H / 2;
         }
-        graphics.setColor(Palette.DOOR_SHADOW);
-        graphics.fillRect(x - 1, y - 1, width + 2, height + 2);
-        graphics.setColor(Palette.DOOR);
-        graphics.fillRect(x, y, width, height);
-        graphics.setColor(Palette.DOOR_FRAME);
-        graphics.setStroke(new BasicStroke(1f));
-        graphics.drawRect(x, y, width - 1, height - 1);
-        if (across) {
-            graphics.drawLine(x + width / 2, y, x + width / 2, y + height - 1);
+        g.setColor(new Color(0, 0, 0, 45));
+        g.fillRoundRect(x - 3, y - 2, w + 6, h + 5, 2, 2);
+        g.setColor(new Color(0x37657C)); g.fillRect(x - 1, y - 1, w + 2, h + 2);
+        g.setColor(new Color(0xD5F6F5)); g.fillRect(x + 1, y + 1, w - 2, h - 2);
+        g.setColor(new Color(0x77BFAF)); g.fillRect(x + 2, y + 2, w - 4, h - 4);
+        g.setColor(new Color(0xEFFDFD));
+        if (horizontal) {
+            g.drawLine(x + w / 2, y + 1, x + w / 2, y + h - 2);
+            g.drawLine(x + 4, y + 2, x + w - 4, y + 2);
         } else {
-            graphics.drawLine(x, y + height / 2, x + width - 1, y + height / 2);
+            g.drawLine(x + 1, y + h / 2, x + w - 2, y + h / 2);
         }
     }
 
-    /** Marca la entrada con una flecha verde hacia la derecha y el rótulo "ENTRADA". */
-    private void paintEntrance(Graphics2D graphics, Position entrance) {
-        int left = entrance.col() * CELL_W + 8;
-        int top = entrance.row() * CELL_H;
-        int[] xs = {left, left, left + 12};
-        int[] ys = {top + CELL_H / 2 - 8, top + CELL_H / 2 + 8, top + CELL_H / 2};
-        graphics.setColor(Palette.ENTRANCE);
-        graphics.fillPolygon(xs, ys, 3);
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, CODE_SIZE));
-        graphics.drawString("ENTRADA", left + 16, top + CELL_H / 2 + CODE_SIZE / 2 - 1);
-    }
-
-    private void card(Graphics2D graphics, Position spot, int inset, Color color) {
-        RoundRectangle2D card = new RoundRectangle2D.Double(spot.col() * CELL_W + inset,
-                spot.row() * CELL_H + inset, CELL_W - 2 * inset, CELL_H - 2 * inset, 8, 8);
-        graphics.setColor(color);
-        graphics.fill(card);
-        graphics.setColor(Palette.CARD_BORDER);
-        graphics.setStroke(new BasicStroke(1f));
-        graphics.draw(card);
+    private static void paintEntrance(Graphics2D g, Position entrance) {
+        int x = entrance.col() * CELL_W + 8, y = entrance.row() * CELL_H;
+        int cy = y + CELL_H / 2;
+        g.setColor(new Color(0x1D6E43));
+        g.fillRoundRect(x - 2, cy - 11, 64, 22, 4, 4);
+        g.setColor(new Color(0x35B97E));
+        g.fillRoundRect(x, cy - 9, 60, 18, 3, 3);
+        g.setColor(WHITE);
+        g.fillPolygon(new int[]{x + 5, x + 5, x + 17},
+                new int[]{cy - 5, cy + 5, cy}, 3);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        g.drawString("ENTRADA", x + 18, cy + 4);
     }
 
     private static void requireLayout(HospitalLayout layout) {
