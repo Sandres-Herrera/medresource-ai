@@ -53,6 +53,7 @@ class Renderer2DTest {
     private static final int POT = 0xFF895B36;
     /** Marco de cada cama y canto de cada mesa de cirugía. */
     private static final int BED_FRAME = 0xFF344E63;
+    private static final int OPERATING_TABLE_SIDE = 0xFF2B6979;
     /** Mesa de la sala del personal y carpeta de cada puesto. */
     private static final int STAFF_TABLE = 0xFF6B9DA2;
     /** Marco del escritorio de cada consultorio. */
@@ -275,25 +276,35 @@ class Renderer2DTest {
         }
     }
 
-    @Test
-    void drawsACardWhereEachBedIs() {
-        Position bed = layout.positionOf("H1-C1").orElseThrow();
+    // ---------- camas y quirófanos ----------
 
-        assertEquals(Palette.CARD.getRGB(), image.getRGB(bed.col() * CELL_W + 8, bed.row() * CELL_H + 8));
-        assertEquals(Palette.CARD.getRGB(), cardCornerOf(bed));
-        assertEquals(Palette.CARD.getRGB(), cardCornerOf(layout.positionOf("UCI-C1").orElseThrow()));
+    @Test
+    void drawsABedWhereEachBedIs() {
+        for (String code : List.of("H1-C1", "H7-C4", "UCI-C1", "UCI-C6")) {
+            Position bed = layout.positionOf(code).orElseThrow();
+
+            assertEquals(BED_FRAME, pixelIn(bed, 27, 23), code);
+        }
     }
 
     @Test
     void drawsAnOperatingTableWhereEachOperatingRoomIs() {
-        assertEquals(Palette.OPERATING_TABLE.getRGB(), cardCornerOf(layout.positionOf("Q1").orElseThrow()));
+        for (String code : List.of("Q1", "Q2", "Q3", "Q4")) {
+            Position table = layout.positionOf(code).orElseThrow();
+
+            assertEquals(OPERATING_TABLE_SIDE, pixelIn(table, 46, 32), code);
+        }
     }
 
     @Test
-    void writesTheCodeOnEachCard() {
-        Position bed = layout.positionOf("H1-C1").orElseThrow();
+    void writesTheCodeUnderEachBedAndEachOperatingTable() {
+        for (String code : layout.getResourceCodes()) {
+            Position place = layout.positionOf(code).orElseThrow();
 
-        assertTrue(countLabelPixels(bed.col() * CELL_W, bed.row() * CELL_H, CELL_W, CELL_H) > 0);
+            int width = Math.min(2 * CELL_W, image.getWidth() - place.col() * CELL_W);
+
+            assertTrue(count(INK, place.col() * CELL_W, place.row() * CELL_H + 30, width, 18) > 0, code);
+        }
     }
 
     @Test

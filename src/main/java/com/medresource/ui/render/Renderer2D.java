@@ -563,23 +563,242 @@ public class Renderer2D implements SceneRenderer {
         g.setColor(WHITE); g.drawString("i", centerX - 2, y + 26);
     }
 
-    /** Dibuja la tarjeta de cada recurso con su código, en orden de código para que el dibujo sea estable. */
-    private void paintResources(Graphics2D graphics, HospitalLayout layout) {
+    /** Camas con almohada, manta, ruedas, dos monitores y biombo, sin mover su casilla. */
+    private void paintResources(Graphics2D g, HospitalLayout layout) {
         Map<String, Position> ordered = new TreeMap<>();
         for (String code : layout.getResourceCodes()) {
             ordered.put(code, layout.positionOf(code).orElseThrow());
         }
-        graphics.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, CODE_SIZE));
-        for (Map.Entry<String, Position> resource : ordered.entrySet()) {
-            Position spot = resource.getValue();
-            Color color = layout.areaAt(spot).orElseThrow().zone() == ZoneType.OPERATING_ROOM
-                    ? Palette.OPERATING_TABLE
-                    : Palette.CARD;
-            card(graphics, spot, CARD_INSET, color);
-            graphics.setColor(Palette.LABEL);
-            graphics.drawString(resource.getKey(), spot.col() * CELL_W + CARD_INSET + 5,
-                    spot.row() * CELL_H + CELL_H / 2 + CODE_SIZE / 2 - 1);
+        for (Map.Entry<String, Position> item : ordered.entrySet()) {
+            Position spot = item.getValue();
+            ZoneType zone = layout.areaAt(spot).orElseThrow().zone();
+            if (zone == ZoneType.HOSPITALIZATION || zone == ZoneType.ICU) {
+                paintBed(g, spot, item.getKey(), zone == ZoneType.ICU);
+            } else if (zone == ZoneType.OPERATING_ROOM) {
+                paintOperatingTable(g, spot, item.getKey());
+            } else {
+                // El modelo puede contener otros tipos de recurso en algunas configuraciones.
+                paintFallbackCard(g, spot, item.getKey());
+            }
         }
+    }
+
+    /**
+     * Cama vista desde arriba con profundidad propia: somier con cantos, cabecera, almohada, manta
+     * (azul en hospitalización, rosada en la UCI) y dos ruedas, con sus monitores y su biombo. Todo
+     * queda dentro de la fila real del plano y no mueve la casilla donde se ubica el paciente.
+     */
+    private static void paintBed(Graphics2D g, Position spot, String code, boolean icu) {
+        int x = spot.col() * CELL_W, y = spot.row() * CELL_H;
+        int bx = x + 29, by = y + 3, bw = 45, bh = 35;
+        g.setColor(new Color(26, 57, 78, 30));
+        g.fillOval(bx - 2, by + bh, bw + 14, 8);
+        g.setColor(new Color(0x344E63));
+        g.fillRoundRect(bx - 3, by + 3, bw + 7, bh - 1, 8, 8);
+        // Canto lateral del somier: la perspectiva aparece en las dos caras.
+        g.setColor(new Color(0x67899B));
+        g.fillPolygon(new int[]{bx + bw - 1, bx + bw + 5, bx + bw + 5, bx + bw - 1},
+                new int[]{by + 6, by + 10, by + bh + 1, by + bh - 4}, 4);
+        g.setPaint(new GradientPaint(bx + 3, by + 5, WHITE, bx + bw - 3, by + bh, new Color(0xB9D4E2)));
+        g.fillRoundRect(bx + 1, by + 5, bw - 2, bh - 5, 6, 6);
+        // Cabecera con borde oscuro y almohada levantada.
+        g.setColor(new Color(0x2B4C62));
+        g.fillRoundRect(bx - 3, by - 2, bw + 5, 12, 5, 5);
+        g.setPaint(new GradientPaint(bx, by - 1, WHITE, bx, by + 9, new Color(0xB6CCD8)));
+        g.fillRoundRect(bx, by, bw - 1, 9, 5, 5);
+        g.setColor(new Color(0x8DADBC));
+        g.drawRoundRect(bx + 4, by + 1, bw - 10, 6, 3, 3);
+        g.setColor(new Color(0xD3E5F0));
+        g.fillRoundRect(bx + 9, by + 11, bw - 17, 9, 4, 4);
+        g.setColor(WHITE);
+        g.fillRoundRect(bx + 9, by + 10, bw - 19, 8, 4, 4);
+        // Manta con borde doblado, sombra inferior y luz que recorre su longitud.
+        g.setPaint(new GradientPaint(bx + 2, by + 19,
+                icu ? new Color(0xFFE4EC) : new Color(0xB3E8FC),
+                bx + bw - 3, by + 34,
+                icu ? new Color(0xE58EA8) : new Color(0x368FC9)));
+        g.fillRoundRect(bx + 4, by + 19, bw - 9, 16, 4, 4);
+        g.setColor(new Color(255, 255, 255, 167));
+        g.drawLine(bx + 7, by + 21, bx + bw - 8, by + 21);
+        g.drawLine(bx + 7, by + 23, bx + 7, by + 31);
+        g.setColor(new Color(0x6E96AE));
+        g.fillRoundRect(bx - 5, by + 17, 3, 17, 2, 2);
+        g.fillRoundRect(bx + bw + 1, by + 17, 3, 17, 2, 2);
+        g.setColor(new Color(0xD8ECF2));
+        g.drawLine(bx - 4, by + 19, bx - 4, by + 32);
+        g.drawLine(bx + bw + 2, by + 19, bx + bw + 2, by + 32);
+        g.setColor(new Color(0x536B7E));
+        g.fillRect(bx, by + bh - 1, 5, 5);
+        g.fillRect(bx + bw - 5, by + bh - 1, 5, 5);
+        g.setColor(new Color(0x2C4051));
+        g.fillOval(bx - 1, by + bh + 3, 7, 4);
+        g.fillOval(bx + bw - 6, by + bh + 3, 7, 4);
+
+        if (icu) {
+            paintBedsideMonitor(g, x + 78, y + 11, true);
+            paintIVStand(g, x + 7, y + 4);
+            paintCurtain(g, x + 130, y + 4, 14, 35);
+        } else {
+            paintBedsideMonitor(g, x + 3, y + 11, false);
+            paintBedsideMonitor(g, x + 78, y + 11, false);
+            paintCurtain(g, x + 130, y + 4, 14, 35);
+        }
+        paintCodePill(g, code, bx + bw / 2, y + 41, 9);
+    }
+
+    /** Equipo con pantalla, ECG, soporte rodante y bandeja lateral (no recurso del motor). */
+    private static void paintBedsideMonitor(Graphics2D g, int x, int y, boolean icu) {
+        g.setColor(new Color(18, 55, 68, 30));
+        g.fillOval(x + 1, y + 23, 22, 5);
+        g.setColor(new Color(0x456F80));
+        g.fillRect(x + 10, y + 13, 3, 11);
+        g.setColor(new Color(0x789AAA));
+        g.fillRoundRect(x + 2, y + 23, 19, 3, 2, 2);
+        g.setColor(new Color(0x314453));
+        g.fillRoundRect(x + 2, y, 21, 17, 3, 3);
+        g.setColor(new Color(0x113941));
+        g.fillRoundRect(x + 4, y + 2, 17, 12, 2, 2);
+        g.setColor(new Color(0x7AF7B2));
+        g.setStroke(new BasicStroke(1.3f));
+        g.drawPolyline(new int[]{x + 5, x + 8, x + 9, x + 11, x + 14, x + 16, x + 20},
+                new int[]{y + 8, y + 8, y + 5, y + 11, y + 7, y + 8, y + 8}, 7);
+        g.setColor(new Color(0xD9EBEF));
+        g.fillRect(x + 7, y + 16, 10, 3);
+        if (icu) {
+            g.setColor(new Color(0xC5DFE6));
+            g.fillRoundRect(x + 7, y + 20, 11, 4, 2, 2);
+        }
+    }
+
+    private static void paintIVStand(Graphics2D g, int x, int y) {
+        g.setStroke(new BasicStroke(1.4f));
+        g.setColor(new Color(0x466B85));
+        g.drawLine(x + 8, y + 2, x + 8, y + 33);
+        g.drawLine(x + 2, y + 34, x + 15, y + 34);
+        g.drawLine(x + 8, y + 1, x + 15, y + 1);
+        g.drawLine(x + 15, y + 1, x + 15, y + 5);
+        g.setColor(new Color(0xDAF8FB));
+        g.fillRoundRect(x + 11, y + 5, 9, 11, 3, 3);
+        g.setColor(new Color(0x62A4C1));
+        g.drawRoundRect(x + 11, y + 5, 9, 11, 3, 3);
+        g.setColor(new Color(0x354F61));
+        g.fillOval(x + 1, y + 33, 5, 3);
+        g.fillOval(x + 12, y + 33, 5, 3);
+    }
+
+    /** Biombo de vidrio esmerilado con marco, reflejos, pliegues y base de apoyo. */
+    private static void paintCurtain(Graphics2D g, int x, int y, int w, int h) {
+        g.setColor(new Color(19, 49, 72, 40));
+        g.fillRoundRect(x + 4, y + 5, w, h + 2, 4, 4);
+        g.setColor(new Color(0x245777));
+        g.fillRoundRect(x, y, w, h, 3, 3);
+        g.setPaint(new GradientPaint(x + 2, y + 2, new Color(0xD3F8FF),
+                x + w - 2, y + h - 2, new Color(0x248ABE)));
+        g.fillRoundRect(x + 2, y + 3, w - 4, h - 7, 2, 2);
+        g.setColor(new Color(0x1B6E9D));
+        g.fillRect(x, y + h - 6, w, 5);
+        g.setColor(new Color(255, 255, 255, 178));
+        for (int i = 4; i < w - 2; i += 5) {
+            g.drawLine(x + i, y + 6, x + i, y + h - 9);
+        }
+        g.setColor(new Color(0x80E3F7));
+        g.fillRect(x + 2, y + 4, 2, h - 12);
+        g.setColor(new Color(0x42677C));
+        g.fillRect(x - 3, y - 2, w + 6, 3);
+        g.fillRect(x + w / 2 - 1, y + h, 3, 5);
+        g.fillRoundRect(x + w / 2 - 6, y + h + 4, 12, 3, 2, 2);
+    }
+
+    /** Lámpara quirúrgica suspendida y despejada del tablero, dejando libre el espacio para el paciente. */
+    private static void paintOverheadSurgicalLamp(Graphics2D g, int x, int y) {
+        g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(0x4A7488));
+        // brazo suspendido desde la zona superior derecha del quirófano
+        g.drawLine(x + 18, y - 16, x + 10, y - 4);
+        g.drawLine(x + 10, y - 4, x - 2, y + 2);
+        g.drawLine(x - 2, y + 2, x - 8, y + 12);
+
+        g.setColor(new Color(0xA2C4CB));
+        g.fillOval(x + 7, y - 8, 7, 7);
+        g.fillOval(x - 3, y - 1, 7, 7);
+
+        // dos cabezales compactos claramente suspendidos sobre la mesa, sin invadir su superficie
+        paintLampHead(g, x - 20, y + 10, 18, 10);
+        paintLampHead(g, x + 1, y + 8, 18, 10);
+    }
+
+    private static void paintLampHead(Graphics2D g, int x, int y, int w, int h) {
+        g.setColor(new Color(0x2F6675));
+        g.fillOval(x, y, w, h + 3);
+        g.setColor(new Color(0xD7FBF4));
+        g.fillOval(x + 2, y, w - 3, h);
+        g.setColor(new Color(0x77C2C4));
+        g.fillOval(x + 4, y + 2, w - 7, h - 4);
+        g.setColor(new Color(0xF9FFF2));
+        g.fillOval(x + (w / 2) - 4, y + 3, 8, 4);
+    }
+
+    /** Mesa quirúrgica con apoyacabezas, base elevadora, cantos y lámpara articulada superpuesta. */
+    private static void paintOperatingTable(Graphics2D g, Position spot, String code) {
+        int x = spot.col() * CELL_W, y = spot.row() * CELL_H;
+        // La mesa utiliza visualmente ambas columnas del quirófano, pero su ancla (slot) sigue igual.
+        int bx = x + 44, by = y + 11;
+        g.setColor(new Color(23, 60, 63, 37));
+        g.fillOval(bx - 7, by + 26, 82, 10);
+
+        // Plataforma de elevación y ruedas en la zona sombreada, bajo el tablero.
+        g.setColor(new Color(0x3D7383));
+        g.fillRect(bx + 29, by + 17, 8, 18);
+        g.setColor(new Color(0x6F9DA8));
+        g.fillRoundRect(bx + 15, by + 32, 41, 5, 3, 3);
+        g.setColor(new Color(0x365769));
+        g.fillOval(bx + 17, by + 35, 7, 4);
+        g.fillOval(bx + 47, by + 35, 7, 4);
+
+        // Borde lateral oscuro y frente con volumen (no una barra plana).
+        g.setColor(new Color(0x2B6979));
+        Path2D side = new Path2D.Double();
+        side.moveTo(bx - 2, by + 9);
+        side.lineTo(bx + 65, by + 9);
+        side.lineTo(bx + 69, by + 16);
+        side.lineTo(bx + 64, by + 23);
+        side.lineTo(bx, by + 23);
+        side.closePath();
+        g.fill(side);
+        g.setPaint(new GradientPaint(bx, by, new Color(0xE4FFF7), bx + 59, by + 17, new Color(0x67CAC8)));
+        g.fillRoundRect(bx, by + 6, 64, 13, 6, 6);
+        g.setColor(new Color(0x74AFBA));
+        g.drawRoundRect(bx, by + 6, 64, 13, 6, 6);
+        g.setColor(new Color(255, 255, 255, 188));
+        g.drawLine(bx + 5, by + 8, bx + 58, by + 8);
+        g.setColor(new Color(0xC5F1E7));
+        g.fillRoundRect(bx - 6, by + 7, 13, 11, 4, 4);
+        g.setColor(new Color(0x4D97A0));
+        g.drawRoundRect(bx - 6, by + 7, 13, 11, 4, 4);
+        g.setColor(new Color(0xAEE8DA));
+        g.fillRoundRect(bx + 54, by + 8, 14, 10, 4, 4);
+
+        // La articulación y el foco se dibujan en ÚLTIMO LUGAR para verse suspendidos SOBRE la mesa.
+        paintOverheadSurgicalLamp(g, bx + 50, by - 16);
+        paintCodePill(g, code, bx + 32, y + 41, 9);
+    }
+
+    private static void paintFallbackCard(Graphics2D g, Position spot, String code) {
+        int x = spot.col() * CELL_W, y = spot.row() * CELL_H;
+        g.setColor(FRAME); g.fillRoundRect(x + 6, y + 7, 72, 33, 5, 5);
+        g.setColor(ICE); g.fillRoundRect(x + 9, y + 9, 66, 28, 4, 4);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, CODE_SIZE));
+        g.setColor(INK); g.drawString(code, x + 13, y + 27);
+    }
+
+    private static void paintCodePill(Graphics2D g, String code, int cx, int cy, int size) {
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, size));
+        int width = Math.max(28, g.getFontMetrics().stringWidth(code) + 11);
+        g.setColor(new Color(255, 255, 255, 229));
+        g.fillRoundRect(cx - width / 2, cy - size + 1, width, size + 4, 5, 5);
+        g.setColor(new Color(45, 88, 116, 100));
+        g.drawRoundRect(cx - width / 2, cy - size + 1, width, size + 4, 5, 5);
+        g.setColor(INK); g.drawString(code, cx - g.getFontMetrics().stringWidth(code) / 2, cy + 1);
     }
 
     /** Dibuja cada mesa de la sala del personal con una silla en cada puesto. */
