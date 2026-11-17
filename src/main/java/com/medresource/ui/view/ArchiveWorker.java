@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Hace en segundo plano una operación con el archivo de reportes (guardar, listar o abrir), para que la ventana no
+ * Hace en segundo plano una operación con el archivo de reportes (guardar, listar, abrir o borrar), para que la ventana no
  * se congele mientras se espera a la base de datos.
  *
  * <p>El resultado o el error llegan en el hilo de Swing, listos para mostrarse.</p>

@@ -35,6 +35,11 @@ import java.util.function.Supplier;
  * se abre el formulario de la simulación con el caso fijo para cambiar lo que se quiera probar, y la simulación
  * empieza como cualquier otra. Si el equipo no tiene configurada la base de datos o la consulta falla, la ventana lo
  * explica.</p>
+ *
+ * <p>«Eliminar» pregunta primero, diciendo qué más se borra; si el usuario confirma, borra el reporte con su
+ * simulación en segundo plano ({@link ReportArchive#delete}) y vuelve a leer las dos listas, porque también se borran
+ * las comparaciones que usaban esa simulación. Si la base de datos rechaza el borrado, lo explica y no se pierde
+ * nada.</p>
  */
 public final class SavedReportsWindow extends JFrame {
 
@@ -52,8 +57,14 @@ public final class SavedReportsWindow extends JFrame {
     public static final String ERROR_TEXT = "No se pudieron leer los reportes guardados: ";
     /** Mensaje cuando la consulta de comparaciones falla, antes del detalle. */
     public static final String COMPARISONS_ERROR_TEXT = "No se pudieron leer las comparaciones guardadas: ";
+    /** Título de la pregunta antes de eliminar un reporte. */
+    public static final String DELETE_TITLE = "Eliminar reporte guardado";
+    /** Título del aviso cuando no se pudo eliminar un reporte. */
+    public static final String DELETE_ERROR_TITLE = "No se pudo eliminar el reporte";
+    /** Botón que cancela la eliminación; es el que queda elegido al abrir la pregunta. */
+    public static final String CANCEL = "Cancelar";
 
-    private static final Dimension SIZE = new Dimension(1120, 640);
+    private static final Dimension SIZE = new Dimension(1240, 640);
     private static final Dimension MIN_SIZE = new Dimension(720, 420);
 
     private final SavedResultsPanel results = new SavedResultsPanel();
@@ -77,6 +88,7 @@ public final class SavedReportsWindow extends JFrame {
         setMinimumSize(ScreenFit.fit(MIN_SIZE, usable));
         setBounds(ScreenFit.centered(ScreenFit.fit(SIZE, usable), usable));
         results.reports().onOpen(this::openReport);
+        results.reports().onDelete(this::deleteReport);
         results.comparisons().onOpen(this::openComparison);
         results.onTab(tab -> {
             if (tab == Tab.COMPARISONS) {
@@ -138,6 +150,35 @@ public final class SavedReportsWindow extends JFrame {
                 panel.showError("El reporte " + id + " ya no está guardado. Cierra y vuelve a abrir esta ventana.");
             }
         }, error -> panel.showError("No se pudo abrir el reporte " + id + ": " + detail(error))).execute();
+    }
+
+    /** Pregunta antes de eliminar un reporte y, si el usuario confirma, lo borra en segundo plano. */
+    private void deleteReport(SavedReportSummary summary) {
+        if (archive == null || !confirmDelete(summary)) {
+            return;
+        }
+        ReportArchive current = archive;
+        SavedReportsPanel panel = results.reports();
+        panel.showDeleting(summary);
+        new ArchiveWorker<>(() -> {
+            current.delete(summary);
+            return current.summaries();
+        }, remaining -> {
+            panel.showReports(remaining);
+            loadComparisons();
+        }, error -> {
+            JOptionPane.showMessageDialog(this, "No se pudo eliminar el reporte de la ejecución #"
+                    + summary.resultId() + ": " + detail(error), DELETE_ERROR_TITLE, JOptionPane.ERROR_MESSAGE);
+            loadReports();
+        }).execute();
+    }
+
+    /** Muestra la pregunta con «Eliminar» y «Cancelar»; «Cancelar» queda elegido para no borrar por accidente. */
+    private boolean confirmDelete(SavedReportSummary summary) {
+        Object[] options = {SavedReportsPanel.DELETE, CANCEL};
+        int answer = JOptionPane.showOptionDialog(this, SavedReportsPanel.deleteQuestion(summary), DELETE_TITLE,
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[1]);
+        return answer == 0;
     }
 
     /**

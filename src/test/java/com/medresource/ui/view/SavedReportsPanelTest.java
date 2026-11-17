@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pruebas de la lista de reportes guardados.
@@ -63,6 +64,59 @@ class SavedReportsPanelTest {
     }
 
     @Test
+    void deletingAReportGivesTheWholeRowAndDoesNotDeleteItByItself() {
+        SavedReportsPanel panel = new SavedReportsPanel();
+        List<SavedReportSummary> deleted = new ArrayList<>();
+        panel.onDelete(deleted::add);
+        panel.showReports(List.of(CATASTROPHE, NORMAL));
+
+        panel.deleteButton(1).doClick();
+
+        assertEquals(List.of(NORMAL), deleted);
+        assertEquals(2, panel.rowCount());
+        assertEquals(SavedReportsPanel.DELETE, panel.deleteButton(0).getText());
+    }
+
+    @Test
+    void openingAndDeletingAreDifferentButtons() {
+        SavedReportsPanel panel = new SavedReportsPanel();
+        List<Integer> opened = new ArrayList<>();
+        List<SavedReportSummary> deleted = new ArrayList<>();
+        panel.onOpen(opened::add);
+        panel.onDelete(deleted::add);
+        panel.showReports(List.of(CATASTROPHE));
+
+        panel.openButton(0).doClick();
+
+        assertEquals(List.of(4), opened);
+        assertEquals(List.of(), deleted);
+    }
+
+    @Test
+    void theQuestionBeforeDeletingSaysWhatElseIsDeleted() {
+        String question = SavedReportsPanel.deleteQuestion(CATASTROPHE);
+
+        assertTrue(question.startsWith("¿Eliminar el reporte de la ejecución #9 ("
+                + Scenario.CATASTROPHE.getDisplayName() + ", semilla 7)?"), question);
+        assertTrue(question.contains("resultado de cada paciente"), question);
+        assertTrue(question.contains("comparaciones"), question);
+        assertTrue(question.contains("se conservan"), question);
+        assertTrue(question.endsWith("Esto no se puede deshacer."), question);
+    }
+
+    @Test
+    void whileDeletingAMessageIsShownInsteadOfTheList() {
+        SavedReportsPanel panel = new SavedReportsPanel();
+        panel.showReports(List.of(CATASTROPHE, NORMAL));
+
+        panel.showDeleting(CATASTROPHE);
+
+        assertEquals("Eliminando el reporte de la ejecución #9…", panel.messageText());
+        assertEquals(HomeTheme.MUTED, panel.messageColor());
+        assertEquals(0, panel.rowCount());
+    }
+
+    @Test
     void withoutReportsOrDatabaseOrWithAnErrorAMessageIsShown() {
         SavedReportsPanel panel = new SavedReportsPanel();
         panel.showReports(List.of(CATASTROPHE));
@@ -86,6 +140,9 @@ class SavedReportsPanelTest {
 
         assertThrows(IllegalArgumentException.class, () -> panel.showReports(null));
         assertThrows(IllegalArgumentException.class, () -> panel.onOpen(null));
+        assertThrows(IllegalArgumentException.class, () -> panel.onDelete(null));
+        assertThrows(IllegalArgumentException.class, () -> panel.showDeleting(null));
+        assertThrows(IllegalArgumentException.class, () -> SavedReportsPanel.deleteQuestion(null));
     }
 
     @Test
