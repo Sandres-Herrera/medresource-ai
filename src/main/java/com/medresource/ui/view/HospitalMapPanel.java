@@ -13,6 +13,7 @@ import com.medresource.ui.render.PatientPainter;
 import com.medresource.ui.render.PatientPicker;
 import com.medresource.ui.render.PlanAlert;
 import com.medresource.ui.render.PorterMarker;
+import com.medresource.ui.render.RestingPatient2DPainter;
 import com.medresource.ui.render.SceneRenderer;
 import com.medresource.ui.render.StaffMarker;
 import com.medresource.ui.render.StaffPainter;
@@ -34,6 +35,7 @@ import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -63,6 +65,10 @@ import java.util.function.Function;
  * siguen en los mismos puntos del plano y solo cambia cómo se dibujan. La cámara, la rueda, el arrastre, el clic y el
  * seguimiento funcionan igual en las dos vistas. Encima del plano también dibuja a los camilleros que le den con
  * {@link #showPorters}. Los monitores de la UCI se mueven con el reloj real.</p>
+ *
+ * <p>En la vista 2D, el paciente que ya llegó a su cama de hospitalización o de UCI, o a su mesa de cirugía, se ve
+ * acostado bajo una sábana del color de su triage ({@link RestingPatient2DPainter}); al llegar pasa de estar de pie a
+ * acostado en menos de medio segundo real. Es solo dibujo: el motor y la vista 2.5D no cambian.</p>
  *
  * <p>En la vista 2.5D la cámara es libre: arrastrando con el botón derecho el hospital gira (de lado a lado) y la
  * mirada sube hasta verlo desde arriba (de arriba a abajo) ({@link #rotateBy}); la brújula de arriba a la derecha
@@ -131,6 +137,7 @@ public final class HospitalMapPanel extends JPanel {
     private final transient SceneRenderer renderer;
     private final transient IsometricRenderer isometricRenderer;
     private final transient PatientPainter patientPainter = new PatientPainter();
+    private final transient RestingPatient2DPainter restingPatient2D = new RestingPatient2DPainter();
     private final transient StaffPainter staffPainter = new StaffPainter();
     private transient List<StaffMarker> staffMarkers = List.of();
     private transient List<PatientMarker> markers = List.of();
@@ -302,6 +309,7 @@ public final class HospitalMapPanel extends JPanel {
      */
     public void showLayout(HospitalLayout layout) {
         this.layout = requireLayout(layout);
+        restingPatient2D.clear();
         centerX = Double.NaN;
         centerY = Double.NaN;
         zoomLevel = 1;
@@ -329,6 +337,10 @@ public final class HospitalMapPanel extends JPanel {
         }
         this.markers = List.copyOf(markers);
         this.overflow = overflow;
+        restingPatient2D.observe(layout, this.markers);
+        if (!isometric && restingPatient2D.transitioning()) {
+            animation.start();
+        }
         if (hoverCell != null) {
             hoverInfo = placeInfo.apply(hoverCell).orElse(null);
         }
@@ -776,7 +788,8 @@ public final class HospitalMapPanel extends JPanel {
     }
 
     /**
-     * Busca el paciente que se ve en un punto del panel.
+     * Busca el paciente que se ve en un punto del panel. En la vista 2D, un paciente acostado en una cama o en
+     * una mesa de cirugía se encuentra haciendo clic sobre ese mueble.
      *
      * @param screenX coordenada x en el panel, en píxeles
      * @param screenY coordenada y en el panel, en píxeles
@@ -790,7 +803,13 @@ public final class HospitalMapPanel extends JPanel {
         if (isometric) {
             return isometricRenderer.pick(layout, markers, world.get().getX(), world.get().getY());
         }
-        return PatientPicker.pick(markers, world.get().getX(), world.get().getY());
+        Optional<String> lying = restingPatient2D.pick(world.get().getX(), world.get().getY());
+        if (lying.isPresent()) {
+            return lying;
+        }
+        Set<String> restingCodes = restingPatient2D.restingCodes();
+        return PatientPicker.pick(markers.stream().filter(m -> !restingCodes.contains(m.code())).toList(),
+                world.get().getX(), world.get().getY());
     }
 
     /**
@@ -938,6 +957,9 @@ public final class HospitalMapPanel extends JPanel {
 
     /** Indica si algo de la cámara sigue moviéndose y hay que volver a dibujar aunque la escena no cambie. */
     private boolean isAnimating() {
+        if (!isometric && restingPatient2D.transitioning()) {
+            return true;
+        }
         if (!animated) {
             return false;
         }
@@ -1096,8 +1118,18 @@ public final class HospitalMapPanel extends JPanel {
         renderer.render(graphics, layout);
         staffPainter.paint(graphics, staffMarkers);
         staffPainter.paintPorters(graphics, porters);
-        patientPainter.paint(graphics, markers);
-        selectedMarker().ifPresent(marker -> patientPainter.paintSelection(graphics, marker));
+        // Exclusivo para 2D: el paciente que ya llegó se integra en el colchón y queda
+        // bajo una sábana del color de su triage. La 2.5D continúa usando todos los
+        // PatientMarker originales y su renderizador isométrico sin ninguna modificación.
+        restingPatient2D.paint(graphics);
+        Set<String> restingCodes = restingPatient2D.restingCodes();
+        patientPainter.paint(graphics, markers.stream()
+                .filter(marker -> !restingCodes.contains(marker.code())).toList());
+        selectedMarker().ifPresent(marker -> {
+            if (!restingPatient2D.paintSelection(graphics, marker.code())) {
+                patientPainter.paintSelection(graphics, marker);
+            }
+        });
         List<Position> seats = layout.getWaitingSpots();
         patientPainter.paintOverflow(graphics, renderer.centerOf(seats.get(seats.size() - 1)), overflow);
     }
