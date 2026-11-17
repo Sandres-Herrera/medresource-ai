@@ -76,7 +76,9 @@ public enum HomeIcon {
     /** Flecha hacia abajo sobre una bandeja: descargar un archivo. */
     DOWNLOAD,
     /** Hoja con la esquina doblada y renglones: un documento. */
-    DOCUMENT;
+    DOCUMENT,
+    /** Caneca con tapa y dos rayas: eliminar algo guardado. */
+    TRASH;
 
     /**
      * Dibuja el icono.
@@ -162,6 +164,9 @@ public enum HomeIcon {
                 polyline(4, 15, 4, 20, 20, 20, 20, 15)};
             case DOCUMENT -> new Shape[]{polyline(6, 3, 14, 3, 19, 8, 19, 21, 6, 21, 6, 3), polyline(14, 3, 14, 8, 19, 8),
                 new Line2D.Double(9, 13, 16, 13), new Line2D.Double(9, 17, 16, 17)};
+            case TRASH -> new Shape[]{new Line2D.Double(4, 7, 20, 7), polyline(9, 7, 9, 4, 15, 4, 15, 7),
+                polyline(6, 7, 7, 21, 17, 21, 18, 7), new Line2D.Double(10, 11, 10, 17),
+                new Line2D.Double(14, 11, 14, 17)};
         };
     }
 
