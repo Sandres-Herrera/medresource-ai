@@ -17,6 +17,7 @@ import java.awt.Font;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 /**
@@ -24,8 +25,11 @@ import java.util.function.IntConsumer;
  *
  * <p>Cada fila dice el número de la ejecución (y en cuál se basa, si se volvió a simular un caso guardado), el
  * caso, cuándo se guardó, el escenario, la semilla y los pacientes, los fallecidos, la estrategia y quién redactó
- * el texto, y tiene el botón «Abrir». Mientras se consulta la base de datos, si no hay reportes o si
- * la consulta falla, en lugar de la lista se ve un mensaje.</p>
+ * el texto, y tiene los botones «Abrir» y «Eliminar». Mientras se consulta o se borra en la base de datos, si no
+ * hay reportes o si la consulta falla, en lugar de la lista se ve un mensaje.</p>
+ *
+ * <p>«Eliminar» no borra nada por sí mismo: avisa a quien maneja la lista ({@link #onDelete}), que debe preguntar
+ * antes ({@link #deleteQuestion}) y luego borrar.</p>
  */
 public final class SavedReportsPanel extends JPanel {
 
@@ -34,8 +38,10 @@ public final class SavedReportsPanel extends JPanel {
     /** Títulos de las columnas, en el orden en que se ven. */
     public static final List<String> COLUMNS = List.of("Ejecución", "Caso", "Guardado", "Escenario", "Semilla",
             "Pacientes", "Fallecidos", "Estrategia", "Texto");
-    /** Texto del botón de cada fila. */
+    /** Texto del botón que abre el reporte de cada fila. */
     public static final String OPEN = "Abrir";
+    /** Texto del botón que elimina el reporte de cada fila. */
+    public static final String DELETE = "Eliminar";
     /** Mensaje mientras se consulta la base de datos. */
     public static final String LOADING_TEXT = "Buscando los reportes guardados…";
     /** Mensaje cuando todavía no hay reportes. */
@@ -51,7 +57,9 @@ public final class SavedReportsPanel extends JPanel {
     private final JPanel rows = new JPanel();
     private final List<List<String>> texts = new ArrayList<>();
     private final List<HomeButton> openButtons = new ArrayList<>();
+    private final List<HomeButton> deleteButtons = new ArrayList<>();
     private transient IntConsumer onOpen = id -> { };
+    private transient Consumer<SavedReportSummary> onDelete = summary -> { };
 
     /** Crea el panel mostrando que se están buscando los reportes. */
     public SavedReportsPanel() {
@@ -81,7 +89,8 @@ public final class SavedReportsPanel extends JPanel {
         header.setOpaque(false);
         JComponent title = ThemedCard.heading(HomeIcon.DOCUMENT, "Reportes guardados", HomeTheme.ACCENT);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel subtitle = new JLabel("Abre un reporte para verlo tal como se generó y descargarlo en Word o PDF.");
+        JLabel subtitle = new JLabel("Abre un reporte para verlo tal como se generó y descargarlo en Word o PDF, "
+                + "o elimínalo si ya no lo necesitas.");
         subtitle.setFont(HomeTheme.font(Font.PLAIN, 13f));
         subtitle.setForeground(HomeTheme.MUTED);
         subtitle.setBorder(BorderFactory.createEmptyBorder(6, 2, 0, 0));
@@ -102,6 +111,50 @@ public final class SavedReportsPanel extends JPanel {
             throw new IllegalArgumentException("La acción de abrir es obligatoria.");
         }
         this.onOpen = action;
+    }
+
+    /**
+     * Indica qué hacer al pulsar «Eliminar».
+     *
+     * @param action recibe el reporte de la fila, tal como se ve en la lista
+     * @throws IllegalArgumentException si es nula
+     */
+    public void onDelete(Consumer<SavedReportSummary> action) {
+        if (action == null) {
+            throw new IllegalArgumentException("La acción de eliminar es obligatoria.");
+        }
+        this.onDelete = action;
+    }
+
+    /**
+     * Pregunta que se hace antes de eliminar un reporte: dice qué más se borra con él y que no se puede deshacer.
+     *
+     * @param summary reporte que se va a eliminar
+     * @return la pregunta, en varias líneas
+     * @throws IllegalArgumentException si falta el reporte
+     */
+    public static String deleteQuestion(SavedReportSummary summary) {
+        if (summary == null) {
+            throw new IllegalArgumentException("El reporte es obligatorio.");
+        }
+        return "¿Eliminar el reporte de la ejecución #" + summary.resultId() + " ("
+                + summary.config().scenario().getDisplayName() + ", semilla " + summary.config().seed() + ")?\n\n"
+                + "También se borran la simulación, con el resultado de cada paciente, y las comparaciones que la "
+                + "usan.\nLas simulaciones que se hicieron a partir de ella se conservan.\n\n"
+                + "Esto no se puede deshacer.";
+    }
+
+    /**
+     * Muestra que se está eliminando un reporte.
+     *
+     * @param summary reporte que se está eliminando
+     * @throws IllegalArgumentException si falta el reporte
+     */
+    public void showDeleting(SavedReportSummary summary) {
+        if (summary == null) {
+            throw new IllegalArgumentException("El reporte es obligatorio.");
+        }
+        showMessage("Eliminando el reporte de la ejecución #" + summary.resultId() + "…", HomeTheme.MUTED);
     }
 
     /** Muestra que se están buscando los reportes. */
@@ -164,6 +217,7 @@ public final class SavedReportsPanel extends JPanel {
         rows.removeAll();
         texts.clear();
         openButtons.clear();
+        deleteButtons.clear();
     }
 
     private void refresh() {
@@ -202,6 +256,12 @@ public final class SavedReportsPanel extends JPanel {
         open.addActionListener(event -> onOpen.accept(summary.id()));
         openButtons.add(open);
         line.add(open);
+        line.add(Box.createHorizontalStrut(8));
+        HomeButton delete = new HomeButton(HomeButton.Style.OUTLINE, DELETE, HomeIcon.TRASH);
+        delete.setToolTipText("Eliminar este reporte y su simulación");
+        delete.addActionListener(event -> onDelete.accept(summary));
+        deleteButtons.add(delete);
+        line.add(delete);
         card.add(line, BorderLayout.CENTER);
         card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
         return card;
@@ -261,6 +321,16 @@ public final class SavedReportsPanel extends JPanel {
      */
     public HomeButton openButton(int index) {
         return openButtons.get(index);
+    }
+
+    /**
+     * Devuelve el botón «Eliminar» de una fila.
+     *
+     * @param index posición de la fila, desde 0
+     * @return el botón
+     */
+    public HomeButton deleteButton(int index) {
+        return deleteButtons.get(index);
     }
 
     /**
