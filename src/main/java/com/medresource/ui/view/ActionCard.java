@@ -9,10 +9,15 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.RoundRectangle2D;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Tarjeta de una opción de la pantalla de inicio: un icono en su cuadro de color, un título, una línea con los
- * datos y, a la derecha, una flecha o una etiqueta (por ejemplo «DEMO»).
+ * datos y, a la derecha, una flecha, con una etiqueta antes si la lleva (por ejemplo «DEMO»).
+ *
+ * <p>La línea de datos se escribe separada por « · ». Con {@link #setDetailIcons(HomeIcon...)} cada parte lleva su
+ * icono delante (personas, reloj, velocímetro) en lugar de los puntos.</p>
  *
  * <p>Con el ratón encima, la tarjeta se aclara y su borde y su flecha toman el color de acento; con el foco del
  * teclado, también lleva el borde de acento. Se pulsa como un botón ({@link Clickable}).</p>
@@ -29,6 +34,7 @@ public final class ActionCard extends Clickable {
     private static final int ARC = 14;
     private static final int TILE = 40;
     private static final int PADDING = 16;
+    private static final int DETAIL_ICON = 14;
 
     private final HomeIcon icon;
     private final Color iconColor;
@@ -36,6 +42,7 @@ public final class ActionCard extends Clickable {
     private final String title;
     private final String detail;
     private final String badge;
+    private HomeIcon[] detailIcons = new HomeIcon[0];
 
     /**
      * Crea la tarjeta.
@@ -76,9 +83,32 @@ public final class ActionCard extends Clickable {
         return detail;
     }
 
-    /** Etiqueta de la derecha, o {@code null} si lleva la flecha. */
+    /** Etiqueta antes de la flecha, o {@code null} si no lleva. */
     public String getBadge() {
         return badge;
+    }
+
+    /**
+     * Pone un icono delante de cada parte de la línea de datos, en orden.
+     *
+     * @param icons un icono por cada parte separada por « · »
+     * @throws IllegalArgumentException si falta alguno o no hay uno por parte
+     */
+    public void setDetailIcons(HomeIcon... icons) {
+        if (icons == null || icons.length != detailParts().length || Arrays.asList(icons).contains(null)) {
+            throw new IllegalArgumentException("Hace falta un icono por cada parte de la línea de datos.");
+        }
+        detailIcons = icons.clone();
+        repaint();
+    }
+
+    /** Iconos delante de cada parte de la línea de datos; vacío si se escribe con puntos. */
+    public List<HomeIcon> getDetailIcons() {
+        return List.of(detailIcons);
+    }
+
+    private String[] detailParts() {
+        return detail.split(" · ");
     }
 
     @Override
@@ -122,25 +152,41 @@ public final class ActionCard extends Clickable {
         surface.drawString(title, textX, height / 2 - 3);
         surface.setFont(HomeTheme.font(Font.PLAIN, 12.5f));
         surface.setColor(HomeTheme.MUTED);
-        surface.drawString(detail, textX, height / 2 + 15);
+        paintDetail(surface, textX, height / 2 + 15);
 
+        HomeIcon.CHEVRON.paint(surface, width - PADDING - 18, (height - 18) / 2.0, 18,
+                lit ? HomeTheme.ACCENT : HomeTheme.MUTED);
         if (badge != null) {
-            paintBadge(surface, width, height);
-        } else {
-            HomeIcon.CHEVRON.paint(surface, width - PADDING - 18, (height - 18) / 2.0, 18,
-                    lit ? HomeTheme.ACCENT : HomeTheme.MUTED);
+            paintBadge(surface, width - PADDING - 18 - 10, height);
         }
         surface.dispose();
     }
 
-    /** Etiqueta en forma de píldora, roja, a la derecha de la tarjeta. */
-    private void paintBadge(Graphics2D surface, int width, int height) {
+    /** Línea de datos: con puntos, o con un icono delante de cada parte. */
+    private void paintDetail(Graphics2D surface, int x, int baseline) {
+        if (detailIcons.length == 0) {
+            surface.drawString(detail, x, baseline);
+            return;
+        }
+        FontMetrics metrics = surface.getFontMetrics();
+        String[] parts = detailParts();
+        int left = x;
+        for (int index = 0; index < parts.length; index++) {
+            detailIcons[index].paint(surface, left, baseline - DETAIL_ICON + 2, DETAIL_ICON, HomeTheme.MUTED);
+            left += DETAIL_ICON + 5;
+            surface.drawString(parts[index], left, baseline);
+            left += metrics.stringWidth(parts[index]) + 16;
+        }
+    }
+
+    /** Etiqueta en forma de píldora, roja, a la altura del título, que termina en {@code right}, antes de la flecha. */
+    private void paintBadge(Graphics2D surface, int right, int height) {
         surface.setFont(HomeTheme.font(Font.BOLD, 11f));
         FontMetrics metrics = surface.getFontMetrics();
         int pillWidth = metrics.stringWidth(badge) + 18;
         int pillHeight = 20;
-        int x = width - PADDING - pillWidth;
-        int y = (height - pillHeight) / 2;
+        int x = right - pillWidth;
+        int y = height / 2 - pillHeight - 2;
         surface.setColor(HomeTheme.DANGER_TILE);
         surface.fill(new RoundRectangle2D.Double(x, y, pillWidth, pillHeight, pillHeight, pillHeight));
         surface.setColor(HomeTheme.DANGER);
