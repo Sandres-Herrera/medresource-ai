@@ -56,10 +56,14 @@ public final class HomeButton extends Clickable {
     private static final int ICON_SIZE = 18;
     private static final int OUTLINE_ICON = 15;
     private static final int ARC = 14;
+    /** Cuadro de la flecha del botón principal: el texto oscuro, transparente sobre el acento. */
+    static final Color CHEVRON_TILE = new Color(HomeTheme.ACCENT_TEXT.getRed(), HomeTheme.ACCENT_TEXT.getGreen(),
+            HomeTheme.ACCENT_TEXT.getBlue(), 46);
 
     private final Style style;
     private String text;
     private final HomeIcon icon;
+    private boolean chevron;
 
     /**
      * Crea el botón.
@@ -77,6 +81,22 @@ public final class HomeButton extends Clickable {
         this.style = style;
         this.text = text;
         this.icon = style == Style.LINK ? null : icon;
+    }
+
+    /**
+     * Pone o quita, en el botón principal, una flecha a la derecha dentro de un cuadro más oscuro, para decir que
+     * abre algo. En los otros estilos no cambia nada.
+     *
+     * @param chevron {@code true} para mostrar la flecha
+     */
+    public void setChevron(boolean chevron) {
+        this.chevron = chevron && style == Style.PRIMARY;
+        repaint();
+    }
+
+    /** Dice si el botón principal lleva la flecha a la derecha. */
+    public boolean hasChevron() {
+        return chevron;
     }
 
     /** Estilo del botón. */
@@ -170,6 +190,13 @@ public final class HomeButton extends Clickable {
         }
         surface.setColor(textColor());
         surface.drawString(text, x + gap, (height + metrics.getAscent() - metrics.getDescent()) / 2);
+        if (chevron) {
+            int tile = height - 22;
+            int tileX = width - 11 - tile;
+            surface.setColor(CHEVRON_TILE);
+            surface.fill(new RoundRectangle2D.Double(tileX, 11, tile, tile, 8, 8));
+            HomeIcon.CHEVRON.paint(surface, tileX + (tile - 16) / 2.0, 11 + (tile - 16) / 2.0, 16, textColor());
+        }
     }
 
     /** Relleno del botón principal ahora: gris si está desactivado, más claro con el ratón encima. */

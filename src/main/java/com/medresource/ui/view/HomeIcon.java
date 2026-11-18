@@ -78,7 +78,27 @@ public enum HomeIcon {
     /** Hoja con la esquina doblada y renglones: un documento. */
     DOCUMENT,
     /** Caneca con tapa y dos rayas: eliminar algo guardado. */
-    TRASH;
+    TRASH,
+    /** Cama con su almohada: las camas de hospitalización. */
+    BED,
+    /** Cama con un monitor encima: las camas de la UCI. */
+    ICU,
+    /** Persona con gorro y tapabocas: los quirófanos. */
+    SURGEON,
+    /** Persona con bata y estetoscopio: los médicos. */
+    DOCTOR,
+    /** Persona con cofia: los enfermeros. */
+    NURSE,
+    /** Tres barras de distinta altura: los reportes guardados. */
+    CHART,
+    /** Dos flechas en sentidos contrarios: comparar. */
+    SWAP,
+    /** Puerta con una flecha que sale: salir. */
+    EXIT,
+    /** Birrete: la universidad. */
+    GRADUATION,
+    /** Velocímetro: la velocidad de la simulación. */
+    GAUGE;
 
     /**
      * Dibuja el icono.
@@ -167,6 +187,30 @@ public enum HomeIcon {
             case TRASH -> new Shape[]{new Line2D.Double(4, 7, 20, 7), polyline(9, 7, 9, 4, 15, 4, 15, 7),
                 polyline(6, 7, 7, 21, 17, 21, 18, 7), new Line2D.Double(10, 11, 10, 17),
                 new Line2D.Double(14, 11, 14, 17)};
+            case BED -> new Shape[]{new Line2D.Double(3, 5, 3, 20), polyline(3, 15, 21, 15, 21, 20),
+                new RoundRectangle2D.Double(5, 10, 4, 3, 1.5, 1.5), polyline(11, 15, 11, 10, 18, 10, 21, 13, 21, 15)};
+            case ICU -> new Shape[]{new Line2D.Double(3, 10, 3, 21), polyline(3, 18, 21, 18, 21, 21),
+                new RoundRectangle2D.Double(5, 14, 4, 2.5, 1.5, 1.5), new Line2D.Double(11, 18, 11, 14.5),
+                new RoundRectangle2D.Double(11, 3, 10, 7, 2, 2), polyline(12.5, 6.5, 14.5, 6.5, 15.5, 5, 16.5, 8,
+                17.5, 6.5, 19.5, 6.5)};
+            case SURGEON -> new Shape[]{new Ellipse2D.Double(8, 4, 8, 8), new Line2D.Double(7.5, 6.5, 16.5, 6.5),
+                new RoundRectangle2D.Double(9, 9, 6, 3, 1.5, 1.5), new Arc2D.Double(4, 14, 16, 14, 0, 180,
+                Arc2D.OPEN)};
+            case DOCTOR -> new Shape[]{new Ellipse2D.Double(8, 3, 8, 8), new Arc2D.Double(4, 13, 16, 14, 0, 180,
+                Arc2D.OPEN), polyline(10, 13.5, 12, 17, 14, 13.5), polyline(15, 14, 15, 17),
+                new Ellipse2D.Double(14, 17, 2.5, 2.5)};
+            case NURSE -> new Shape[]{new Ellipse2D.Double(8, 6, 8, 8), polyline(8.5, 7, 9, 3, 15, 3, 15.5, 7),
+                new Line2D.Double(12, 3.8, 12, 5.8), new Arc2D.Double(4, 16, 16, 12, 0, 180, Arc2D.OPEN)};
+            case CHART -> new Shape[]{new RoundRectangle2D.Double(4, 13, 4, 7, 1, 1),
+                new RoundRectangle2D.Double(10, 8, 4, 12, 1, 1), new RoundRectangle2D.Double(16, 4, 4, 16, 1, 1)};
+            case SWAP -> new Shape[]{new Line2D.Double(4, 8, 19, 8), polyline(15, 4, 19, 8, 15, 12),
+                new Line2D.Double(20, 16, 5, 16), polyline(9, 12, 5, 16, 9, 20)};
+            case EXIT -> new Shape[]{polyline(13, 4, 5, 4, 5, 20, 13, 20), new Line2D.Double(10, 12, 21, 12),
+                polyline(17, 8, 21, 12, 17, 16)};
+            case GRADUATION -> new Shape[]{polyline(2, 9, 12, 4, 22, 9, 12, 14, 2, 9),
+                polyline(6, 11, 6, 16, 12, 19, 18, 16, 18, 11), new Line2D.Double(22, 9, 22, 15)};
+            case GAUGE -> new Shape[]{new Arc2D.Double(3, 5, 18, 18, -20, 220, Arc2D.OPEN),
+                new Line2D.Double(12, 14, 16, 9.5), dot(12, 14)};
         };
     }
 

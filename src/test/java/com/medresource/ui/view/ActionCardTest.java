@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,14 +75,47 @@ class ActionCardTest {
     }
 
     @Test
-    void theDemoHasARedBadgeInsteadOfTheArrow() {
+    void theDemoHasARedBadgeBeforeItsArrow() {
         BufferedImage withBadge = paint(demo());
-        BufferedImage withArrow = paint(quick());
-        int x = ActionCard.WIDTH - 22;
+        BufferedImage withoutBadge = paint(quick());
+        int x = ActionCard.WIDTH - 70;
         int y = ActionCard.HEIGHT / 2 - 8;
 
         assertEquals(HomeTheme.DANGER_TILE.getRGB(), withBadge.getRGB(x, y));
-        assertNotEquals(HomeTheme.DANGER_TILE.getRGB(), withArrow.getRGB(x, y));
+        assertEquals(HomeTheme.CARD.getRGB(), withoutBadge.getRGB(x, y));
+        assertNotEquals(HomeTheme.CARD.getRGB(), arrowColumn(withBadge));
+        assertNotEquals(HomeTheme.CARD.getRGB(), arrowColumn(withoutBadge));
+    }
+
+    /** Color más distinto del fondo en la columna de la flecha: la flecha está si no es el fondo. */
+    private static int arrowColumn(BufferedImage image) {
+        int x = ActionCard.WIDTH - 16 - 9;
+        for (int y = 0; y < ActionCard.HEIGHT; y++) {
+            if (image.getRGB(x, y) != HomeTheme.CARD.getRGB() && y > 4 && y < ActionCard.HEIGHT - 4) {
+                return image.getRGB(x, y);
+            }
+        }
+        return HomeTheme.CARD.getRGB();
+    }
+
+    @Test
+    void eachPartOfTheDetailsCanHaveItsIcon() {
+        ActionCard card = quick();
+        BufferedImage plain = paint(card);
+
+        card.setDetailIcons(HomeIcon.USERS, HomeIcon.CLOCK, HomeIcon.GAUGE);
+        BufferedImage withIcons = paint(card);
+
+        assertEquals(List.of(HomeIcon.USERS, HomeIcon.CLOCK, HomeIcon.GAUGE), card.getDetailIcons());
+        assertNotEquals(pixels(plain), pixels(withIcons));
+        assertThrows(IllegalArgumentException.class, () -> card.setDetailIcons(HomeIcon.USERS));
+        assertThrows(IllegalArgumentException.class, () -> card.setDetailIcons(HomeIcon.USERS, null, HomeIcon.GAUGE));
+        assertEquals(List.of(), demo().getDetailIcons());
+    }
+
+    private static int pixels(BufferedImage image) {
+        return Arrays.hashCode(image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0,
+                image.getWidth()));
     }
 
     @Test
