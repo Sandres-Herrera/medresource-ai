@@ -8,6 +8,8 @@ import java.awt.image.BufferedImage;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -47,6 +49,22 @@ class HomeButtonTest {
 
         assertEquals(new Dimension(HomeButton.PRIMARY_WIDTH, HomeButton.PRIMARY_HEIGHT), button.getPreferredSize());
         assertEquals(HomeTheme.ACCENT.getRGB(), image.getRGB(20, HomeButton.PRIMARY_HEIGHT / 2));
+    }
+
+    @Test
+    void thePrimaryButtonCanShowAnArrowOnTheRight() {
+        HomeButton button = new HomeButton(HomeButton.Style.PRIMARY, "Nueva simulación", HomeIcon.PLUS);
+        int x = HomeButton.PRIMARY_WIDTH - 16;
+        int y = 14;
+        assertEquals(HomeTheme.ACCENT.getRGB(), paint(button).getRGB(x, y));
+
+        button.setChevron(true);
+
+        assertTrue(button.hasChevron());
+        assertNotEquals(HomeTheme.ACCENT.getRGB(), paint(button).getRGB(x, y));
+        HomeButton link = new HomeButton(HomeButton.Style.LINK, "Salir", null);
+        link.setChevron(true);
+        assertFalse(link.hasChevron());
     }
 
     @Test
