@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,6 +56,19 @@ class HospitalCardTest {
         card.showLastRun(null);
 
         assertEquals(List.of(HospitalCard.NO_RUNS_TEXT), card.lastRunTexts());
+    }
+
+    @Test
+    void theLastRunIsTheMostRecentlySaved() {
+        SavedReportSummary older = run(2);
+        SavedReportSummary newer = new SavedReportSummary(5, 12, LocalDateTime.of(2026, 11, 17, 9, 0),
+                new CaseConfig(7L, Scenario.CATASTROPHE, 100, 120), "FIFO (orden de llegada)", 9,
+                NarrativeSource.TEMPLATE, 9, null);
+
+        assertEquals(Optional.of(newer), HospitalCard.latest(List.of(older, newer)));
+        assertEquals(Optional.of(newer), HospitalCard.latest(List.of(newer, older)));
+        assertEquals(Optional.empty(), HospitalCard.latest(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> HospitalCard.latest(null));
     }
 
     @Test

@@ -23,7 +23,9 @@ import java.awt.RenderingHints;
 import java.awt.geom.RoundRectangle2D;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Tarjeta de la pantalla de inicio con el hospital estándar y la última simulación guardada.
@@ -158,6 +160,21 @@ public final class HospitalCard extends ThemedCard {
         lastTitle.setToolTipText(last == null ? null : lastRunTitle(last) + " · " + lastRunDetail(last));
         revalidate();
         repaint();
+    }
+
+    /**
+     * Busca la simulación guardada más reciente.
+     *
+     * @param summaries resúmenes de los reportes guardados, en cualquier orden
+     * @return la de fecha más reciente (y, a igual fecha, la de número más alto); vacía si no hay ninguna
+     * @throws IllegalArgumentException si la lista es nula
+     */
+    public static Optional<SavedReportSummary> latest(List<SavedReportSummary> summaries) {
+        if (summaries == null) {
+            throw new IllegalArgumentException("La lista de reportes es obligatoria.");
+        }
+        return summaries.stream().max(Comparator.comparing(SavedReportSummary::savedAt)
+                .thenComparingInt(SavedReportSummary::id));
     }
 
     /** Primera línea de la última simulación: «Ejecución #11 · Catástrofe». */

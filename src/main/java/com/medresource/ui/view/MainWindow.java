@@ -2,6 +2,7 @@ package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.SavedReportSummary;
 import com.medresource.model.Scenario;
 import com.medresource.services.management.ComparisonArchive;
 import com.medresource.services.management.ReportArchive;
@@ -22,11 +23,16 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Ventana principal de MedResource AI: la pantalla de inicio ({@link HomePanel}), desde donde se configura una
  * simulación nueva, se lanza una rápida con el hospital estándar, se abren los reportes guardados
  * ({@link SavedReportsWindow}) o se comparan dos simulaciones guardadas ({@link CompareRunsWindow}).
+ *
+ * <p>La tarjeta del hospital muestra la última simulación guardada en el historial: se consulta en segundo plano
+ * al abrir la ventana y cada vez que vuelve al frente (por ejemplo, al cerrar una simulación que se guardó). Si el
+ * equipo no tiene base de datos, dice que no hay simulaciones recientes.</p>
  *
  * <p>Lleva el logo de la aplicación como icono, empieza con el foco en «Nueva simulación» (Enter la abre) y se
  * cierra también con la tecla Escape. Se puede agrandar o maximizar: el contenido queda centrado. No se puede
@@ -49,6 +55,8 @@ public final class MainWindow extends JFrame {
     /** Caso de la demostración: una catástrofe con 100 pacientes. */
     private static final CaseConfig DEMO_CASE = new CaseConfig(7L, Scenario.CATASTROPHE, CaseConfig.DEFAULT_PATIENTS,
             DEMO_DURATION_MINUTES);
+
+    private boolean loadingLastRun;
 
     /** Crea la ventana principal. */
     public MainWindow() {
@@ -85,7 +93,28 @@ public final class MainWindow extends JFrame {
             public void windowOpened(WindowEvent event) {
                 home.newSimulationButton().requestFocusInWindow();
             }
+
+            @Override
+            public void windowActivated(WindowEvent event) {
+                showLastRun(home);
+            }
         });
+    }
+
+    /** Busca en segundo plano la última simulación guardada y la muestra; no busca dos veces a la vez. */
+    private void showLastRun(HomePanel home) {
+        if (loadingLastRun) {
+            return;
+        }
+        loadingLastRun = true;
+        new ArchiveWorker<Optional<SavedReportSummary>>(() -> ReportArchive.fromConfiguration()
+                .flatMap(archive -> HospitalCard.latest(archive.summaries())), last -> {
+                    loadingLastRun = false;
+                    home.showLastRun(last.orElse(null));
+                }, error -> {
+                    loadingLastRun = false;
+                    home.showLastRun(null);
+                }).execute();
     }
 
     /**
