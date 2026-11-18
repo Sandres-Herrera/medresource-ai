@@ -2,19 +2,26 @@ package com.medresource.ui.view;
 
 import com.medresource.model.CaseConfig;
 import com.medresource.model.HospitalConfig;
+import com.medresource.model.NarrativeSource;
+import com.medresource.model.SavedReportSummary;
 import com.medresource.model.Scenario;
 import org.junit.jupiter.api.Test;
+
+import javax.swing.SwingUtilities;
 
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.image.BufferedImage;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,7 +73,36 @@ class HomePanelTest {
 
     @Test
     void showsTheDataOfTheStandardHospital() {
-        assertEquals(List.of("30 camas", "6 UCI", "4 quirófanos", "16 médicos", "24 enfermeros"), panel.chipTexts());
+        assertEquals(List.of("30 Camas", "6 UCI", "4 Quirófanos", "16 Médicos", "24 Enfermeros"),
+                panel.hospitalCard().statTexts());
+    }
+
+    @Test
+    void theCardsShowAnIconBeforeEachDetail() {
+        assertEquals(List.of(HomeIcon.USERS, HomeIcon.CLOCK, HomeIcon.GAUGE), panel.quickCard().getDetailIcons());
+        assertEquals(List.of(HomeIcon.USERS, HomeIcon.CLOCK, HomeIcon.GAUGE), panel.demoCard().getDetailIcons());
+        assertTrue(panel.newSimulationButton().hasChevron());
+    }
+
+    @Test
+    void theQuickAccessesHaveTheirIcons() {
+        assertEquals(HomeIcon.CHART, panel.savedReportsLink().getIcon());
+        assertEquals(HomeIcon.SWAP, panel.compareRunsLink().getIcon());
+        assertEquals(HomeIcon.EXIT, panel.exitLink().getIcon());
+        assertEquals("Salir", panel.exitLink().getText());
+    }
+
+    @Test
+    void theHospitalCardShowsTheLastSavedRunAndOpensTheComparison() {
+        assertEquals(List.of(HospitalCard.NO_RUNS_TEXT), panel.hospitalCard().lastRunTexts());
+
+        panel.showLastRun(new SavedReportSummary(4, 11, LocalDateTime.of(2026, 11, 16, 16, 26), DEMO,
+                "Prioridad clínica (triage)", 5, NarrativeSource.AI, 9, null));
+        panel.hospitalCard().compareButton().doClick();
+
+        assertEquals(List.of("Ejecución #11 · " + Scenario.CATASTROPHE.getDisplayName(),
+                "5 fallecidos · 16/11/2026 16:26"), panel.hospitalCard().lastRunTexts());
+        assertEquals(List.of("comparar"), done);
     }
 
     @Test
@@ -83,7 +119,7 @@ class HomePanelTest {
     void fitsInASmallLaptopScreen() {
         Dimension size = panel.getPreferredSize();
 
-        assertTrue(size.width <= 640, "ancho " + size.width);
+        assertTrue(size.width <= 1000, "ancho " + size.width);
         assertTrue(size.height <= 700, "alto " + size.height);
     }
 
@@ -97,7 +133,8 @@ class HomePanelTest {
         panel.paint(graphics);
         graphics.dispose();
 
-        assertEquals(HomeTheme.BACKGROUND.getRGB(), image.getRGB(2, size.height - 2));
+        assertEquals(HomeTheme.BACKGROUND.getRGB(), image.getRGB(size.width - 2, 40));
+        assertNotEquals(HomeTheme.BACKGROUND.getRGB(), image.getRGB(size.width / 2, size.height - 2), "ondas");
         Color top = new Color(image.getRGB(size.width / 2, 0));
         assertTrue(Math.abs(top.getGreen() - HomeTheme.ACCENT.getGreen()) < 12
                 && Math.abs(top.getBlue() - HomeTheme.ACCENT.getBlue()) < 12, "línea de acento: " + top);
@@ -123,20 +160,18 @@ class HomePanelTest {
     }
 
     @Test
-    void inABiggerWindowTheContentStaysCentered() {
+    void inABiggerWindowTheContentStaysCenteredAndTheFooterAtTheBottom() {
         Dimension size = panel.getPreferredSize();
         panel.setSize(size.width + 400, size.height + 300);
         layOut(panel);
 
-        int left = panel.quickCard().getX();
-        int right = panel.getWidth() - left - panel.quickCard().getWidth();
+        int left = SwingUtilities.convertPoint(panel.quickCard(), 0, 0, panel).x;
+        Point card = SwingUtilities.convertPoint(panel.hospitalCard(), 0, 0, panel);
+        int right = panel.getWidth() - card.x - panel.hospitalCard().getWidth();
         assertTrue(Math.abs(left - right) <= 3, "centrada a lo ancho: " + left + " y " + right);
-        int top = panel.newSimulationButton().getY();
+        int top = SwingUtilities.convertPoint(panel.newSimulationButton(), 0, 0, panel).y;
         assertTrue(top > 150 + 150, "bajó con el espacio de arriba: " + top);
-        Component first = panel.getComponent(1);
-        Component last = panel.getComponent(panel.getComponentCount() - 2);
-        int above = first.getY() - panel.getInsets().top;
-        int below = panel.getHeight() - panel.getInsets().bottom - last.getY() - last.getHeight();
-        assertTrue(Math.abs(above - below) <= 2, "centrada a lo alto: " + above + " y " + below);
+        int demoBottom = SwingUtilities.convertPoint(panel.demoCard(), 0, 0, panel).y + panel.demoCard().getHeight();
+        assertEquals(demoBottom, card.y + panel.hospitalCard().getHeight(), "la tarjeta termina con las opciones");
     }
 }
