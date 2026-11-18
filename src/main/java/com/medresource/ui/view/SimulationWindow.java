@@ -123,6 +123,7 @@ public final class SimulationWindow extends JFrame {
     private boolean reportOpened;
     private transient ReportWindow reportWindow;
     private transient GeneratedReport generatedReport;
+    private transient ReportSaving reportSaving;
     private transient MapFullscreen fullscreen;
     private transient FullscreenBar fullscreenBar;
     private final transient ReplayBuffer replayBuffer = new ReplayBuffer();
@@ -465,6 +466,7 @@ public final class SimulationWindow extends JFrame {
         staffCardPanel.clear();
         closeReport();
         generatedReport = null;
+        reportSaving = null;
         controller.reset();
         mapPanel.showLayout(controller.getLayout());
         mapPanel.select(null);
@@ -611,21 +613,24 @@ public final class SimulationWindow extends JFrame {
 
     /**
      * Abre el reporte: lo trae al frente si ya está abierto, lo vuelve a mostrar si ya se generó o, si no, empieza
-     * a generarlo; al terminar se guarda en la base de datos, si está configurada. Solo hace algo cuando la
-     * simulación terminó.
+     * a generarlo. Al terminar, el reporte pregunta si se guarda la simulación en el historial; esa decisión se
+     * guarda aquí ({@link ReportSaving}), así que se conserva aunque se cierre y se vuelva a abrir el reporte. Solo
+     * hace algo cuando la simulación terminó.
      */
     private void openReport() {
         if (reportWindow != null && reportWindow.isDisplayable()) {
             reportWindow.toFront();
             return;
         }
-        if (generatedReport != null) {
-            reportWindow = ReportWindow.showing(generatedReport, this::showCase);
+        if (generatedReport != null && reportSaving != null) {
+            reportWindow = ReportWindow.showing(generatedReport, reportSaving, this::showCase);
             return;
         }
-        controller.reportRequest().ifPresent(request -> reportWindow = ReportWindow.generating(
-                ReportGenerator.fromConfiguration(), ReportArchive::fromConfiguration, request, this::showCase,
-                report -> generatedReport = report));
+        controller.reportRequest().ifPresent(request -> {
+            reportSaving = new ReportSaving(ReportArchive::fromConfiguration, request);
+            reportWindow = ReportWindow.generating(ReportGenerator.fromConfiguration(), reportSaving, request,
+                    this::showCase, report -> generatedReport = report);
+        });
     }
 
     /** Cierra el reporte si está abierto; si todavía se estaba generando, la generación se detiene. */

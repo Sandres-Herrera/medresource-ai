@@ -10,7 +10,6 @@ import com.medresource.persistence.CoverPreferences;
 import com.medresource.persistence.DocxReportWriter;
 import com.medresource.persistence.PdfReportWriter;
 import com.medresource.persistence.ReportWriter;
-import com.medresource.services.management.ReportArchive;
 import com.medresource.services.management.ReportGenerator;
 import com.medresource.services.management.ReportRequest;
 import com.medresource.ui.view.DownloadPanel.Choice;
@@ -43,7 +42,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * Ventana del reporte de fin de simulación.
@@ -62,10 +60,11 @@ import java.util.function.Supplier;
  * ofrece «Abrir archivo» y «Abrir carpeta». Los datos de la portada se recuerdan para la próxima vez
  * ({@link CoverPreferences}).</p>
  *
- * <p>Cuando el reporte termina de generarse se guarda en la base de datos ({@link ReportArchive}), en segundo plano
- * ({@link ArchiveWorker}); la barra dice si quedó guardado y, si no, al pasar el ratón por el aviso explica por qué.
- * Si el equipo no tiene configurada la base de datos, el reporte se ve y se descarga igual. Un reporte guardado se
- * abre con {@link #showingSaved(SavedReport)}.</p>
+ * <p>El reporte de una simulación que terminó no se guarda solo: debajo de la barra, una franja
+ * ({@link SavePromptPanel}) pregunta si se guarda la simulación en el historial, y la decisión ({@link ReportSaving})
+ * es de la simulación, no de la ventana, así que se conserva aunque se cierre y se vuelva a abrir el reporte. Sin
+ * guardarla, el reporte se ve y se descarga igual. Un reporte guardado se abre con
+ * {@link #showingSaved(SavedReport)}.</p>
  */
 public final class ReportWindow extends JFrame {
 
@@ -79,12 +78,6 @@ public final class ReportWindow extends JFrame {
     public static final String DOWNLOAD = "Descargar";
     /** Mensaje cuando no se pudo guardar el archivo, antes del detalle. */
     public static final String SAVE_ERROR_TEXT = "No se pudo guardar el reporte: ";
-    /** Mensaje cuando el reporte quedó guardado en la base de datos. */
-    public static final String ARCHIVED_TEXT = "Guardado en la base de datos";
-    /** Mensaje cuando el reporte no se pudo guardar en la base de datos; el detalle va en la ayuda emergente. */
-    public static final String ARCHIVE_ERROR_TEXT = "No se guardó en la base de datos";
-    /** Mensaje cuando el equipo no tiene configurada la base de datos. */
-    public static final String NO_DATABASE_TEXT = "Sin base de datos configurada: el reporte no se guardó";
     /** Texto del botón que vuelve a simular el mismo caso. */
     public static final String RERUN = "Reutilizar caso";
     /** Texto del botón que vuelve a simular el mismo caso con las recomendaciones del reporte. */
@@ -112,6 +105,8 @@ public final class ReportWindow extends JFrame {
     private final JLabel saveStatus = new JLabel("Descarga el reporte en Word o PDF, en normas APA.");
     private final JLabel archiveStatus = new JLabel(" ");
     private transient Consumer<Boolean> rerunAction;
+    private transient ReportSaving saving;
+    private transient SavePromptPanel prompt;
     private final HomeButton rerun = new HomeButton(HomeButton.Style.OUTLINE, RERUN, HomeIcon.PLAY);
     private final HomeButton tryRecommendations =
             new HomeButton(HomeButton.Style.OUTLINE, TRY_RECOMMENDATIONS, HomeIcon.PLAY);
@@ -145,30 +140,37 @@ public final class ReportWindow extends JFrame {
      */
     public static ReportWindow generating(ReportGenerator generator, ReportRequest request,
                                           Consumer<String> onShowCase, Consumer<GeneratedReport> onGenerated) {
-        return generating(generator, Optional::empty, request, onShowCase, onGenerated);
+        if (generator == null || request == null || onGenerated == null) {
+            throw new IllegalArgumentException("Faltan datos para generar el reporte.");
+        }
+        ReportWindow window = new ReportWindow(onShowCase);
+        window.start(generator, request, onGenerated);
+        window.setVisible(true);
+        return window;
     }
 
     /**
-     * Abre la ventana, empieza a generar el reporte y, cuando termina, lo guarda en la base de datos.
+     * Abre la ventana, empieza a generar el reporte y, cuando termina, pregunta si se guarda la simulación en el
+     * historial. No guarda nada por sí misma: eso lo decide quien usa la aplicación.
      *
      * @param generator   generador del reporte
-     * @param archive     da el archivo de reportes, o vacío si no hay base de datos; se pide en segundo plano
+     * @param saving      decisión de guardar la simulación; recibe el reporte cuando está listo
      * @param request     datos de la simulación que terminó
      * @param onShowCase  qué hacer al pulsar «Ver en el plano»: recibe el código del paciente
      * @param onGenerated recibe el reporte cuando está listo, para poder volver a abrirlo sin generarlo otra vez
      * @return la ventana ya visible
      * @throws IllegalArgumentException si falta algún dato
      */
-    public static ReportWindow generating(ReportGenerator generator, Supplier<Optional<ReportArchive>> archive,
-                                          ReportRequest request, Consumer<String> onShowCase,
-                                          Consumer<GeneratedReport> onGenerated) {
-        if (generator == null || archive == null || request == null || onGenerated == null) {
+    public static ReportWindow generating(ReportGenerator generator, ReportSaving saving, ReportRequest request,
+                                          Consumer<String> onShowCase, Consumer<GeneratedReport> onGenerated) {
+        if (generator == null || saving == null || request == null || onGenerated == null) {
             throw new IllegalArgumentException("Faltan datos para generar el reporte.");
         }
         ReportWindow window = new ReportWindow(onShowCase);
+        window.saving = saving;
         window.start(generator, request, report -> {
             onGenerated.accept(report);
-            window.archive(archive, request, report);
+            saving.reportReady(report);
         });
         window.setVisible(true);
         return window;
@@ -187,6 +189,28 @@ public final class ReportWindow extends JFrame {
             throw new IllegalArgumentException("El reporte es obligatorio.");
         }
         ReportWindow window = new ReportWindow(onShowCase);
+        window.showReport(generated);
+        window.setVisible(true);
+        return window;
+    }
+
+    /**
+     * Vuelve a abrir el reporte de una simulación que terminó, con la decisión de guardarla tal como quedó: si ya
+     * se guardó, lo dice; si se está guardando, no deja empezar otro guardado; si no se decidió, vuelve a preguntar.
+     *
+     * @param generated  reporte terminado
+     * @param saving     decisión de guardar esa simulación
+     * @param onShowCase qué hacer al pulsar «Ver en el plano»: recibe el código del paciente
+     * @return la ventana ya visible
+     * @throws IllegalArgumentException si falta algún dato
+     */
+    public static ReportWindow showing(GeneratedReport generated, ReportSaving saving, Consumer<String> onShowCase) {
+        if (generated == null || saving == null) {
+            throw new IllegalArgumentException("Faltan el reporte o la decisión de guardarlo.");
+        }
+        ReportWindow window = new ReportWindow(onShowCase);
+        window.saving = saving;
+        saving.reportReady(generated);
         window.showReport(generated);
         window.setVisible(true);
         return window;
@@ -248,6 +272,15 @@ public final class ReportWindow extends JFrame {
         return Optional.ofNullable(generated);
     }
 
+    /**
+     * Devuelve la franja que pregunta si se guarda la simulación.
+     *
+     * @return la franja; vacía si el reporte todavía se genera o si es un reporte guardado
+     */
+    public Optional<SavePromptPanel> getSavePrompt() {
+        return Optional.ofNullable(prompt);
+    }
+
     private void start(ReportGenerator generator, ReportRequest request, Consumer<GeneratedReport> onGenerated) {
         progressPanel = new ReportProgressPanel(generator.usesAi());
         progressPanel.onCancel(this::dispose);
@@ -281,21 +314,6 @@ public final class ReportWindow extends JFrame {
         progressPanel.showError(ERROR_TEXT + detail);
     }
 
-    /** Guarda en segundo plano el reporte recién generado y deja en la barra cómo terminó. */
-    private void archive(Supplier<Optional<ReportArchive>> archive, ReportRequest request, GeneratedReport report) {
-        showArchiveStatus("Guardando en la base de datos…", HomeTheme.MUTED);
-        new ArchiveWorker<>(() -> archive.get().map(found -> found.save(request, report)), saved -> {
-            if (saved.isPresent()) {
-                showArchiveStatus(ARCHIVED_TEXT, HomeTheme.ACCENT);
-            } else {
-                showArchiveStatus(NO_DATABASE_TEXT, HomeTheme.MUTED);
-            }
-        }, error -> {
-            showArchiveStatus(ARCHIVE_ERROR_TEXT, HomeTheme.DANGER);
-            archiveStatus.setToolTipText(detail(error));
-        }).execute();
-    }
-
     /** En un reporte guardado no hay plano: explica cómo volver a ver al paciente. */
     private void explainCase(String patientCode, SavedReport saved) {
         showStatus("Para ver a " + patientCode + " en el plano, vuelve a simular el escenario "
@@ -320,7 +338,14 @@ public final class ReportWindow extends JFrame {
         DarkScrollBarUI.apply(scroll);
         JPanel withBar = new JPanel(new BorderLayout());
         withBar.setOpaque(false);
-        withBar.add(buildDownloadBar(), BorderLayout.NORTH);
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(buildDownloadBar(), BorderLayout.NORTH);
+        if (saving != null) {
+            prompt = new SavePromptPanel(saving);
+            top.add(prompt, BorderLayout.SOUTH);
+        }
+        withBar.add(top, BorderLayout.NORTH);
         withBar.add(scroll, BorderLayout.CENTER);
         content.add(withBar, REPORT_CARD);
         cards.show(content, REPORT_CARD);
@@ -456,6 +481,9 @@ public final class ReportWindow extends JFrame {
     @Override
     public void dispose() {
         ticker.stop();
+        if (prompt != null) {
+            prompt.detach();
+        }
         if (worker != null && !worker.isDone()) {
             worker.cancel(true);
         }
