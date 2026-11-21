@@ -2,8 +2,8 @@ package com.medresource.persistence;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -185,7 +185,7 @@ final class FakeResultDatabase {
                 working = committed.copy();
                 yield null;
             }
-            case "prepareStatement" -> prepare((String) args[0]);
+            case "prepareCall" -> prepareCall((String) args[0]);
             case "close" -> {
                 connectionsClosed++;
                 yield null;
@@ -196,13 +196,13 @@ final class FakeResultDatabase {
                 new Class<?>[]{Connection.class}, handler);
     }
 
-    private PreparedStatement prepare(String sql) throws SQLException {
+    private CallableStatement prepareCall(String sql) throws SQLException {
         if (failWhenContaining != null && sql.contains(failWhenContaining)) {
             throw new SQLException("fallo simulado");
         }
         Map<Integer, Object> parameters = new HashMap<>();
+        Map<Integer, Object> outputs = new HashMap<>();
         List<Map<Integer, Object>> batch = new ArrayList<>();
-        int[] generatedKey = {0};
         InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
             case "setInt", "setLong", "setString", "setDouble" -> {
                 parameters.put((Integer) args[0], args[1]);
@@ -212,7 +212,11 @@ final class FakeResultDatabase {
                 parameters.put((Integer) args[0], null);
                 yield null;
             }
-            case "executeUpdate" -> update(sql, parameters, generatedKey);
+            case "registerOutParameter" -> null;
+            case "execute" -> {
+                call(sql, parameters, outputs);
+                yield false;
+            }
             case "addBatch" -> {
                 batch.add(new HashMap<>(parameters));
                 yield null;
@@ -220,102 +224,112 @@ final class FakeResultDatabase {
             case "executeBatch" -> {
                 int[] counts = new int[batch.size()];
                 for (int i = 0; i < counts.length; i++) {
-                    counts[i] = update(sql, batch.get(i), generatedKey);
+                    call(sql, batch.get(i), new HashMap<>());
+                    counts[i] = 1;
                 }
                 batch.clear();
                 yield counts;
             }
-            case "getGeneratedKeys" -> resultSet(List.of(Map.of("1", generatedKey[0])));
-            case "executeQuery" -> query(sql, parameters);
+            case "getInt" -> ((Number) outputs.get((Integer) args[0])).intValue();
+            case "getObject" -> outputs.get((Integer) args[0]);
             case "close" -> {
                 statementsClosed++;
                 yield null;
             }
             default -> throw new UnsupportedOperationException(method.getName());
         };
-        return (PreparedStatement) Proxy.newProxyInstance(FakeResultDatabase.class.getClassLoader(),
-                new Class<?>[]{PreparedStatement.class}, handler);
+        return (CallableStatement) Proxy.newProxyInstance(FakeResultDatabase.class.getClassLoader(),
+                new Class<?>[]{CallableStatement.class}, handler);
     }
 
     // ---------- sentencias de cambio ----------
 
-    private int update(String sql, Map<Integer, Object> p, int[] generatedKey) throws SQLException {
+    /** Imita los procedimientos de ejecuciones: deja en {@code outputs} lo que Oracle devolvería. */
+    private void call(String sql, Map<Integer, Object> p, Map<Integer, Object> outputs) throws SQLException {
         switch (sql) {
-            case OracleResultDao.INSERT_RESULT -> {
-                if (!cases.containsKey((Integer) p.get(1))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_CASO) violada");
-                }
-                if (p.get(11) != null && !working.results.containsKey((Integer) p.get(11))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_BASE) violada");
-                }
-                int id = working.nextId++;
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("id", id);
-                for (int i = 0; i < RESULT_COLUMNS.size(); i++) {
-                    row.put(RESULT_COLUMNS.get(i), p.get(i + 1));
-                }
-                working.results.put(id, row);
-                generatedKey[0] = id;
-                return 1;
-            }
-            case OracleResultDao.INSERT_PATIENT -> {
-                List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
-                if (!working.results.containsKey(key.get(0))) {
-                    throw new SQLException(
-                            "ORA-02291: restricción de integridad (FK_RESULTADO_PAC_EJECUCION) violada");
-                }
-                if (!knownDiseases.contains((Integer) p.get(7))) {
-                    throw new SQLException(
-                            "ORA-02291: restricción de integridad (FK_RESULTADO_PAC_ENFERMEDAD) violada");
-                }
-                if (working.patients.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_RESULTADO_PACIENTE) violada");
-                }
-                Map<String, Object> row = new LinkedHashMap<>();
-                for (int i = 0; i < PATIENT_COLUMNS.size(); i++) {
-                    row.put(PATIENT_COLUMNS.get(i), p.get(i + 1));
-                }
-                working.patients.put(key, row);
-                return 1;
-            }
-            case OracleResultDao.INSERT_EVENT -> {
-                List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
-                if (!working.results.containsKey(key.get(0))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_EVENTO_EJECUCION) violada");
-                }
-                if (working.events.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_EVENTO) violada");
-                }
-                Map<String, Object> row = new LinkedHashMap<>();
-                for (int i = 0; i < EVENT_COLUMNS.size(); i++) {
-                    row.put(EVENT_COLUMNS.get(i), p.get(i + 1));
-                }
-                working.events.put(key, row);
-                return 1;
-            }
-            case OracleResultDao.INSERT_EXTRA_DOCTOR -> {
-                List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
-                if (!working.results.containsKey(key.get(0))) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_EJEC_MEDICO_EJECUCION) violada");
-                }
-                if (working.extraDoctors.containsKey(key)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_EJECUCION_MEDICO_EXTRA) violada");
-                }
-                working.extraDoctors.put(key, (String) p.get(3));
-                return 1;
-            }
-            case OracleResultDao.DELETE_RESULT -> {
-                int id = (Integer) p.get(1);
-                working.extraDoctors.keySet().removeIf(key -> key.get(0) == id);
-                working.results.values().stream()
-                        .filter(row -> Integer.valueOf(id).equals(row.get("id_ejecucion_base")))
-                        .forEach(row -> row.put("id_ejecucion_base", null));
-                working.patients.keySet().removeIf(key -> key.get(0) == id);
-                working.events.keySet().removeIf(key -> key.get(0) == id);
-                return working.results.remove(id) == null ? 0 : 1;
-            }
-            default -> throw new SQLException("Sentencia de cambio no reconocida: " + sql);
+            case OracleResultDao.SELECT_CASE_CONFIG, OracleResultDao.SELECT_BASE_CASE, OracleResultDao.SELECT_RESULTS,
+                 OracleResultDao.SELECT_IDS_BY_CASE, OracleResultDao.SELECT_PATIENTS, OracleResultDao.SELECT_EVENTS,
+                 OracleResultDao.SELECT_EXTRA_DOCTORS -> outputs.put(2, query(sql, p));
+            case OracleResultDao.INSERT_RESULT -> outputs.put(12, insertResult(p));
+            case OracleResultDao.INSERT_PATIENT -> insertPatient(p);
+            case OracleResultDao.INSERT_EVENT -> insertEvent(p);
+            case OracleResultDao.INSERT_EXTRA_DOCTOR -> insertExtraDoctor(p);
+            case OracleResultDao.DELETE_RESULT -> outputs.put(2, deleteResult((Integer) p.get(1)));
+            default -> throw new SQLException("Procedimiento no reconocido: " + sql);
         }
+    }
+
+    /** Lo que hace {@code pr_crear_ejecucion}: valida el caso y la base, y devuelve el identificador. */
+    private int insertResult(Map<Integer, Object> p) throws SQLException {
+        if (!cases.containsKey((Integer) p.get(1))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_CASO) violada");
+        }
+        if (p.get(11) != null && !working.results.containsKey((Integer) p.get(11))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_EJECUCION_BASE) violada");
+        }
+        int id = working.nextId++;
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", id);
+        for (int i = 0; i < RESULT_COLUMNS.size(); i++) {
+            row.put(RESULT_COLUMNS.get(i), p.get(i + 1));
+        }
+        working.results.put(id, row);
+        return id;
+    }
+
+    private void insertPatient(Map<Integer, Object> p) throws SQLException {
+        List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
+        if (!working.results.containsKey(key.get(0))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_RESULTADO_PAC_EJECUCION) violada");
+        }
+        if (!knownDiseases.contains((Integer) p.get(7))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_RESULTADO_PAC_ENFERMEDAD) violada");
+        }
+        if (working.patients.containsKey(key)) {
+            throw new SQLException("ORA-00001: restricción única (PK_RESULTADO_PACIENTE) violada");
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int i = 0; i < PATIENT_COLUMNS.size(); i++) {
+            row.put(PATIENT_COLUMNS.get(i), p.get(i + 1));
+        }
+        working.patients.put(key, row);
+    }
+
+    private void insertEvent(Map<Integer, Object> p) throws SQLException {
+        List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
+        if (!working.results.containsKey(key.get(0))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_EVENTO_EJECUCION) violada");
+        }
+        if (working.events.containsKey(key)) {
+            throw new SQLException("ORA-00001: restricción única (PK_EVENTO) violada");
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int i = 0; i < EVENT_COLUMNS.size(); i++) {
+            row.put(EVENT_COLUMNS.get(i), p.get(i + 1));
+        }
+        working.events.put(key, row);
+    }
+
+    private void insertExtraDoctor(Map<Integer, Object> p) throws SQLException {
+        List<Integer> key = List.of((Integer) p.get(1), (Integer) p.get(2));
+        if (!working.results.containsKey(key.get(0))) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_EJEC_MEDICO_EJECUCION) violada");
+        }
+        if (working.extraDoctors.containsKey(key)) {
+            throw new SQLException("ORA-00001: restricción única (PK_EJECUCION_MEDICO_EXTRA) violada");
+        }
+        working.extraDoctors.put(key, (String) p.get(3));
+    }
+
+    /** Lo que hace {@code pr_borrar_ejecucion}: borra sus pacientes, eventos y médicos; deja sin base a las que la usaban. */
+    private int deleteResult(int id) {
+        working.extraDoctors.keySet().removeIf(key -> key.get(0) == id);
+        working.results.values().stream()
+                .filter(row -> Integer.valueOf(id).equals(row.get("id_ejecucion_base")))
+                .forEach(row -> row.put("id_ejecucion_base", null));
+        working.patients.keySet().removeIf(key -> key.get(0) == id);
+        working.events.keySet().removeIf(key -> key.get(0) == id);
+        return working.results.remove(id) == null ? 0 : 1;
     }
 
     // ---------- consultas ----------
@@ -335,8 +349,8 @@ final class FakeResultDatabase {
                     rows.add(row);
                 }
             }
-            case OracleResultDao.SELECT_RESULTS, OracleResultDao.SELECT_RESULT -> {
-                Integer only = sql.equals(OracleResultDao.SELECT_RESULT) ? (Integer) p.get(1) : null;
+            case OracleResultDao.SELECT_RESULTS -> {
+                Integer only = (Integer) p.get(1);
                 working.results.forEach((id, row) -> {
                     if (only == null || only.equals(id)) {
                         Map<String, Object> joined = new LinkedHashMap<>(row);
@@ -351,7 +365,7 @@ final class FakeResultDatabase {
             }
             case OracleResultDao.SELECT_IDS_BY_CASE -> working.results.values().stream()
                     .filter(row -> row.get("id_caso").equals(p.get(1))).forEach(rows::add);
-            case OracleResultDao.SELECT_PATIENTS, OracleResultDao.SELECT_PATIENTS_OF -> {
+            case OracleResultDao.SELECT_PATIENTS -> {
                 Integer only = (Integer) p.get(1);
                 working.patients.forEach((key, row) -> {
                     if (only == null || only.equals(key.get(0))) {
@@ -359,7 +373,7 @@ final class FakeResultDatabase {
                     }
                 });
             }
-            case OracleResultDao.SELECT_EXTRA_DOCTORS, OracleResultDao.SELECT_EXTRA_DOCTORS_OF -> {
+            case OracleResultDao.SELECT_EXTRA_DOCTORS -> {
                 Integer only = (Integer) p.get(1);
                 working.extraDoctors.forEach((key, specialty) -> {
                     if (only == null || only.equals(key.get(0))) {
@@ -367,7 +381,7 @@ final class FakeResultDatabase {
                     }
                 });
             }
-            case OracleResultDao.SELECT_EVENTS, OracleResultDao.SELECT_EVENTS_OF -> {
+            case OracleResultDao.SELECT_EVENTS -> {
                 Integer only = (Integer) p.get(1);
                 working.events.forEach((key, row) -> {
                     if (only == null || only.equals(key.get(0))) {

@@ -17,7 +17,7 @@ import com.medresource.model.Specialty;
 import com.medresource.model.TriageLevel;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
+import java.sql.CallableStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
@@ -44,50 +44,36 @@ import java.util.Optional;
  */
 public class OracleResultDao implements ResultDao {
 
-    static final String INSERT_RESULT = "INSERT INTO ejecucion (id_caso, estrategia, minutos_totales, camas, "
-            + "camas_uci, quirofanos, medicos, enfermeros, unidades_sangre_por_tipo, capacidad_morgue, "
-            + "id_ejecucion_base) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_PATIENT = "INSERT INTO resultado_paciente (id_ejecucion, id_paciente, "
-            + "codigo_paciente, edad, sexo, nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, "
-            + "minuto_desenlace, estado, causa_muerte, nivel_atencion, irrecuperable, salud_final) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_EVENT = "INSERT INTO evento (id_ejecucion, orden_evento, minuto_evento, tipo_evento, "
-            + "codigo_paciente, codigo_recurso, descripcion) VALUES (?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_EXTRA_DOCTOR =
-            "INSERT INTO ejecucion_medico_extra (id_ejecucion, orden_medico, especialidad) VALUES (?, ?, ?)";
-    static final String DELETE_RESULT = "DELETE FROM ejecucion WHERE id = ?";
+    /** {@code pr_leer_config_caso(id_caso, cursor)}: la configuración del caso. */
+    static final String SELECT_CASE_CONFIG = "{call pr_leer_config_caso(?, ?)}";
+    /** {@code pr_leer_caso_de_ejecucion(id, cursor)}: el caso de una ejecución. */
+    static final String SELECT_BASE_CASE = "{call pr_leer_caso_de_ejecucion(?, ?)}";
+    /** {@code pr_crear_ejecucion(...)}: los 11 datos y, al final, el identificador que sale. */
+    static final String INSERT_RESULT = "{call pr_crear_ejecucion(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+    /** {@code pr_agregar_medico_extra(ejecucion, orden, especialidad)}. */
+    static final String INSERT_EXTRA_DOCTOR = "{call pr_agregar_medico_extra(?, ?, ?)}";
+    /** {@code pr_agregar_resultado_paciente(...)}: los 15 datos del resultado de un paciente. */
+    static final String INSERT_PATIENT =
+            "{call pr_agregar_resultado_paciente(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+    /** {@code pr_agregar_evento(...)}: los 7 datos de un evento. */
+    static final String INSERT_EVENT = "{call pr_agregar_evento(?, ?, ?, ?, ?, ?, ?)}";
+    /** {@code pr_borrar_ejecucion(id, borradas)}: el segundo parámetro dice cuántas filas se borraron. */
+    static final String DELETE_RESULT = "{call pr_borrar_ejecucion(?, ?)}";
+    /** {@code pr_leer_ejecuciones(id, cursor)}: si el id es nulo, devuelve todas. */
+    static final String SELECT_RESULTS = "{call pr_leer_ejecuciones(?, ?)}";
+    /** {@code pr_ids_ejecuciones_de_caso(id_caso, cursor)}. */
+    static final String SELECT_IDS_BY_CASE = "{call pr_ids_ejecuciones_de_caso(?, ?)}";
+    /** {@code pr_leer_resultados_pacientes(id_ejecucion, cursor)}: si el id es nulo, devuelve todos. */
+    static final String SELECT_PATIENTS = "{call pr_leer_resultados_pacientes(?, ?)}";
+    /** {@code pr_leer_eventos(id_ejecucion, cursor)}: si el id es nulo, devuelve todos. */
+    static final String SELECT_EVENTS = "{call pr_leer_eventos(?, ?)}";
+    /** {@code pr_leer_medicos_extra(id_ejecucion, cursor)}: si el id es nulo, devuelve todos. */
+    static final String SELECT_EXTRA_DOCTORS = "{call pr_leer_medicos_extra(?, ?)}";
 
-    static final String SELECT_BASE_CASE = "SELECT id_caso FROM ejecucion WHERE id = ?";
-    static final String SELECT_CASE_CONFIG =
-            "SELECT semilla, escenario, cantidad_pacientes, duracion_minutos FROM caso WHERE id = ?";
-    static final String SELECT_RESULTS = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
-            + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
-            + "r.id_ejecucion_base, c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
-            + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso ORDER BY r.id";
-    static final String SELECT_RESULT = "SELECT r.id, r.id_caso, r.estrategia, r.minutos_totales, r.camas, "
-            + "r.camas_uci, r.quirofanos, r.medicos, r.enfermeros, r.unidades_sangre_por_tipo, r.capacidad_morgue, "
-            + "r.id_ejecucion_base, c.semilla, c.escenario, c.cantidad_pacientes, c.duracion_minutos "
-            + "FROM ejecucion r JOIN caso c ON c.id = r.id_caso WHERE r.id = ?";
-    static final String SELECT_IDS_BY_CASE = "SELECT id FROM ejecucion WHERE id_caso = ? ORDER BY id";
-    static final String SELECT_PATIENTS = "SELECT id_ejecucion, id_paciente, codigo_paciente, edad, sexo, "
-            + "nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, minuto_desenlace, estado, "
-            + "causa_muerte, nivel_atencion, irrecuperable, salud_final FROM resultado_paciente "
-            + "ORDER BY id_ejecucion, id_paciente";
-    static final String SELECT_PATIENTS_OF = "SELECT id_ejecucion, id_paciente, codigo_paciente, edad, sexo, "
-            + "nivel_triage, id_enfermedad, minuto_llegada, minuto_inicio_atencion, minuto_desenlace, estado, "
-            + "causa_muerte, nivel_atencion, irrecuperable, salud_final FROM resultado_paciente "
-            + "WHERE id_ejecucion = ? ORDER BY id_paciente";
-    static final String SELECT_EVENTS = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
-            + "codigo_recurso, descripcion FROM evento ORDER BY id_ejecucion, orden_evento";
-    static final String SELECT_EXTRA_DOCTORS = "SELECT id_ejecucion, especialidad FROM ejecucion_medico_extra "
-            + "ORDER BY id_ejecucion, orden_medico";
-    static final String SELECT_EXTRA_DOCTORS_OF = "SELECT id_ejecucion, especialidad FROM ejecucion_medico_extra "
-            + "WHERE id_ejecucion = ? ORDER BY orden_medico";
-    static final String SELECT_EVENTS_OF = "SELECT id_ejecucion, minuto_evento, tipo_evento, codigo_paciente, "
-            + "codigo_recurso, descripcion FROM evento WHERE id_ejecucion = ? ORDER BY orden_evento";
-
-    /** Nombre de la columna que Oracle genera al insertar una ejecución. */
-    private static final String GENERATED_COLUMN = "ID";
+    /** Posiciones de los parámetros de salida y de los cursores. */
+    private static final int RESULT_ID_POSITION = 12;
+    private static final int DELETED_COUNT_POSITION = 2;
+    private static final int CURSOR_POSITION = 2;
 
     private final TransactionRunner transactions;
     private final GenericDao<Disease, Integer> diseases;
@@ -136,9 +122,11 @@ public class OracleResultDao implements ResultDao {
 
     /** Comprueba que el caso existe y que el resultado se obtuvo con su configuración. */
     private static void requireSameCase(Connection connection, RunRecord run) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(SELECT_CASE_CONFIG)) {
-            statement.setInt(1, run.caseId());
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_CASE_CONFIG)) {
+            call.setInt(1, run.caseId());
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 if (!rows.next()) {
                     throw new DataAccessException("No existe el caso " + run.caseId() + ".");
                 }
@@ -156,9 +144,11 @@ public class OracleResultDao implements ResultDao {
         if (run.baseRunId() == null) {
             return;
         }
-        try (PreparedStatement statement = connection.prepareStatement(SELECT_BASE_CASE)) {
-            statement.setInt(1, run.baseRunId());
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_BASE_CASE)) {
+            call.setInt(1, run.baseRunId());
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 if (!rows.next()) {
                     throw new DataAccessException("No existe la ejecución base " + run.baseRunId() + ".");
                 }
@@ -173,30 +163,26 @@ public class OracleResultDao implements ResultDao {
     }
 
     private static int insertResult(Connection connection, RunRecord run) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_RESULT, new String[]{GENERATED_COLUMN})) {
+        try (CallableStatement call = connection.prepareCall(INSERT_RESULT)) {
             HospitalConfig hospital = run.hospital();
-            statement.setInt(1, run.caseId());
-            statement.setString(2, run.result().strategyName());
-            statement.setInt(3, run.result().totalMinutes());
-            statement.setInt(4, hospital.hospitalizationBeds());
-            statement.setInt(5, hospital.icuBeds());
-            statement.setInt(6, hospital.operatingRooms());
-            statement.setInt(7, hospital.doctors());
-            statement.setInt(8, hospital.nurses());
-            statement.setInt(9, hospital.bloodUnitsPerType());
-            statement.setInt(10, hospital.morgueCapacity());
+            call.setInt(1, run.caseId());
+            call.setString(2, run.result().strategyName());
+            call.setInt(3, run.result().totalMinutes());
+            call.setInt(4, hospital.hospitalizationBeds());
+            call.setInt(5, hospital.icuBeds());
+            call.setInt(6, hospital.operatingRooms());
+            call.setInt(7, hospital.doctors());
+            call.setInt(8, hospital.nurses());
+            call.setInt(9, hospital.bloodUnitsPerType());
+            call.setInt(10, hospital.morgueCapacity());
             if (run.baseRunId() == null) {
-                statement.setNull(11, Types.NUMERIC);
+                call.setNull(11, Types.NUMERIC);
             } else {
-                statement.setInt(11, run.baseRunId());
+                call.setInt(11, run.baseRunId());
             }
-            statement.executeUpdate();
-            try (ResultSet keys = statement.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new SQLException("Oracle no devolvió el identificador de la ejecución.");
-                }
-                return keys.getInt(1);
-            }
+            call.registerOutParameter(RESULT_ID_POSITION, Types.INTEGER);
+            call.execute();
+            return call.getInt(RESULT_ID_POSITION);
         }
     }
 
@@ -206,71 +192,71 @@ public class OracleResultDao implements ResultDao {
         if (doctors.isEmpty()) {
             return;
         }
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_EXTRA_DOCTOR)) {
+        try (CallableStatement call = connection.prepareCall(INSERT_EXTRA_DOCTOR)) {
             int order = 0;
             for (Specialty specialty : doctors) {
-                statement.setInt(1, resultId);
-                statement.setInt(2, order++);
-                statement.setString(3, specialty.name());
-                statement.addBatch();
+                call.setInt(1, resultId);
+                call.setInt(2, order++);
+                call.setString(3, specialty.name());
+                call.addBatch();
             }
-            statement.executeBatch();
+            call.executeBatch();
         }
     }
 
     private static void insertPatients(Connection connection, int resultId, List<PatientOutcome> outcomes)
             throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_PATIENT)) {
+        try (CallableStatement call = connection.prepareCall(INSERT_PATIENT)) {
             for (PatientOutcome outcome : outcomes) {
-                statement.setInt(1, resultId);
-                statement.setInt(2, outcome.patientId());
-                statement.setString(3, outcome.patientCode());
-                statement.setInt(4, outcome.age());
-                statement.setString(5, outcome.sex().name());
-                statement.setInt(6, outcome.triage().getLevel());
-                statement.setInt(7, outcome.disease().getId());
-                statement.setInt(8, outcome.arrivalMinute());
-                statement.setInt(9, outcome.treatmentStartMinute());
-                statement.setInt(10, outcome.outcomeMinute());
-                statement.setString(11, outcome.status().name());
-                setNullableName(statement, 12, outcome.causeOfDeath());
-                setNullableName(statement, 13, outcome.careLevel());
-                statement.setInt(14, outcome.irrecoverable() ? 1 : 0);
-                statement.setDouble(15, outcome.finalHealth());
-                statement.addBatch();
+                call.setInt(1, resultId);
+                call.setInt(2, outcome.patientId());
+                call.setString(3, outcome.patientCode());
+                call.setInt(4, outcome.age());
+                call.setString(5, outcome.sex().name());
+                call.setInt(6, outcome.triage().getLevel());
+                call.setInt(7, outcome.disease().getId());
+                call.setInt(8, outcome.arrivalMinute());
+                call.setInt(9, outcome.treatmentStartMinute());
+                call.setInt(10, outcome.outcomeMinute());
+                call.setString(11, outcome.status().name());
+                setNullableName(call, 12, outcome.causeOfDeath());
+                setNullableName(call, 13, outcome.careLevel());
+                call.setInt(14, outcome.irrecoverable() ? 1 : 0);
+                call.setDouble(15, outcome.finalHealth());
+                call.addBatch();
             }
-            statement.executeBatch();
+            call.executeBatch();
         }
     }
 
     private static void insertEvents(Connection connection, int resultId, List<SimulationEvent> events)
             throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_EVENT)) {
+        try (CallableStatement call = connection.prepareCall(INSERT_EVENT)) {
             int order = 0;
             for (SimulationEvent event : events) {
-                statement.setInt(1, resultId);
-                statement.setInt(2, order++);
-                statement.setInt(3, event.minute());
-                statement.setString(4, event.type().name());
-                statement.setString(5, event.patientCode());
+                call.setInt(1, resultId);
+                call.setInt(2, order++);
+                call.setInt(3, event.minute());
+                call.setString(4, event.type().name());
+                call.setString(5, event.patientCode());
                 if (event.resourceCode() == null) {
-                    statement.setNull(6, Types.VARCHAR);
+                    call.setNull(6, Types.VARCHAR);
                 } else {
-                    statement.setString(6, event.resourceCode());
+                    call.setString(6, event.resourceCode());
                 }
-                statement.setString(7, event.description());
-                statement.addBatch();
+                call.setString(7, event.description());
+                call.addBatch();
             }
-            statement.executeBatch();
+            call.executeBatch();
         }
     }
 
     /** Guarda el nombre de una enumeración, o NULL si no hay valor. */
-    private static void setNullableName(PreparedStatement statement, int index, Enum<?> value) throws SQLException {
+    private static void setNullableName(CallableStatement call, int index, Enum<?> value) throws SQLException {
         if (value == null) {
-            statement.setNull(index, Types.VARCHAR);
+            call.setNull(index, Types.VARCHAR);
         } else {
-            statement.setString(index, value.name());
+            call.setString(index, value.name());
         }
     }
 
@@ -305,9 +291,11 @@ public class OracleResultDao implements ResultDao {
     public List<Integer> findIdsByCase(int caseId) {
         return transactions.run("buscar las ejecuciones del caso " + caseId, connection -> {
             List<Integer> ids = new ArrayList<>();
-            try (PreparedStatement statement = connection.prepareStatement(SELECT_IDS_BY_CASE)) {
-                statement.setInt(1, caseId);
-                try (ResultSet rows = statement.executeQuery()) {
+            try (CallableStatement call = connection.prepareCall(SELECT_IDS_BY_CASE)) {
+                call.setInt(1, caseId);
+                call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+                call.execute();
+                try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                     while (rows.next()) {
                         ids.add(rows.getInt("id"));
                     }
@@ -367,11 +355,11 @@ public class OracleResultDao implements ResultDao {
 
     private static List<Map<String, Object>> readHeaders(Connection connection, Integer id) throws SQLException {
         List<Map<String, Object>> headers = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_RESULTS : SELECT_RESULT)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_RESULTS)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     Map<String, Object> header = new HashMap<>();
                     for (String column : List.of("id", "id_caso", "minutos_totales", "camas", "camas_uci",
@@ -395,11 +383,11 @@ public class OracleResultDao implements ResultDao {
                                                                    Map<Integer, Disease> catalog)
             throws SQLException {
         Map<Integer, List<PatientOutcome>> result = new HashMap<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_PATIENTS : SELECT_PATIENTS_OF)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_PATIENTS)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     int resultId = rows.getInt("id_ejecucion");
                     result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toOutcome(rows, resultId, catalog));
@@ -412,11 +400,11 @@ public class OracleResultDao implements ResultDao {
     private static Map<Integer, List<SimulationEvent>> readEvents(Connection connection, Integer id)
             throws SQLException {
         Map<Integer, List<SimulationEvent>> result = new HashMap<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_EVENTS : SELECT_EVENTS_OF)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_EVENTS)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     int resultId = rows.getInt("id_ejecucion");
                     result.computeIfAbsent(resultId, key -> new ArrayList<>()).add(toEvent(rows, resultId));
@@ -429,12 +417,11 @@ public class OracleResultDao implements ResultDao {
     private static Map<Integer, List<Specialty>> readExtraDoctors(Connection connection, Integer id)
             throws SQLException {
         Map<Integer, List<Specialty>> result = new HashMap<>();
-        try (PreparedStatement statement = connection.prepareStatement(
-                id == null ? SELECT_EXTRA_DOCTORS : SELECT_EXTRA_DOCTORS_OF)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_EXTRA_DOCTORS)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     int resultId = rows.getInt("id_ejecucion");
                     Specialty specialty = parse(Specialty.class, rows.getString("especialidad"),
@@ -444,6 +431,15 @@ public class OracleResultDao implements ResultDao {
             }
         }
         return result;
+    }
+
+    /** Pone el identificador del filtro, o NULL si se quieren todas. */
+    private static void setOptionalId(CallableStatement call, Integer id) throws SQLException {
+        if (id == null) {
+            call.setNull(1, Types.INTEGER);
+        } else {
+            call.setInt(1, id);
+        }
     }
 
     /** Arma el resultado del paciente de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
@@ -536,9 +532,11 @@ public class OracleResultDao implements ResultDao {
     public void deleteById(Integer id) {
         requireId(id);
         transactions.run("borrar la ejecución " + id, connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(DELETE_RESULT)) {
-                statement.setInt(1, id);
-                if (statement.executeUpdate() == 0) {
+            try (CallableStatement call = connection.prepareCall(DELETE_RESULT)) {
+                call.setInt(1, id);
+                call.registerOutParameter(DELETED_COUNT_POSITION, Types.INTEGER);
+                call.execute();
+                if (call.getInt(DELETED_COUNT_POSITION) == 0) {
                     throw new DataAccessException("No existe la ejecución " + id + ".");
                 }
             }

@@ -221,12 +221,13 @@ class OracleResultDaoTest {
         assertEquals(1, database.connectionsOpened);
         assertEquals(1, database.connectionsClosed);
         assertEquals(4, database.statementsClosed);
-        assertEquals(2, database.resultSetsClosed);
+        // Solo la lectura de la configuración del caso usa un cursor: la cabecera se crea sin uno.
+        assertEquals(1, database.resultSetsClosed);
     }
 
     @Test
     void reportsADatabaseFailureAndUndoesTheRun() {
-        database.failWhenContaining = "INSERT INTO evento";
+        database.failWhenContaining = "pr_agregar_evento";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(runOf(1, "FIFO", 77)));
 
@@ -549,7 +550,7 @@ class OracleResultDaoTest {
     @Test
     void reportsADatabaseFailureWhileDeleting() {
         int id = dao.save(runOf(1, "FIFO", 77));
-        database.failWhenContaining = "DELETE FROM";
+        database.failWhenContaining = "pr_borrar_ejecucion";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(id));
 

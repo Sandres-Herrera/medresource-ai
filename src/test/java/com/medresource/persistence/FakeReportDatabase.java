@@ -5,8 +5,8 @@ import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -153,7 +153,7 @@ final class FakeReportDatabase {
                 working = committed.copy();
                 yield null;
             }
-            case "prepareStatement" -> prepare((String) args[0]);
+            case "prepareCall" -> prepare((String) args[0]);
             case "close" -> {
                 connectionsClosed++;
                 yield null;
@@ -164,12 +164,12 @@ final class FakeReportDatabase {
                 new Class<?>[]{Connection.class}, handler);
     }
 
-    private PreparedStatement prepare(String sql) throws SQLException {
+    private CallableStatement prepare(String sql) throws SQLException {
         if (failWhenContaining != null && sql.contains(failWhenContaining)) {
             throw new SQLException("fallo simulado");
         }
         Map<Integer, Object> parameters = new HashMap<>();
-        int[] generatedKey = {0};
+        Map<Integer, Object> outputs = new HashMap<>();
         InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
             case "setInt", "setString" -> {
                 parameters.put((Integer) args[0], args[1]);
@@ -179,17 +179,24 @@ final class FakeReportDatabase {
                 parameters.put((Integer) args[0], read((Reader) args[1]));
                 yield null;
             }
-            case "executeUpdate" -> update(sql, parameters, generatedKey);
-            case "getGeneratedKeys" -> resultSet(List.of(Map.of("1", generatedKey[0])));
-            case "executeQuery" -> query(sql, parameters);
+            case "registerOutParameter" -> {
+                outputs.put((Integer) args[0], null);
+                yield null;
+            }
+            case "execute" -> {
+                call(sql, parameters, outputs);
+                yield false;
+            }
+            case "getInt" -> ((Number) outputs.get((Integer) args[0])).intValue();
+            case "getObject" -> outputs.get((Integer) args[0]);
             case "close" -> {
                 statementsClosed++;
                 yield null;
             }
             default -> throw new UnsupportedOperationException(method.getName());
         };
-        return (PreparedStatement) Proxy.newProxyInstance(FakeReportDatabase.class.getClassLoader(),
-                new Class<?>[]{PreparedStatement.class}, handler);
+        return (CallableStatement) Proxy.newProxyInstance(FakeReportDatabase.class.getClassLoader(),
+                new Class<?>[]{CallableStatement.class}, handler);
     }
 
     private static String read(Reader reader) {
@@ -207,36 +214,42 @@ final class FakeReportDatabase {
 
     // ---------- sentencias de cambio ----------
 
-    private int update(String sql, Map<Integer, Object> p, int[] generatedKey) throws SQLException {
+    /** Ejecuta un procedimiento falso: deja en {@code outputs} lo que Oracle devolvería en sus parámetros de salida. */
+    private void call(String sql, Map<Integer, Object> p, Map<Integer, Object> outputs) throws SQLException {
         switch (sql) {
-            case OracleReportDao.INSERT_REPORT -> {
-                Object resultId = p.get(1);
-                if (!results.containsKey((Integer) resultId)) {
-                    throw new SQLException("ORA-02291: restricción de integridad (FK_REPORTE_EJECUCION) violada");
-                }
-                if (working.reports.values().stream().anyMatch(row -> row.get("id_ejecucion").equals(resultId))) {
-                    throw new SQLException("ORA-00001: restricción única (UQ_REPORTE_EJECUCION) violada");
-                }
-                if (!List.of("AI", "TEMPLATE").contains(p.get(2))) {
-                    throw new SQLException("ORA-02290: restricción de control (CK_REPORTE_ORIGEN) violada");
-                }
-                int id = working.nextId++;
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("id", id);
-                row.put("id_ejecucion", resultId);
-                row.put("origen", p.get(2));
-                row.put("contenido_json", p.get(3));
-                row.put("guardado_en", Timestamp.valueOf(clock));
-                clock = clock.plusMinutes(1);
-                working.reports.put(id, row);
-                generatedKey[0] = id;
-                return 1;
-            }
-            case OracleReportDao.DELETE_REPORT -> {
-                return working.reports.remove((Integer) p.get(1)) == null ? 0 : 1;
-            }
-            default -> throw new SQLException("Sentencia de cambio no reconocida: " + sql);
+            case OracleReportDao.INSERT_REPORT -> outputs.put(4, insert(p));
+            case OracleReportDao.DELETE_REPORT -> outputs.put(2,
+                    working.reports.remove((Integer) p.get(1)) == null ? 0 : 1);
+            case OracleReportDao.SELECT_REPORT, OracleReportDao.SELECT_REPORT_BY_RESULT ->
+                    outputs.put(2, query(sql, p));
+            case OracleReportDao.SELECT_REPORTS, OracleReportDao.SELECT_SUMMARIES ->
+                    outputs.put(1, query(sql, p));
+            default -> throw new SQLException("Procedimiento no reconocido: " + sql);
         }
+    }
+
+    /** Lo que hace {@code pr_guardar_reporte}: valida las restricciones de la tabla y devuelve el identificador. */
+    private int insert(Map<Integer, Object> p) throws SQLException {
+        Object resultId = p.get(1);
+        if (!results.containsKey((Integer) resultId)) {
+            throw new SQLException("ORA-02291: restricción de integridad (FK_REPORTE_EJECUCION) violada");
+        }
+        if (working.reports.values().stream().anyMatch(row -> row.get("id_ejecucion").equals(resultId))) {
+            throw new SQLException("ORA-00001: restricción única (UQ_REPORTE_EJECUCION) violada");
+        }
+        if (!List.of("AI", "TEMPLATE").contains(p.get(2))) {
+            throw new SQLException("ORA-02290: restricción de control (CK_REPORTE_ORIGEN) violada");
+        }
+        int id = working.nextId++;
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", id);
+        row.put("id_ejecucion", resultId);
+        row.put("origen", p.get(2));
+        row.put("contenido_json", p.get(3));
+        row.put("guardado_en", Timestamp.valueOf(clock));
+        clock = clock.plusMinutes(1);
+        working.reports.put(id, row);
+        return id;
     }
 
     // ---------- consultas ----------

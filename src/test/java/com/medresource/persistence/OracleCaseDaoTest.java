@@ -124,12 +124,13 @@ class OracleCaseDaoTest {
         assertEquals(0, database.rollbacks);
         assertEquals(1, database.connectionsOpened);
         assertEquals(1, database.connectionsClosed);
-        assertEquals(3, database.statementsClosed);
+        // Una llamada para el caso y otra, reutilizada, para sus tres pacientes.
+        assertEquals(2, database.statementsClosed);
     }
 
     @Test
     void reportsADatabaseFailureAndUndoesTheCase() {
-        database.failWhenContaining = "INSERT INTO caso_paciente_sintoma";
+        database.failWhenContaining = "pr_agregar_paciente";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(threePatients(77)));
 
@@ -379,7 +380,7 @@ class OracleCaseDaoTest {
     @Test
     void reportsADatabaseFailureWhileDeleting() {
         int id = dao.save(threePatients(77));
-        database.failWhenContaining = "DELETE FROM";
+        database.failWhenContaining = "pr_borrar_caso";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.deleteById(id));
 

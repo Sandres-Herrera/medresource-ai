@@ -124,11 +124,11 @@ class OracleReportDaoTest {
         List<SavedReportSummary> summaries = dao.summaries();
 
         assertEquals(List.of(
-                new SavedReportSummary(2, 2, FakeReportDatabase.FIRST_SAVE.plusMinutes(1),
-                        new CaseConfig(9L, Scenario.CATASTROPHE, 100, 480), "Prioridad clínica", 13,
-                        NarrativeSource.AI, 1, null),
-                new SavedReportSummary(1, 1, FakeReportDatabase.FIRST_SAVE,
-                        new CaseConfig(7L, Scenario.NORMAL, 100, 480), "FIFO", 4, NarrativeSource.AI, 1, null)),
+                        new SavedReportSummary(2, 2, FakeReportDatabase.FIRST_SAVE.plusMinutes(1),
+                                new CaseConfig(9L, Scenario.CATASTROPHE, 100, 480), "Prioridad clínica", 13,
+                                NarrativeSource.AI, 1, null),
+                        new SavedReportSummary(1, 1, FakeReportDatabase.FIRST_SAVE,
+                                new CaseConfig(7L, Scenario.NORMAL, 100, 480), "FIFO", 4, NarrativeSource.AI, 1, null)),
                 summaries);
     }
 
@@ -198,13 +198,13 @@ class OracleReportDaoTest {
         dao.save(SavedReport.toSave(1, report));
         dao.findById(1);
         dao.summaries();
-        database.failWhenContaining = "FROM reporte";
+        database.failWhenContaining = "pr_listar_reportes";
 
         assertThrows(DataAccessException.class, () -> dao.findAll());
 
         assertEquals(database.connectionsOpened, database.connectionsClosed);
         assertTrue(database.statementsClosed >= 3);
-        assertTrue(database.resultSetsClosed >= 3);
+        assertTrue(database.resultSetsClosed >= 2);
         assertEquals(1, database.rollbacks);
     }
 }

@@ -2,8 +2,8 @@ package com.medresource.persistence;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -16,13 +16,14 @@ import java.util.TreeMap;
 /**
  * Base de datos falsa, en memoria, con las tres tablas de las enfermedades.
  *
- * <p>No es una prueba: reconoce exactamente las sentencias de {@link OracleDiseaseDao} y las ejecuta
- * sobre mapas, con transacciones (confirmar y deshacer), la clave primaria, la clave foránea y el
- * borrado en cascada que tiene el esquema real. Así se prueba el DAO sin Oracle. Que el SQL sea
- * válido en Oracle lo comprueba {@code OracleDiseaseDaoIntegrationTest}.</p>
+ * <p>No es una prueba: reconoce exactamente los procedimientos de {@link OracleDiseaseDao} y los ejecuta
+ * sobre mapas, con transacciones (confirmar y deshacer), la clave primaria, la clave única del nombre y el
+ * borrado en cascada que tiene el esquema real. Así se prueba el DAO sin Oracle. Que el PL/SQL sea válido en
+ * Oracle lo comprueba {@code OracleDiseaseDaoIntegrationTest}.</p>
  */
 final class FakeDiseaseDatabase {
 
+    /** Los 14 datos de la enfermedad, en el orden de los parámetros (el primero es el identificador). */
     private static final List<String> DISEASE_COLUMNS = List.of("id", "nombre", "especialidad_principal", "tratamiento",
             "curable", "requiere_sangre", "requiere_uci", "tasa_deterioro", "mortalidad_irreducible",
             "duracion_min_minutos", "duracion_max_minutos", "edad_minima", "edad_maxima", "frecuencia");
@@ -46,7 +47,7 @@ final class FakeDiseaseDatabase {
     private Tables committed = new Tables();
     private Tables working = committed;
 
-    /** Si no es {@code null}, preparar una sentencia que contenga este texto lanza un error. */
+    /** Si no es {@code null}, preparar una llamada que contenga este texto lanza un error. */
     String failWhenContaining;
 
     int commits;
@@ -112,7 +113,7 @@ final class FakeDiseaseDatabase {
                 working = committed.copy();
                 yield null;
             }
-            case "prepareStatement" -> prepare((String) args[0]);
+            case "prepareCall" -> prepareCall((String) args[0]);
             case "close" -> {
                 connectionsClosed++;
                 yield null;
@@ -123,99 +124,107 @@ final class FakeDiseaseDatabase {
                 new Class<?>[]{Connection.class}, handler);
     }
 
-    private PreparedStatement prepare(String sql) throws SQLException {
+    private CallableStatement prepareCall(String sql) throws SQLException {
         if (failWhenContaining != null && sql.contains(failWhenContaining)) {
             throw new SQLException("fallo simulado");
         }
         Map<Integer, Object> parameters = new HashMap<>();
+        Map<Integer, Object> outputs = new HashMap<>();
         InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
             case "setInt", "setString", "setDouble" -> {
                 parameters.put((Integer) args[0], args[1]);
                 yield null;
             }
-            case "executeUpdate" -> update(sql, parameters);
-            case "executeQuery" -> query(sql, parameters);
+            case "setNull" -> {
+                parameters.put((Integer) args[0], null);
+                yield null;
+            }
+            case "registerOutParameter" -> null;
+            case "execute" -> {
+                call(sql, parameters, outputs);
+                yield false;
+            }
+            case "getInt" -> ((Number) outputs.get((Integer) args[0])).intValue();
+            case "getObject" -> outputs.get((Integer) args[0]);
             case "close" -> {
                 statementsClosed++;
                 yield null;
             }
             default -> throw new UnsupportedOperationException(method.getName());
         };
-        return (PreparedStatement) Proxy.newProxyInstance(FakeDiseaseDatabase.class.getClassLoader(),
-                new Class<?>[]{PreparedStatement.class}, handler);
+        return (CallableStatement) Proxy.newProxyInstance(FakeDiseaseDatabase.class.getClassLoader(),
+                new Class<?>[]{CallableStatement.class}, handler);
     }
 
-    // ---------- sentencias de cambio ----------
-
-    private int update(String sql, Map<Integer, Object> p) throws SQLException {
+    /** Imita los procedimientos de enfermedades: deja en {@code outputs} lo que Oracle devolvería. */
+    private void call(String sql, Map<Integer, Object> p, Map<Integer, Object> outputs) throws SQLException {
         switch (sql) {
-            case OracleDiseaseDao.INSERT_DISEASE -> {
-                int id = (Integer) p.get(1);
-                if (working.diseases.containsKey(id)) {
-                    throw new SQLException("ORA-00001: restricción única (PK_ENFERMEDAD) violada");
-                }
-                Map<String, Object> row = new LinkedHashMap<>();
-                for (int i = 0; i < DISEASE_COLUMNS.size(); i++) {
-                    row.put(DISEASE_COLUMNS.get(i), p.get(i + 1));
-                }
-                requireUniqueName(row);
-                working.diseases.put(id, row);
-                return 1;
-            }
-            case OracleDiseaseDao.INSERT_SECONDARY -> {
-                int id = requireParent((Integer) p.get(1));
-                List<String> list = working.secondary.computeIfAbsent(id, key -> new ArrayList<>());
-                if (list.contains((String) p.get(2))) {
-                    throw new SQLException("ORA-00001: restricción única (PK_ENF_ESPECIALIDAD_SEC) violada");
-                }
-                list.add((String) p.get(2));
-                return 1;
-            }
-            case OracleDiseaseDao.INSERT_SYMPTOM -> {
-                int id = requireParent((Integer) p.get(1));
-                TreeMap<Integer, String> map = working.symptoms.computeIfAbsent(id, key -> new TreeMap<>());
-                if (map.containsKey((Integer) p.get(2))) {
-                    throw new SQLException("ORA-00001: restricción única (PK_ENFERMEDAD_SINTOMA) violada");
-                }
-                map.put((Integer) p.get(2), (String) p.get(3));
-                return 1;
-            }
-            case OracleDiseaseDao.UPDATE_DISEASE -> {
-                Map<String, Object> row = working.diseases.get((Integer) p.get(14));
-                if (row == null) {
-                    return 0;
-                }
-                Map<String, Object> changed = new LinkedHashMap<>(row);
-                for (int i = 1; i < DISEASE_COLUMNS.size(); i++) {
-                    changed.put(DISEASE_COLUMNS.get(i), p.get(i));
-                }
-                requireUniqueName(changed);
-                working.diseases.put((Integer) p.get(14), changed);
-                return 1;
-            }
-            case OracleDiseaseDao.DELETE_SECONDARY -> {
-                List<String> removed = working.secondary.remove((Integer) p.get(1));
-                return removed == null ? 0 : removed.size();
-            }
-            case OracleDiseaseDao.DELETE_SYMPTOMS -> {
-                TreeMap<Integer, String> removed = working.symptoms.remove((Integer) p.get(1));
-                return removed == null ? 0 : removed.size();
-            }
-            case OracleDiseaseDao.DELETE_DISEASE -> {
-                int id = (Integer) p.get(1);
-                working.secondary.remove(id);
-                working.symptoms.remove(id);
-                return working.diseases.remove(id) == null ? 0 : 1;
-            }
-            default -> throw new SQLException("Sentencia de cambio no reconocida: " + sql);
+            case OracleDiseaseDao.INSERT_DISEASE -> insertDisease(p);
+            case OracleDiseaseDao.UPDATE_DISEASE -> outputs.put(17, updateDisease(p));
+            case OracleDiseaseDao.DELETE_DISEASE -> outputs.put(2, deleteDisease((Integer) p.get(1)));
+            case OracleDiseaseDao.SELECT_DISEASES, OracleDiseaseDao.SELECT_SECONDARY, OracleDiseaseDao.SELECT_SYMPTOMS ->
+                    outputs.put(2, query(sql, p));
+            default -> throw new SQLException("Procedimiento no reconocido: " + sql);
         }
     }
 
-    private int requireParent(int diseaseId) throws SQLException {
-        if (!working.diseases.containsKey(diseaseId)) {
-            throw new SQLException("ORA-02291: restricción de integridad (FK) violada - no se encontró la clave principal");
+    // ---------- procedimientos de cambio ----------
+
+    /** Lo que hace {@code pr_guardar_enfermedad}: la clave primaria, el nombre único y los hijos. */
+    private void insertDisease(Map<Integer, Object> p) throws SQLException {
+        int id = (Integer) p.get(1);
+        if (working.diseases.containsKey(id)) {
+            throw new SQLException("ORA-00001: restricción única (PK_ENFERMEDAD) violada");
         }
-        return diseaseId;
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int i = 0; i < DISEASE_COLUMNS.size(); i++) {
+            row.put(DISEASE_COLUMNS.get(i), p.get(i + 1));
+        }
+        requireUniqueName(row);
+        working.diseases.put(id, row);
+        storeChildren(id, (String) p.get(15), (String) p.get(16));
+    }
+
+    /** Lo que hace {@code pr_actualizar_enfermedad}: devuelve 0 si no existe, o 1 tras reemplazar todo. */
+    private int updateDisease(Map<Integer, Object> p) throws SQLException {
+        int id = (Integer) p.get(1);
+        Map<String, Object> row = working.diseases.get(id);
+        if (row == null) {
+            return 0;
+        }
+        Map<String, Object> changed = new LinkedHashMap<>(row);
+        for (int i = 1; i < DISEASE_COLUMNS.size(); i++) {
+            changed.put(DISEASE_COLUMNS.get(i), p.get(i + 1));
+        }
+        requireUniqueName(changed);
+        working.diseases.put(id, changed);
+        storeChildren(id, (String) p.get(15), (String) p.get(16));
+        return 1;
+    }
+
+    /** Lo que hace {@code pr_borrar_enfermedad}: borra la enfermedad y, en cascada, sus hijos. */
+    private int deleteDisease(int id) {
+        working.secondary.remove(id);
+        working.symptoms.remove(id);
+        return working.diseases.remove(id) == null ? 0 : 1;
+    }
+
+    /** Guarda las especialidades secundarias y los síntomas (separados por comas) en orden. */
+    private void storeChildren(int id, String specialties, String symptoms) {
+        working.secondary.put(id, new ArrayList<>(split(specialties)));
+        TreeMap<Integer, String> map = new TreeMap<>();
+        List<String> names = split(symptoms);
+        for (int order = 0; order < names.size(); order++) {
+            map.put(order, names.get(order));
+        }
+        working.symptoms.put(id, map);
+    }
+
+    private static List<String> split(String commaSeparated) {
+        if (commaSeparated == null || commaSeparated.isEmpty()) {
+            return List.of();
+        }
+        return List.of(commaSeparated.split(","));
     }
 
     private void requireUniqueName(Map<String, Object> candidate) throws SQLException {
@@ -226,35 +235,28 @@ final class FakeDiseaseDatabase {
         }
     }
 
-    // ---------- consultas ----------
+    // ---------- lecturas (con filtro opcional: id nulo = todas) ----------
 
     private ResultSet query(String sql, Map<Integer, Object> p) throws SQLException {
+        Integer only = (Integer) p.get(1);
         List<Map<String, Object>> rows = new ArrayList<>();
         switch (sql) {
-            case OracleDiseaseDao.SELECT_DISEASES -> working.diseases.values().forEach(rows::add);
-            case OracleDiseaseDao.SELECT_DISEASE -> {
-                Map<String, Object> row = working.diseases.get((Integer) p.get(1));
-                if (row != null) {
+            case OracleDiseaseDao.SELECT_DISEASES -> working.diseases.forEach((id, row) -> {
+                if (only == null || only.equals(id)) {
                     rows.add(row);
                 }
-            }
-            case OracleDiseaseDao.SELECT_SECONDARY, OracleDiseaseDao.SELECT_SECONDARY_OF -> {
-                Integer only = (Integer) p.get(1);
-                new TreeMap<>(working.secondary).forEach((id, list) -> {
-                    if (only == null || only.equals(id)) {
-                        list.stream().sorted()
-                                .forEach(name -> rows.add(Map.of("id_enfermedad", id, "especialidad", name)));
-                    }
-                });
-            }
-            case OracleDiseaseDao.SELECT_SYMPTOMS, OracleDiseaseDao.SELECT_SYMPTOMS_OF -> {
-                Integer only = (Integer) p.get(1);
-                new TreeMap<>(working.symptoms).forEach((id, map) -> {
-                    if (only == null || only.equals(id)) {
-                        map.values().forEach(name -> rows.add(Map.of("id_enfermedad", id, "sintoma", name)));
-                    }
-                });
-            }
+            });
+            case OracleDiseaseDao.SELECT_SECONDARY -> new TreeMap<>(working.secondary).forEach((id, list) -> {
+                if (only == null || only.equals(id)) {
+                    list.stream().sorted()
+                            .forEach(name -> rows.add(Map.of("id_enfermedad", id, "especialidad", name)));
+                }
+            });
+            case OracleDiseaseDao.SELECT_SYMPTOMS -> new TreeMap<>(working.symptoms).forEach((id, map) -> {
+                if (only == null || only.equals(id)) {
+                    map.values().forEach(name -> rows.add(Map.of("id_enfermedad", id, "sintoma", name)));
+                }
+            });
             default -> throw new SQLException("Consulta no reconocida: " + sql);
         }
         return resultSet(rows);
