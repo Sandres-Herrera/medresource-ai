@@ -118,7 +118,6 @@ class SchemaInstallerTest {
         expected.addAll(units);
         assertFalse(units.isEmpty());
         assertEquals(expected, recorder.executed);
-        assertTrue(recorder.executed.get(recorder.executed.size() - 1).startsWith("CREATE OR REPLACE TRIGGER"));
     }
 
     @Test

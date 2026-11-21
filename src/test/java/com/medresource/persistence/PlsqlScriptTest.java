@@ -22,7 +22,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlsqlScriptTest {
 
     private static final Pattern HEADER =
-            Pattern.compile("^CREATE OR REPLACE (FUNCTION|PROCEDURE|TRIGGER) ([a-z_]+)");
+            Pattern.compile("^CREATE OR REPLACE (FUNCTION|PROCEDURE|TRIGGER|VIEW) ([a-z_]+)");
+
+    /** COMMIT o ROLLBACK como sentencia: al inicio de la línea, sin contar los comentarios («-- ... (COMMIT)»). */
+    private static final Pattern TRANSACTION_CONTROL =
+            Pattern.compile("^\\s*(COMMIT|ROLLBACK)\\b", Pattern.MULTILINE);
+
+    private static final Pattern COMMIT = Pattern.compile("^\\s*COMMIT\\b", Pattern.MULTILINE);
 
     static String script() throws IOException {
         try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream(SchemaInstaller.PLSQL_RESOURCE)) {
@@ -54,14 +60,19 @@ class PlsqlScriptTest {
     void everyUnitIsCreatedOrReplacedAndEndsWithItsName() throws IOException {
         for (String unit : units()) {
             String name = nameOf(unit);
-            assertTrue(unit.endsWith("END " + name + ";") || unit.endsWith("END;"), name);
+            if (unit.startsWith("CREATE OR REPLACE VIEW")) {
+                // Una vista no lleva «END»; y JDBC no acepta el «;» final en una sentencia DDL.
+                assertFalse(unit.endsWith(";"), name);
+            } else {
+                assertTrue(unit.endsWith("END " + name + ";") || unit.endsWith("END;"), name);
+            }
         }
     }
 
     @Test
     void theScriptRunsInSqlPlusWithoutSurprises() throws IOException {
         assertFalse(script().contains("&"), "SQL*Plus trata «&» como variable");
-        assertFalse(script().contains("COMMIT"), "las transacciones las maneja quien llama");
+        assertFalse(TRANSACTION_CONTROL.matcher(script()).find(), "las transacciones las maneja quien llama");
     }
 
     // ---------- funciones ----------
@@ -159,8 +170,10 @@ class PlsqlScriptTest {
 
     @Test
     void hasTheTriggersOfTheCareTimeAndOfTheAudit() throws IOException {
-        assertEquals(List.of("trg_validar_tiempo_atencion", "trg_auditoria_reporte"),
-                names().subList(names().size() - 2, names().size()));
+        List<String> names = names();
+
+        assertTrue(names.containsAll(List.of("trg_validar_tiempo_atencion", "trg_auditoria_reporte")));
+        assertTrue(names.indexOf("trg_validar_tiempo_atencion") < names.indexOf("trg_auditoria_reporte"));
     }
 
     @Test
@@ -206,14 +219,17 @@ class PlsqlScriptTest {
             demo = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
 
+        // La demostración muestra los indicadores (fn_) y el resumen y la validación de comparaciones.
+        // Los procedimientos de guardar, leer y borrar no se muestran: son el acceso de la aplicación.
         for (String name : names()) {
-            if (!name.startsWith("trg_") && !name.equals("pr_guardar_comparacion")
-                    && !name.equals("pr_exigir_ejecucion")) {
+            if (name.startsWith("fn_") || name.equals("pr_resumen_simulacion")
+                    || name.equals("pr_validar_comparacion")) {
                 assertTrue(demo.contains(name + "("), name);
             }
         }
         assertTrue(demo.contains("trg_validar_tiempo_atencion"));
         assertFalse(demo.contains("&"));
-        assertFalse(demo.contains("COMMIT"));
+        // La demostración sí usa ROLLBACK para deshacer sus propios cambios, pero nunca confirma (COMMIT).
+        assertFalse(COMMIT.matcher(demo).find());
     }
 }
