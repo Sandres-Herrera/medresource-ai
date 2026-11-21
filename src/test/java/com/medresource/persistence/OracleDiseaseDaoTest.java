@@ -97,7 +97,7 @@ class OracleDiseaseDaoTest {
         assertEquals(0, database.rollbacks);
         assertEquals(1, database.connectionsOpened);
         assertEquals(1, database.connectionsClosed);
-        assertTrue(database.statementsClosed >= 3);
+        assertEquals(1, database.statementsClosed);
     }
 
     @Test
@@ -123,7 +123,7 @@ class OracleDiseaseDaoTest {
 
     @Test
     void aFailureWhileSavingTheSymptomsUndoesTheWholeDisease() {
-        database.failWhenContaining = "enfermedad_sintoma";
+        database.failWhenContaining = "pr_guardar_enfermedad";
 
         DataAccessException error = assertThrows(DataAccessException.class, () -> dao.save(full(5, "Neumonía grave")));
 
@@ -265,7 +265,7 @@ class OracleDiseaseDaoTest {
     @Test
     void aFailureWhileReadingIsReported() {
         dao.save(simple(6, "Gripa"));
-        database.failWhenContaining = "FROM enfermedad_sintoma";
+        database.failWhenContaining = "pr_leer_sintomas_enfermedad";
 
         assertThrows(DataAccessException.class, () -> dao.findAll());
         assertThrows(DataAccessException.class, () -> dao.findById(6));
@@ -329,7 +329,7 @@ class OracleDiseaseDaoTest {
     void aFailureWhileUpdatingKeepsTheOldData() {
         Disease original = full(5, "Neumonía grave");
         dao.save(original);
-        database.failWhenContaining = "INSERT INTO enfermedad_sintoma";
+        database.failWhenContaining = "pr_actualizar_enfermedad";
 
         assertThrows(DataAccessException.class, () -> dao.update(simple(5, "Neumonía leve")));
 
@@ -371,7 +371,7 @@ class OracleDiseaseDaoTest {
     @Test
     void aFailureWhileDeletingKeepsTheDisease() {
         dao.save(simple(6, "Gripa"));
-        database.failWhenContaining = "DELETE FROM enfermedad";
+        database.failWhenContaining = "pr_borrar_enfermedad";
 
         assertThrows(DataAccessException.class, () -> dao.deleteById(6));
 

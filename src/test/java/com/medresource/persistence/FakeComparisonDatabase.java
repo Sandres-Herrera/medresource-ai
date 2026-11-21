@@ -4,7 +4,6 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -116,7 +115,6 @@ final class FakeComparisonDatabase {
                 working = committed.copy();
                 yield null;
             }
-            case "prepareStatement" -> prepare((String) args[0]);
             case "prepareCall" -> prepareCall((String) args[0]);
             case "close" -> {
                 connectionsClosed++;
@@ -136,9 +134,6 @@ final class FakeComparisonDatabase {
 
     private CallableStatement prepareCall(String sql) throws SQLException {
         failIfAsked(sql);
-        if (!sql.equals(OracleComparisonDao.SAVE_COMPARISON)) {
-            throw new SQLException("Llamada no reconocida: " + sql);
-        }
         Map<Integer, Object> parameters = new HashMap<>();
         Map<Integer, Object> outputs = new HashMap<>();
         InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
@@ -148,10 +143,11 @@ final class FakeComparisonDatabase {
             }
             case "registerOutParameter" -> null;
             case "execute" -> {
-                save(parameters, outputs);
+                call(sql, parameters, outputs);
                 yield false;
             }
             case "getInt" -> ((Number) outputs.get((Integer) args[0])).intValue();
+            case "getObject" -> outputs.get((Integer) args[0]);
             case "close" -> {
                 statementsClosed++;
                 yield null;
@@ -160,6 +156,19 @@ final class FakeComparisonDatabase {
         };
         return (CallableStatement) Proxy.newProxyInstance(FakeComparisonDatabase.class.getClassLoader(),
                 new Class<?>[]{CallableStatement.class}, handler);
+    }
+
+    /** Imita los procedimientos de comparaciones: deja en {@code outputs} lo que Oracle devolvería. */
+    private void call(String sql, Map<Integer, Object> p, Map<Integer, Object> outputs) throws SQLException {
+        switch (sql) {
+            case OracleComparisonDao.SAVE_COMPARISON -> save(p, outputs);
+            case OracleComparisonDao.DELETE_COMPARISON -> outputs.put(2,
+                    working.comparisons.remove((Integer) p.get(1)) == null ? 0 : 1);
+            case OracleComparisonDao.SELECT_COMPARISON -> outputs.put(2, query(sql, p));
+            case OracleComparisonDao.SELECT_BY_RUNS -> outputs.put(3, query(sql, p));
+            case OracleComparisonDao.SELECT_COMPARISONS -> outputs.put(1, query(sql, p));
+            default -> throw new SQLException("Llamada no reconocida: " + sql);
+        }
     }
 
     /** Imita a {@code pr_guardar_comparacion}. */
@@ -221,33 +230,6 @@ final class FakeComparisonDatabase {
                     "72000", OracleComparisonDao.INVALID_COMPARISON);
         }
         return type;
-    }
-
-    private PreparedStatement prepare(String sql) throws SQLException {
-        failIfAsked(sql);
-        Map<Integer, Object> parameters = new HashMap<>();
-        InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
-            case "setInt" -> {
-                parameters.put((Integer) args[0], args[1]);
-                yield null;
-            }
-            case "executeUpdate" -> update(sql, parameters);
-            case "executeQuery" -> query(sql, parameters);
-            case "close" -> {
-                statementsClosed++;
-                yield null;
-            }
-            default -> throw new UnsupportedOperationException(method.getName());
-        };
-        return (PreparedStatement) Proxy.newProxyInstance(FakeComparisonDatabase.class.getClassLoader(),
-                new Class<?>[]{PreparedStatement.class}, handler);
-    }
-
-    private int update(String sql, Map<Integer, Object> p) throws SQLException {
-        if (!sql.equals(OracleComparisonDao.DELETE_COMPARISON)) {
-            throw new SQLException("Sentencia de cambio no reconocida: " + sql);
-        }
-        return working.comparisons.remove((Integer) p.get(1)) == null ? 0 : 1;
     }
 
     private ResultSet query(String sql, Map<Integer, Object> p) throws SQLException {

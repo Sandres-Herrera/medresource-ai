@@ -5,7 +5,6 @@ import com.medresource.model.SavedComparison;
 
 import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -24,15 +23,19 @@ import java.util.Optional;
  */
 public class OracleComparisonDao implements ComparisonDao {
 
+    /** {@code pr_guardar_comparacion(a, b, json, id, nueva)}: los dos últimos parámetros salen. */
     static final String SAVE_COMPARISON = "{call pr_guardar_comparacion(?, ?, ?, ?, ?)}";
-    static final String SELECT_COMPARISON =
-            "SELECT id, guardado_en, contenido_json FROM comparacion WHERE id = ?";
-    static final String SELECT_BY_RUNS = "SELECT id, guardado_en, contenido_json FROM comparacion "
-            + "WHERE LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(?, ?) "
-            + "AND GREATEST(id_ejecucion_a, id_ejecucion_b) = GREATEST(?, ?)";
-    static final String SELECT_COMPARISONS = "SELECT id, guardado_en, contenido_json FROM comparacion "
-            + "ORDER BY guardado_en DESC, id DESC";
-    static final String DELETE_COMPARISON = "DELETE FROM comparacion WHERE id = ?";
+    /** {@code pr_buscar_comparacion(id, cursor)}. */
+    static final String SELECT_COMPARISON = "{call pr_buscar_comparacion(?, ?)}";
+    /** {@code pr_comparacion_de_ejecuciones(a, b, cursor)}, en cualquier orden. */
+    static final String SELECT_BY_RUNS = "{call pr_comparacion_de_ejecuciones(?, ?, ?)}";
+    /** {@code pr_listar_comparaciones(cursor)}. */
+    static final String SELECT_COMPARISONS = "{call pr_listar_comparaciones(?)}";
+    /** {@code pr_borrar_comparacion(id, borrados)}: el segundo parámetro dice cuántas filas se borraron. */
+    static final String DELETE_COMPARISON = "{call pr_borrar_comparacion(?, ?)}";
+
+    /** Posición del parámetro de salida que dice cuántas filas borró {@link #DELETE_COMPARISON}. */
+    private static final int DELETED_COUNT_POSITION = 2;
 
     /** Código del error con el que el procedimiento rechaza una comparación que no es válida. */
     static final int INVALID_COMPARISON = 20003;
@@ -86,7 +89,7 @@ public class OracleComparisonDao implements ComparisonDao {
     @Override
     public Optional<SavedComparison> findByRuns(int runA, int runB) {
         return transactions.run("buscar la comparación de las ejecuciones #" + runA + " y #" + runB,
-                connection -> load(connection, SELECT_BY_RUNS, runA, runB, runA, runB).stream().findFirst());
+                connection -> load(connection, SELECT_BY_RUNS, runA, runB).stream().findFirst());
     }
 
     @Override
@@ -97,9 +100,11 @@ public class OracleComparisonDao implements ComparisonDao {
     @Override
     public void deleteById(int id) {
         transactions.run("borrar la comparación " + id, connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(DELETE_COMPARISON)) {
-                statement.setInt(1, id);
-                if (statement.executeUpdate() == 0) {
+            try (CallableStatement call = connection.prepareCall(DELETE_COMPARISON)) {
+                call.setInt(1, id);
+                call.registerOutParameter(DELETED_COUNT_POSITION, Types.INTEGER);
+                call.execute();
+                if (call.getInt(DELETED_COUNT_POSITION) == 0) {
                     throw new DataAccessException("No existe la comparación " + id + ".");
                 }
             }
@@ -107,14 +112,21 @@ public class OracleComparisonDao implements ComparisonDao {
         });
     }
 
+    /**
+     * Ejecuta un procedimiento que devuelve comparaciones en su cursor, que es el último parámetro (después de los
+     * identificadores que recibe).
+     */
     private static List<SavedComparison> load(Connection connection, String sql, int... parameters)
             throws SQLException {
         List<SavedComparison> comparisons = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (CallableStatement call = connection.prepareCall(sql)) {
             for (int i = 0; i < parameters.length; i++) {
-                statement.setInt(i + 1, parameters[i]);
+                call.setInt(i + 1, parameters[i]);
             }
-            try (ResultSet rows = statement.executeQuery()) {
+            int cursor = parameters.length + 1;
+            call.registerOutParameter(cursor, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(cursor)) {
                 while (rows.next()) {
                     comparisons.add(toComparison(rows));
                 }

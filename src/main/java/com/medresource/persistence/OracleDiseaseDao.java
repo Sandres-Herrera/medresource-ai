@@ -5,10 +5,11 @@ import com.medresource.model.Specialty;
 import com.medresource.model.Symptom;
 import com.medresource.model.TreatmentType;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Guarda y lee las enfermedades del catálogo en Oracle.
@@ -27,36 +29,24 @@ import java.util.Set;
  */
 public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
 
-    static final String INSERT_DISEASE = "INSERT INTO enfermedad (id, nombre, especialidad_principal, tratamiento, "
-            + "curable, requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, "
-            + "duracion_max_minutos, edad_minima, edad_maxima, frecuencia) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String INSERT_SECONDARY =
-            "INSERT INTO enfermedad_especialidad_sec (id_enfermedad, especialidad) VALUES (?, ?)";
-    static final String INSERT_SYMPTOM =
-            "INSERT INTO enfermedad_sintoma (id_enfermedad, orden_sintoma, sintoma) VALUES (?, ?, ?)";
-    static final String UPDATE_DISEASE = "UPDATE enfermedad SET nombre = ?, especialidad_principal = ?, "
-            + "tratamiento = ?, curable = ?, requiere_sangre = ?, requiere_uci = ?, tasa_deterioro = ?, "
-            + "mortalidad_irreducible = ?, duracion_min_minutos = ?, duracion_max_minutos = ?, edad_minima = ?, "
-            + "edad_maxima = ?, frecuencia = ? WHERE id = ?";
-    static final String DELETE_SECONDARY = "DELETE FROM enfermedad_especialidad_sec WHERE id_enfermedad = ?";
-    static final String DELETE_SYMPTOMS = "DELETE FROM enfermedad_sintoma WHERE id_enfermedad = ?";
-    static final String DELETE_DISEASE = "DELETE FROM enfermedad WHERE id = ?";
+    /** {@code pr_guardar_enfermedad}: los 14 datos de la enfermedad y, al final, sus listas separadas por coma. */
+    static final String INSERT_DISEASE = "{call pr_guardar_enfermedad(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+    /** {@code pr_actualizar_enfermedad}: los mismos parámetros, y el último sale con las filas actualizadas. */
+    static final String UPDATE_DISEASE =
+            "{call pr_actualizar_enfermedad(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+    /** {@code pr_borrar_enfermedad(id, borradas)}: el segundo parámetro dice cuántas filas se borraron. */
+    static final String DELETE_DISEASE = "{call pr_borrar_enfermedad(?, ?)}";
+    /** {@code pr_leer_enfermedades(id, cursor)}: si el id es nulo, devuelve todas. */
+    static final String SELECT_DISEASES = "{call pr_leer_enfermedades(?, ?)}";
+    /** {@code pr_leer_especialidades_enfermedad(id, cursor)}: si el id es nulo, devuelve las de todas. */
+    static final String SELECT_SECONDARY = "{call pr_leer_especialidades_enfermedad(?, ?)}";
+    /** {@code pr_leer_sintomas_enfermedad(id, cursor)}: si el id es nulo, devuelve los de todas. */
+    static final String SELECT_SYMPTOMS = "{call pr_leer_sintomas_enfermedad(?, ?)}";
 
-    static final String SELECT_DISEASES = "SELECT id, nombre, especialidad_principal, tratamiento, curable, "
-            + "requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, duracion_max_minutos, "
-            + "edad_minima, edad_maxima, frecuencia FROM enfermedad ORDER BY id";
-    static final String SELECT_DISEASE = "SELECT id, nombre, especialidad_principal, tratamiento, curable, "
-            + "requiere_sangre, requiere_uci, tasa_deterioro, mortalidad_irreducible, duracion_min_minutos, duracion_max_minutos, "
-            + "edad_minima, edad_maxima, frecuencia FROM enfermedad WHERE id = ?";
-    static final String SELECT_SECONDARY = "SELECT id_enfermedad, especialidad FROM enfermedad_especialidad_sec "
-            + "ORDER BY id_enfermedad, especialidad";
-    static final String SELECT_SECONDARY_OF = "SELECT id_enfermedad, especialidad FROM enfermedad_especialidad_sec "
-            + "WHERE id_enfermedad = ? ORDER BY especialidad";
-    static final String SELECT_SYMPTOMS = "SELECT id_enfermedad, sintoma FROM enfermedad_sintoma "
-            + "ORDER BY id_enfermedad, orden_sintoma";
-    static final String SELECT_SYMPTOMS_OF = "SELECT id_enfermedad, sintoma FROM enfermedad_sintoma "
-            + "WHERE id_enfermedad = ? ORDER BY orden_sintoma";
+    /** Posiciones de los parámetros de salida y de los cursores. */
+    private static final int UPDATED_COUNT_POSITION = 17;
+    private static final int DELETED_COUNT_POSITION = 2;
+    private static final int CURSOR_POSITION = 2;
 
     private final TransactionRunner transactions;
 
@@ -73,7 +63,7 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     // ---------- guardar ----------
 
     /**
-     * Guarda una enfermedad nueva con sus especialidades secundarias y sus síntomas.
+     * Guarda una enfermedad nueva con sus especialidades secundarias y sus síntomas, en una sola llamada.
      *
      * @param disease enfermedad que se guarda; su identificador lo elige quien la crea
      * @return el identificador de la enfermedad
@@ -85,55 +75,33 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     public Integer save(Disease disease) {
         requireDisease(disease);
         return transactions.run("guardar la enfermedad " + disease.getId(), connection -> {
-            insertDisease(connection, disease);
-            insertChildren(connection, disease);
+            try (CallableStatement call = connection.prepareCall(INSERT_DISEASE)) {
+                bindDisease(call, disease);
+                call.execute();
+            }
             return disease.getId();
         });
     }
 
-    private static void insertDisease(Connection connection, Disease disease) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_DISEASE)) {
-            statement.setInt(1, disease.getId());
-            bindAttributes(statement, disease, 2);
-            statement.executeUpdate();
-        }
-    }
-
-    private static void insertChildren(Connection connection, Disease disease) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_SECONDARY)) {
-            for (Specialty specialty : disease.getSecondarySpecialties()) {
-                statement.setInt(1, disease.getId());
-                statement.setString(2, specialty.name());
-                statement.executeUpdate();
-            }
-        }
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_SYMPTOM)) {
-            int order = 0;
-            for (Symptom symptom : disease.getSymptoms()) {
-                statement.setInt(1, disease.getId());
-                statement.setInt(2, order++);
-                statement.setString(3, symptom.name());
-                statement.executeUpdate();
-            }
-        }
-    }
-
-    /** Pone los 13 datos de la enfermedad que no son el identificador, empezando en la posición dada. */
-    private static void bindAttributes(PreparedStatement statement, Disease disease, int first) throws SQLException {
-        int index = first;
-        statement.setString(index++, disease.getName());
-        statement.setString(index++, disease.getMainSpecialty().name());
-        statement.setString(index++, disease.getTreatment().name());
-        statement.setInt(index++, disease.isCurable() ? 1 : 0);
-        statement.setInt(index++, disease.requiresBlood() ? 1 : 0);
-        statement.setInt(index++, disease.requiresIcu() ? 1 : 0);
-        statement.setDouble(index++, disease.getDeteriorationRate());
-        statement.setDouble(index++, disease.getIrreducibleMortality());
-        statement.setInt(index++, disease.getMinDurationMinutes());
-        statement.setInt(index++, disease.getMaxDurationMinutes());
-        statement.setInt(index++, disease.getMinAge());
-        statement.setInt(index++, disease.getMaxAge());
-        statement.setDouble(index, disease.getFrequency());
+    /** Pone los datos de la enfermedad en las posiciones 1 a 16 del procedimiento. */
+    private static void bindDisease(CallableStatement call, Disease disease) throws SQLException {
+        call.setInt(1, disease.getId());
+        call.setString(2, disease.getName());
+        call.setString(3, disease.getMainSpecialty().name());
+        call.setString(4, disease.getTreatment().name());
+        call.setInt(5, disease.isCurable() ? 1 : 0);
+        call.setInt(6, disease.requiresBlood() ? 1 : 0);
+        call.setInt(7, disease.requiresIcu() ? 1 : 0);
+        call.setDouble(8, disease.getDeteriorationRate());
+        call.setDouble(9, disease.getIrreducibleMortality());
+        call.setInt(10, disease.getMinDurationMinutes());
+        call.setInt(11, disease.getMaxDurationMinutes());
+        call.setInt(12, disease.getMinAge());
+        call.setInt(13, disease.getMaxAge());
+        call.setDouble(14, disease.getFrequency());
+        call.setString(15, disease.getSecondarySpecialties().stream().map(Specialty::name)
+                .collect(Collectors.joining(",")));
+        call.setString(16, disease.getSymptoms().stream().map(Symptom::name).collect(Collectors.joining(",")));
     }
 
     // ---------- leer ----------
@@ -169,11 +137,11 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
         Map<Integer, Set<Specialty>> secondary = readSecondarySpecialties(connection, id);
         Map<Integer, List<Symptom>> symptoms = readSymptoms(connection, id);
         List<Disease> diseases = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_DISEASES : SELECT_DISEASE)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_DISEASES)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     diseases.add(toDisease(rows, secondary, symptoms));
                 }
@@ -185,11 +153,11 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     private static Map<Integer, Set<Specialty>> readSecondarySpecialties(Connection connection, Integer id)
             throws SQLException {
         Map<Integer, Set<Specialty>> result = new HashMap<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_SECONDARY : SELECT_SECONDARY_OF)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_SECONDARY)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     result.computeIfAbsent(rows.getInt("id_enfermedad"), key -> EnumSet.noneOf(Specialty.class))
                             .add(parse(Specialty.class, rows.getString("especialidad"),
@@ -202,11 +170,11 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
 
     private static Map<Integer, List<Symptom>> readSymptoms(Connection connection, Integer id) throws SQLException {
         Map<Integer, List<Symptom>> result = new HashMap<>();
-        try (PreparedStatement statement = connection.prepareStatement(id == null ? SELECT_SYMPTOMS : SELECT_SYMPTOMS_OF)) {
-            if (id != null) {
-                statement.setInt(1, id);
-            }
-            try (ResultSet rows = statement.executeQuery()) {
+        try (CallableStatement call = connection.prepareCall(SELECT_SYMPTOMS)) {
+            setOptionalId(call, id);
+            call.registerOutParameter(CURSOR_POSITION, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(CURSOR_POSITION)) {
                 while (rows.next()) {
                     result.computeIfAbsent(rows.getInt("id_enfermedad"), key -> new ArrayList<>())
                             .add(parse(Symptom.class, rows.getString("sintoma"), rows.getInt("id_enfermedad")));
@@ -214,6 +182,15 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
             }
         }
         return result;
+    }
+
+    /** Pone el identificador del filtro, o NULL si se quieren todas. */
+    private static void setOptionalId(CallableStatement call, Integer id) throws SQLException {
+        if (id == null) {
+            call.setNull(1, Types.INTEGER);
+        } else {
+            call.setInt(1, id);
+        }
     }
 
     /** Arma la enfermedad de la fila actual; si lo guardado no es válido, lo informa como error de datos. */
@@ -265,9 +242,12 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     public void update(Disease disease) {
         requireDisease(disease);
         transactions.run("actualizar la enfermedad " + disease.getId(), connection -> {
-            updateDisease(connection, disease);
-            deleteChildren(connection, disease.getId());
-            insertChildren(connection, disease);
+            try (CallableStatement call = connection.prepareCall(UPDATE_DISEASE)) {
+                bindDisease(call, disease);
+                call.registerOutParameter(UPDATED_COUNT_POSITION, Types.INTEGER);
+                call.execute();
+                requireOneRow(call.getInt(UPDATED_COUNT_POSITION), disease.getId());
+            }
             return null;
         });
     }
@@ -284,29 +264,14 @@ public class OracleDiseaseDao implements GenericDao<Disease, Integer> {
     public void deleteById(Integer id) {
         requireId(id);
         transactions.run("borrar la enfermedad " + id, connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(DELETE_DISEASE)) {
-                statement.setInt(1, id);
-                requireOneRow(statement.executeUpdate(), id);
+            try (CallableStatement call = connection.prepareCall(DELETE_DISEASE)) {
+                call.setInt(1, id);
+                call.registerOutParameter(DELETED_COUNT_POSITION, Types.INTEGER);
+                call.execute();
+                requireOneRow(call.getInt(DELETED_COUNT_POSITION), id);
             }
             return null;
         });
-    }
-
-    private static void updateDisease(Connection connection, Disease disease) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(UPDATE_DISEASE)) {
-            bindAttributes(statement, disease, 1);
-            statement.setInt(14, disease.getId());
-            requireOneRow(statement.executeUpdate(), disease.getId());
-        }
-    }
-
-    private static void deleteChildren(Connection connection, int diseaseId) throws SQLException {
-        for (String sql : List.of(DELETE_SECONDARY, DELETE_SYMPTOMS)) {
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setInt(1, diseaseId);
-                statement.executeUpdate();
-            }
-        }
     }
 
     private static void requireOneRow(int changedRows, int diseaseId) {

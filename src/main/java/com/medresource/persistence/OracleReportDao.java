@@ -8,11 +8,12 @@ import com.medresource.model.SavedReportSummary;
 import com.medresource.model.Scenario;
 
 import java.io.StringReader;
+import java.sql.CallableStatement;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,34 +23,31 @@ import java.util.Optional;
  * Guarda y lee en Oracle los reportes de fin de simulación.
  *
  * <p>Cada reporte ocupa una fila de {@code reporte}: la ejecución de la que salió, quién redactó el texto, el
- * reporte completo como JSON (ver {@link ReportJson}) y la fecha en que se guardó, que pone Oracle. La lista de
- * reportes ({@link #summaries()}) no lee el JSON: toma el escenario, la semilla y la estrategia de
- * {@code caso} y {@code ejecucion}, y cuenta los fallecidos en {@code resultado_paciente}.</p>
+ * reporte completo como JSON (ver {@link ReportJson}) y la fecha en que se guardó, que pone Oracle. Este DAO no
+ * tiene SQL: llama a los procedimientos {@code pr_*_reporte} de {@code db/plsql.sql}, y la lista de reportes
+ * ({@link #summaries()}) lee la vista {@code v_reporte_resumen}, que cuenta los fallecidos.</p>
  *
  * <p>Los reportes no se modifican: {@link #update(SavedReport)} no está permitido. Al borrar la ejecución, Oracle
  * borra también su reporte.</p>
  */
 public class OracleReportDao implements ReportDao {
 
-    static final String INSERT_REPORT = "INSERT INTO reporte (id_ejecucion, origen, contenido_json) VALUES (?, ?, ?)";
-    static final String SELECT_REPORT =
-            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte WHERE id = ?";
-    static final String SELECT_REPORT_BY_RESULT =
-            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte WHERE id_ejecucion = ?";
-    static final String SELECT_REPORTS =
-            "SELECT id, id_ejecucion, guardado_en, contenido_json FROM reporte ORDER BY id";
-    static final String SELECT_SUMMARIES = "SELECT p.id, p.id_ejecucion, p.guardado_en, p.origen, r.estrategia, "
-            + "r.id_ejecucion_base, c.id AS id_caso, c.semilla, c.escenario, c.cantidad_pacientes, "
-            + "c.duracion_minutos, "
-            + "(SELECT COUNT(*) FROM resultado_paciente d "
-            + "WHERE d.id_ejecucion = p.id_ejecucion AND d.estado = 'DECEASED') "
-            + "AS fallecidos "
-            + "FROM reporte p JOIN ejecucion r ON r.id = p.id_ejecucion JOIN caso c ON c.id = r.id_caso "
-            + "ORDER BY p.guardado_en DESC, p.id DESC";
-    static final String DELETE_REPORT = "DELETE FROM reporte WHERE id = ?";
+    /** {@code pr_guardar_reporte(id_ejecucion, origen, contenido_json, id)}: el último parámetro sale. */
+    static final String INSERT_REPORT = "{call pr_guardar_reporte(?, ?, ?, ?)}";
+    /** {@code pr_buscar_reporte(id, cursor)}. */
+    static final String SELECT_REPORT = "{call pr_buscar_reporte(?, ?)}";
+    /** {@code pr_reporte_de_ejecucion(id_ejecucion, cursor)}. */
+    static final String SELECT_REPORT_BY_RESULT = "{call pr_reporte_de_ejecucion(?, ?)}";
+    /** {@code pr_listar_reportes(cursor)}. */
+    static final String SELECT_REPORTS = "{call pr_listar_reportes(?)}";
+    /** {@code pr_listar_resumen_reportes(cursor)}. */
+    static final String SELECT_SUMMARIES = "{call pr_listar_resumen_reportes(?)}";
+    /** {@code pr_borrar_reporte(id, borrados)}: el segundo parámetro dice cuántas filas se borraron. */
+    static final String DELETE_REPORT = "{call pr_borrar_reporte(?, ?)}";
 
-    /** Nombre de la columna que Oracle genera al insertar un reporte. */
-    private static final String GENERATED_COLUMN = "ID";
+    /** Posiciones de los parámetros de salida de cada procedimiento. */
+    private static final int SAVED_ID_POSITION = 4;
+    private static final int DELETED_COUNT_POSITION = 2;
 
     private final TransactionRunner transactions;
 
@@ -84,18 +82,13 @@ public class OracleReportDao implements ReportDao {
         }
         String json = ReportJson.toJson(report.report());
         return transactions.run("guardar el reporte de la ejecución " + report.resultId(), connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(INSERT_REPORT,
-                    new String[]{GENERATED_COLUMN})) {
-                statement.setInt(1, report.resultId());
-                statement.setString(2, report.report().narrative().source().name());
-                statement.setCharacterStream(3, new StringReader(json), json.length());
-                statement.executeUpdate();
-                try (ResultSet keys = statement.getGeneratedKeys()) {
-                    if (!keys.next()) {
-                        throw new SQLException("Oracle no devolvió el identificador del reporte.");
-                    }
-                    return keys.getInt(1);
-                }
+            try (CallableStatement call = connection.prepareCall(INSERT_REPORT)) {
+                call.setInt(1, report.resultId());
+                call.setString(2, report.report().narrative().source().name());
+                call.setCharacterStream(3, new StringReader(json), json.length());
+                call.registerOutParameter(SAVED_ID_POSITION, Types.INTEGER);
+                call.execute();
+                return call.getInt(SAVED_ID_POSITION);
             }
         });
     }
@@ -122,9 +115,11 @@ public class OracleReportDao implements ReportDao {
     public void deleteById(Integer id) {
         requireId(id);
         transactions.run("borrar el reporte " + id, connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(DELETE_REPORT)) {
-                statement.setInt(1, id);
-                if (statement.executeUpdate() == 0) {
+            try (CallableStatement call = connection.prepareCall(DELETE_REPORT)) {
+                call.setInt(1, id);
+                call.registerOutParameter(DELETED_COUNT_POSITION, Types.INTEGER);
+                call.execute();
+                if (call.getInt(DELETED_COUNT_POSITION) == 0) {
                     throw new DataAccessException("No existe el reporte " + id + ".");
                 }
             }
@@ -184,24 +179,35 @@ public class OracleReportDao implements ReportDao {
     public List<SavedReportSummary> summaries() {
         return transactions.run("listar los reportes guardados", connection -> {
             List<SavedReportSummary> summaries = new ArrayList<>();
-            try (PreparedStatement statement = connection.prepareStatement(SELECT_SUMMARIES);
-                 ResultSet rows = statement.executeQuery()) {
-                while (rows.next()) {
-                    summaries.add(toSummary(rows));
+            try (CallableStatement call = connection.prepareCall(SELECT_SUMMARIES)) {
+                call.registerOutParameter(1, Types.REF_CURSOR);
+                call.execute();
+                try (ResultSet rows = (ResultSet) call.getObject(1)) {
+                    while (rows.next()) {
+                        summaries.add(toSummary(rows));
+                    }
                 }
             }
             return summaries;
         });
     }
 
+    /**
+     * Ejecuta un procedimiento que devuelve reportes en su cursor. El cursor es el último parámetro: si el
+     * procedimiento recibe un identificador, es el segundo; si no recibe nada, es el primero.
+     */
     private static List<SavedReport> load(Connection connection, String sql, Integer parameter)
             throws SQLException {
         List<SavedReport> reports = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (CallableStatement call = connection.prepareCall(sql)) {
+            int cursor = 1;
             if (parameter != null) {
-                statement.setInt(1, parameter);
+                call.setInt(1, parameter);
+                cursor = 2;
             }
-            try (ResultSet rows = statement.executeQuery()) {
+            call.registerOutParameter(cursor, Types.REF_CURSOR);
+            call.execute();
+            try (ResultSet rows = (ResultSet) call.getObject(cursor)) {
                 while (rows.next()) {
                     reports.add(toReport(rows));
                 }
