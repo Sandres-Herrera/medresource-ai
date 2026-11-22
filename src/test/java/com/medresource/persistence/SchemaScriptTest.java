@@ -146,6 +146,21 @@ class SchemaScriptTest {
         }
     }
 
+    @Test
+    void criticalForeignKeysAndEventCodesHaveSupportingIndexes() throws IOException {
+        String schema = read(SchemaInstaller.SCHEMA_RESOURCE);
+
+        for (String index : List.of(
+                "CREATE INDEX idx_caso_pac_enf ON caso_paciente (id_enfermedad)",
+                "CREATE INDEX idx_resultado_pac_enf ON resultado_paciente (id_enfermedad)",
+                "CREATE INDEX idx_resultado_codigo ON resultado_paciente (id_ejecucion, codigo_paciente)",
+                "CREATE INDEX idx_comparacion_caso ON comparacion (id_caso)",
+                "CREATE INDEX idx_comparacion_ejec_a ON comparacion (id_ejecucion_a)",
+                "CREATE INDEX idx_comparacion_ejec_b ON comparacion (id_ejecucion_b)")) {
+            assertTrue(schema.contains(index), index);
+        }
+    }
+
     // ---------- catálogo ----------
 
     @Test
@@ -300,9 +315,15 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesThirteenTablesAndTwoIndexes() throws IOException {
+    void theScriptCreatesThirteenTablesAndEightIndexes() throws IOException {
         assertEquals(13, createdTables().size());
-        assertEquals(15, statements().size());
+        long indexes = statements().stream()
+                .filter(statement -> statement.startsWith("CREATE INDEX ")
+                        || statement.startsWith("CREATE UNIQUE INDEX "))
+                .count();
+        assertEquals(8, indexes, "El esquema debe crear dos indices originales y seis de apoyo");
+        assertEquals(createdTables().size() + indexes, statements().size(),
+                "El script solo debe crear tablas e indices");
     }
 
     @Test

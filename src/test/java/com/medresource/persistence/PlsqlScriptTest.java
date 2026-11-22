@@ -111,6 +111,23 @@ class PlsqlScriptTest {
         assertTrue(migration.contains("SQLCODE = -4043"), "the cleanup must tolerate already missing objects");
     }
 
+    @Test
+    void hotfixMigrationReusesUpdatedUnitsAndNeverDropsTables() throws IOException {
+        String migration;
+        try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream(
+                "/db/migracion_integridad_20261122.sql")) {
+            assertNotNull(stream, "Falta la migración de integridad para bases existentes");
+            migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        for (String name : List.of("fn_integridad_ejecucion", "pr_guardar_comparacion",
+                "trg_validar_tiempo_atencion", "pr_actualizar_enfermedad")) {
+            assertTrue(migration.contains(unit(name)), "La migración no coincide con el script: " + name);
+        }
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DROP TABLE"));
+        assertTrue(migration.contains("EXECUTE IMMEDIATE p_ddl;"));
+        assertTrue(migration.contains("v_total <> 4"));
+    }
+
     // ---------- funciones de validación ----------
 
     @Test
@@ -141,7 +158,11 @@ class PlsqlScriptTest {
         assertTrue(run.contains("v_eventos = 0"), "A run without any events must be rejected");
         assertTrue(run.contains("r.irrecuperable <> cp.irrecuperable"));
         assertTrue(run.contains("GROUP BY codigo_paciente") && run.contains("HAVING COUNT(*) > 1"));
-        assertTrue(run.contains("fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0"));
+        assertTrue(run.contains("NOT EXISTS ("));
+        assertTrue(run.contains("r.codigo_paciente = ev.codigo_paciente"));
+        assertTrue(run.contains("HAVING COUNT(*) = 1"));
+        assertFalse(run.contains("fn_evento_paciente_valido("),
+                "La validación completa no debe llamar la función por cada evento");
     }
 
     // ---------- validaciones antes de cada INSERT ----------
@@ -231,6 +252,9 @@ class PlsqlScriptTest {
         assertTrue(saving.contains("LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(p_id_a, p_id_b)"));
         assertTrue(saving.contains("p_nueva := 0;"));
         assertTrue(saving.contains("RETURNING id INTO p_id;"));
+        assertTrue(saving.contains("WHEN DUP_VAL_ON_INDEX THEN"));
+        assertTrue(saving.contains("SELECT MIN(id) INTO p_id"));
+        assertTrue(saving.contains("IF p_id IS NULL THEN"));
     }
 
     // ---------- triggers ----------
@@ -244,14 +268,26 @@ class PlsqlScriptTest {
     }
 
     @Test
-    void aPatientCannotStartCareBeforeArrivingUnlessItWasNeverAttended() throws IOException {
+    void careStartsOnlyBetweenArrivalAndOutcomeUnlessNeverAttended() throws IOException {
         String trigger = unit("trg_validar_tiempo_atencion");
 
-        assertTrue(trigger.contains("BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON "
-                + "resultado_paciente"));
-        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < "
-                + ":NEW.minuto_llegada"));
+        assertTrue(trigger.contains("BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada, "
+                + "minuto_desenlace ON resultado_paciente"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion <> -1"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion < :NEW.minuto_llegada"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion > :NEW.minuto_desenlace"));
         assertTrue(trigger.contains("RAISE_APPLICATION_ERROR(-20001"));
+    }
+
+    @Test
+    void editingDiseaseAgesMustPreserveStoredCasePatients() throws IOException {
+        String procedure = unit("pr_actualizar_enfermedad");
+
+        assertTrue(procedure.contains("FROM caso_paciente"));
+        assertTrue(procedure.contains("id_enfermedad = p_id"));
+        assertTrue(procedure.contains("edad < p_edad_min OR edad > p_edad_max"));
+        assertTrue(procedure.contains("RAISE_APPLICATION_ERROR(-20009"));
+        assertTrue(procedure.indexOf("RAISE_APPLICATION_ERROR(-20009") < procedure.indexOf("UPDATE enfermedad"));
     }
 
     @Test

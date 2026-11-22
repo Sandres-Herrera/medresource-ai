@@ -110,6 +110,9 @@ CREATE TABLE caso_paciente (
     CONSTRAINT ck_caso_paciente_irrecuperable CHECK (irrecuperable IN (0, 1))
 );
 
+-- Consultas por enfermedad y mantenimiento del catálogo histórico.
+CREATE INDEX idx_caso_pac_enf ON caso_paciente (id_enfermedad);
+
 CREATE TABLE caso_paciente_sintoma (
     id_caso                  NUMBER(10)           NOT NULL,
     id_paciente              NUMBER(5)            NOT NULL,
@@ -219,6 +222,11 @@ CREATE TABLE resultado_paciente (
         OR (minuto_inicio_atencion >= 0 AND nivel_atencion IS NOT NULL))
 );
 
+-- FK a enfermedad y búsqueda de eventos por código de paciente.
+-- La PK (id_ejecucion, id_paciente) ya cubre el FK a ejecucion.
+CREATE INDEX idx_resultado_pac_enf ON resultado_paciente (id_enfermedad);
+CREATE INDEX idx_resultado_codigo ON resultado_paciente (id_ejecucion, codigo_paciente);
+
 CREATE TABLE evento (
     id_ejecucion             NUMBER(10)           NOT NULL,
     orden_evento             NUMBER(8)            NOT NULL,
@@ -284,6 +292,12 @@ CREATE TABLE comparacion (
     CONSTRAINT ck_comparacion_tipo CHECK (tipo IN ('STRATEGY', 'RESOURCES', 'MIXED')),
     CONSTRAINT ck_comparacion_json CHECK (contenido_json IS JSON)
 );
+
+-- Índices para buscar comparaciones y gestionar sus claves foráneas.
+-- El índice único por LEAST/GREATEST no sustituye estos índices simples.
+CREATE INDEX idx_comparacion_caso ON comparacion (id_caso);
+CREATE INDEX idx_comparacion_ejec_a ON comparacion (id_ejecucion_a);
+CREATE INDEX idx_comparacion_ejec_b ON comparacion (id_ejecucion_b);
 
 CREATE UNIQUE INDEX uq_comparacion_par ON comparacion (
     LEAST(id_ejecucion_a, id_ejecucion_b), GREATEST(id_ejecucion_a, id_ejecucion_b));

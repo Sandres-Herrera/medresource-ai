@@ -181,10 +181,19 @@ BEGIN
     IF v_eventos = 0 THEN
         RETURN 0;
     END IF;
+    -- Mismo criterio que fn_evento_paciente_valido: debe haber exactamente
+    -- un resultado por código. Se valida en SQL sin llamar PL/SQL por evento.
     SELECT COUNT(*) INTO v_eventos_mal
-      FROM evento
-     WHERE id_ejecucion = p_id_ejecucion
-       AND fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0;
+      FROM evento ev
+     WHERE ev.id_ejecucion = p_id_ejecucion
+       AND NOT EXISTS (
+           SELECT 1
+             FROM resultado_paciente r
+            WHERE r.id_ejecucion = ev.id_ejecucion
+              AND r.codigo_paciente = ev.codigo_paciente
+            GROUP BY r.id_ejecucion, r.codigo_paciente
+           HAVING COUNT(*) = 1
+       );
     IF v_faltan > 0 OR v_datos_mal > 0 OR v_codigos_rep > 0 OR v_eventos_mal > 0 THEN
         RETURN 0;
     END IF;
@@ -313,25 +322,44 @@ BEGIN
             NULL;
     END;
     SELECT id_caso INTO v_caso FROM ejecucion WHERE id = p_id_a;
-    INSERT INTO comparacion (id_caso, id_ejecucion_a, id_ejecucion_b, tipo, contenido_json)
-    VALUES (v_caso, p_id_a, p_id_b, v_tipo, p_json)
-    RETURNING id INTO p_id;
-    p_nueva := 1;
+    BEGIN
+        INSERT INTO comparacion (id_caso, id_ejecucion_a, id_ejecucion_b, tipo, contenido_json)
+        VALUES (v_caso, p_id_a, p_id_b, v_tipo, p_json)
+        RETURNING id INTO p_id;
+        p_nueva := 1;
+    EXCEPTION
+        WHEN DUP_VAL_ON_INDEX THEN
+            -- Una segunda sesión pudo insertar el mismo par tras el SELECT.
+            -- El índice único por LEAST/GREATEST arbitra esa concurrencia.
+            -- Solo reutilizamos un ID si se encuentra exactamente ese par;
+            -- otras violaciones de unicidad siguen siendo errores.
+            SELECT MIN(id) INTO p_id
+              FROM comparacion
+             WHERE LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(p_id_a, p_id_b)
+               AND GREATEST(id_ejecucion_a, id_ejecucion_b) = GREATEST(p_id_a, p_id_b);
+            IF p_id IS NULL THEN
+                RAISE;
+            END IF;
+            p_nueva := 0;
+    END;
 END pr_guardar_comparacion;
 /
 
 -- ---------------------------------------------------------------------------
--- Impide guardar un paciente que empezó su atención antes de llegar
+-- Impide iniciar la atención fuera del intervalo llegada..desenlace
 -- (ORA-20001). El valor -1 significa que nunca lo atendieron y se acepta.
+-- También se revalida cuando cambia el minuto de desenlace.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE TRIGGER trg_validar_tiempo_atencion
-BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON resultado_paciente
+BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada, minuto_desenlace ON resultado_paciente
 FOR EACH ROW
 BEGIN
-    IF :NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < :NEW.minuto_llegada THEN
+    IF :NEW.minuto_inicio_atencion <> -1
+       AND (:NEW.minuto_inicio_atencion < :NEW.minuto_llegada
+            OR :NEW.minuto_inicio_atencion > :NEW.minuto_desenlace) THEN
         RAISE_APPLICATION_ERROR(-20001, 'El paciente ' || :NEW.codigo_paciente
-            || ' no puede empezar su atención (minuto ' || :NEW.minuto_inicio_atencion
-            || ') antes de llegar (minuto ' || :NEW.minuto_llegada || ').');
+            || ' debe empezar su atención entre la llegada (minuto ' || :NEW.minuto_llegada
+            || ') y el desenlace (minuto ' || :NEW.minuto_desenlace || ').');
     END IF;
 END trg_validar_tiempo_atencion;
 /
@@ -728,7 +756,20 @@ CREATE OR REPLACE PROCEDURE pr_actualizar_enfermedad (
     p_sintomas          IN VARCHAR2,
     p_actualizadas      OUT NUMBER
 ) IS
+    v_pacientes_incompatibles NUMBER;
 BEGIN
+    -- El catálogo puede editarse, pero no debe invalidar casos ya guardados.
+    -- El motor de simulación no modifica las enfermedades: esta protección
+    -- solo se aplica al mantenimiento explícito del catálogo.
+    SELECT COUNT(*) INTO v_pacientes_incompatibles
+      FROM caso_paciente
+     WHERE id_enfermedad = p_id
+       AND (edad < p_edad_min OR edad > p_edad_max);
+    IF v_pacientes_incompatibles > 0 THEN
+        RAISE_APPLICATION_ERROR(-20009,
+            'El nuevo rango de edad de la enfermedad #' || p_id
+            || ' deja fuera a pacientes de casos guardados.');
+    END IF;
     UPDATE enfermedad
        SET nombre = p_nombre,
            especialidad_principal = p_especialidad,
