@@ -41,6 +41,14 @@ class FullscreenBarTest {
     }
 
     @Test
+    void turboChangesTheSkipButtonLabelAndRestoresItOnNormalSpeed() {
+        bar.setSpeed(com.medresource.ui.controller.SimulationClock.TURBO_SPEED);
+        assertEquals("Avanzar tramo", bar.skipButton().getText());
+        bar.setSpeed(10);
+        assertEquals("Siguiente evento", bar.skipButton().getText());
+    }
+
+    @Test
     void choosingASpeedMarksItAndTellsTheListener() {
         List<Integer> heard = new ArrayList<>();
         bar.onSpeed(heard::add);

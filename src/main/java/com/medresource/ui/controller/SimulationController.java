@@ -45,6 +45,9 @@ public final class SimulationController {
     private String strategyName;
     private final SimulationClock clock = new SimulationClock();
     private boolean running;
+    private int turboSegmentsShown;
+    private double turboStartTime;
+    private double turboFinishTime = -1;
 
     /**
      * Prepara la simulación sin empezarla.
@@ -73,6 +76,8 @@ public final class SimulationController {
         strategyName = strategy.getName();
         running = false;
         clock.reset();
+        turboSegmentsShown = 0;
+        turboFinishTime = -1;
     }
 
     /** Empieza o continúa la simulación; no hace nada si ya terminó. */
@@ -95,6 +100,10 @@ public final class SimulationController {
      * @throws IllegalArgumentException si la velocidad no está en la lista
      */
     public void setSpeed(int speed) {
+        if (speed != clock.getSpeed()) {
+            turboSegmentsShown = 0;
+            turboFinishTime = -1;
+        }
         clock.setSpeed(speed);
     }
 
@@ -143,6 +152,9 @@ public final class SimulationController {
      * @return minutos que se adelantaron; 0 si ya no quedan eventos
      */
     public int skipToNextEvent() {
+        if (clock.getSpeed() == SimulationClock.TURBO_SPEED) {
+            return skipTurboSegment();
+        }
         int minuteBefore = player.getMinute();
         OptionalDouble next = player.nextEventTime();
         if (next.isEmpty()) {
@@ -152,6 +164,37 @@ public final class SimulationController {
         clock.jumpTo(Math.max(clock.getTime(), next.getAsDouble()));
         showClockTime();
         return player.getMinute() - minuteBefore;
+    }
+
+    /**
+     * Recorre aproximadamente un doceavo de la duración restante en cada clic. Se calcula la duración exacta
+     * con una simulación independiente y determinista, sin alterar el motor que está mostrando la ventana.
+     * {@link ScenePlayer#advanceTo(double)} sigue procesando todos los eventos intermedios en orden; no se
+     * modifican tratamientos, desenlaces ni métricas. Los avances manuales TURBO se hacen en pausa.
+     */
+    private int skipTurboSegment() {
+        running = false;
+        if (player.isFinished()) {
+            return 0;
+        }
+        if (turboFinishTime < 0) {
+            SimulationEngine forecast = new SimulationEngine(new CaseGenerator().generate(setup.caseConfig()),
+                    new HospitalFactory().create(setup.hospital()),
+                    setup.strategy().create(setup.caseConfig().seed()));
+            forecast.run();
+            turboStartTime = clock.getTime();
+            // Un minuto adicional asegura que se hayan liberado los eventos del último minuto.
+            turboFinishTime = Math.max(turboStartTime, (forecast.getMinute() + 1.0)
+                    * SimulationClock.SECONDS_PER_MINUTE);
+            turboSegmentsShown = 0;
+        }
+        int before = player.getMinute();
+        turboSegmentsShown++;
+        double fraction = Math.min(1.0, turboSegmentsShown / (double) SimulationClock.TURBO_SEGMENTS);
+        double target = turboStartTime + (turboFinishTime - turboStartTime) * fraction;
+        clock.jumpTo(Math.max(clock.getTime(), target));
+        showClockTime();
+        return player.getMinute() - before;
     }
 
     /**

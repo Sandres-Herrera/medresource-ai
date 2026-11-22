@@ -154,21 +154,31 @@ public final class ReportCharts {
         return chart(bars, 0);
     }
 
-    /** Mortalidad del hospital actual y con cada otra estrategia: verde si la baja, rojo si la sube. */
+    /** Mortalidad media de varias simulaciones por estrategia, no la de la corrida individual del resumen. */
     static Optional<BarChart> policy(WhatIfReport whatIf) {
         if (whatIf.policies().isEmpty()) {
             return Optional.empty();
         }
         List<BarChart.Bar> bars = new ArrayList<>();
         bars.add(new BarChart.Bar(whatIf.strategyName() + CURRENT, whatIf.mortality().mean(),
-                ReportFormat.percent(whatIf.mortality().mean()) + " de mortalidad", HomeTheme.ACCENT));
+                policyValue(whatIf.mortality().mean(), whatIf.cases()), HomeTheme.ACCENT));
         for (WhatIfResult policy : whatIf.policies()) {
             Color color = policy.lowersMortality() ? HomeTheme.GREEN
                     : policy.raisesMortality() ? HomeTheme.RED : HomeTheme.MUTED;
             bars.add(new BarChart.Bar(policy.strategyName(), policy.mortality().mean(),
-                    ReportFormat.percent(policy.mortality().mean()) + " de mortalidad", color));
+                    policyValue(policy.mortality().mean(), whatIf.cases()), color));
         }
         return chart(bars, 0);
+    }
+
+    /** La gráfica muestra promedios de nuevas corridas, no necesariamente la mortalidad de la corrida original. */
+    static String policyExplanation(int cases) {
+        return "Estos porcentajes son promedios de " + cases + " simulaciones del mismo escenario con semillas "
+                + "consecutivas. Por eso pueden diferir del porcentaje de la simulación individual del resumen.";
+    }
+
+    private static String policyValue(double mortality, int cases) {
+        return ReportFormat.percent(mortality) + " mortalidad media · " + cases + " sim.";
     }
 
     /**

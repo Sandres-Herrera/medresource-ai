@@ -87,6 +87,15 @@ class ReportPanelTest {
     }
 
     @Test
+    void showsThePolicyAverageClarificationBelowTheChart() {
+        GeneratedReport generated = ReportViewFixtures.generated();
+        ReportPanel panel = new ReportPanel(generated);
+
+        assertTrue(textAreasIn(panel).stream().map(JTextArea::getText)
+                .anyMatch(text -> text.equals(ReportCharts.policyExplanation(generated.whatIf().cases()))));
+    }
+
+    @Test
     void eachCaseToReviewHasItsButtonToSeeItOnThePlan() {
         GeneratedReport generated = ReportViewFixtures.generated();
         ReportPanel panel = new ReportPanel(generated);

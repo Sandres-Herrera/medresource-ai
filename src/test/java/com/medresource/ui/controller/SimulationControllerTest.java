@@ -149,6 +149,37 @@ class SimulationControllerTest {
     }
 
     @Test
+    void turboCompletesTheSimulationInAtMostTwelveClicksAndPreservesAllResults() {
+        SimulationController turbo = controller();
+        turbo.setSpeed(SimulationClock.TURBO_SPEED);
+        int clicks = 0;
+        int events = 0;
+        while (!turbo.isFinished() && clicks < SimulationClock.TURBO_SEGMENTS) {
+            turbo.skipToNextEvent();
+            events += turbo.drainNewEvents().size();
+            assertFalse(turbo.isRunning());
+            clicks++;
+        }
+        assertTrue(turbo.isFinished(), "TURBO debe completar la simulación en doce tramos o menos");
+        assertTrue(events > 0);
+        SimulationEngine expected = new SimulationEngine(new CaseGenerator().generate(SMALL_CASE),
+                new HospitalFactory().create(HospitalConfig.standard()), new ClinicalPriorityStrategy());
+        assertEquals(new MetricsCalculator().calculate(expected.run()), turbo.metrics().orElseThrow());
+        assertEquals(0, turbo.skipToNextEvent());
+    }
+
+    @Test
+    void switchingBackFromTurboRestoresTheNormalNextEventBehavior() {
+        SimulationController controller = controller();
+        controller.setSpeed(SimulationClock.TURBO_SPEED);
+        controller.skipToNextEvent();
+        controller.setSpeed(10);
+        int before = controller.getMinute();
+        controller.skipToNextEvent();
+        assertTrue(controller.getMinute() >= before);
+    }
+
+    @Test
     void eachEventIsSeenAtItsOwnSecondInRealTime() {
         SimulationController controller = new SimulationController(SimulationSetup.standard(
                 new CaseConfig(7L, Scenario.CATASTROPHE, 100, 120)), new Renderer2D());

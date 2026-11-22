@@ -135,6 +135,7 @@ public final class FullscreenBar extends JPanel {
      */
     public void setSpeed(int speed) {
         speeds.setSpeed(speed);
+        skip.setText(speed == SimulationClock.TURBO_SPEED ? "Avanzar tramo" : "Siguiente evento");
     }
 
     /**

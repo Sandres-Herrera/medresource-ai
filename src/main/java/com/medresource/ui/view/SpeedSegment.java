@@ -32,7 +32,10 @@ public final class SpeedSegment extends JPanel {
         setOpaque(false);
         setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
         for (int speed : SimulationClock.SPEEDS) {
-            Pill pill = new Pill("×" + speed);
+            Pill pill = new Pill(speed == SimulationClock.TURBO_SPEED ? "TURBO" : "×" + speed);
+            if (speed == SimulationClock.TURBO_SPEED) {
+                pill.setToolTipText("Avanza la simulación en unos 12 tramos con Siguiente evento");
+            }
             pill.addActionListener(event -> {
                 setSpeed(speed);
                 speedAction.accept(speed);

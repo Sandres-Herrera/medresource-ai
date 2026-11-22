@@ -27,7 +27,7 @@ class SimulationClockTest {
         assertEquals(0.0, clock.getTime(), 1e-9);
         assertEquals(0, clock.getMinute());
         assertEquals(0, clock.getSecond());
-        assertEquals(List.of(1, 2, 5, 10), SimulationClock.SPEEDS);
+        assertEquals(List.of(1, 2, 5, 10, SimulationClock.TURBO_SPEED), SimulationClock.SPEEDS);
     }
 
     @Test
@@ -60,6 +60,14 @@ class SimulationClockTest {
 
         assertEquals(60.0, clock.getTime(), 1e-6);
         assertEquals(1, clock.getMinute());
+    }
+
+    @Test
+    void turboSpeedIsAvailableWithoutChangingTheFrameSafetyLimit() {
+        SimulationClock clock = new SimulationClock();
+        clock.setSpeed(SimulationClock.TURBO_SPEED);
+        clock.advance(1_000);
+        assertEquals(SimulationClock.MAX_SECONDS_PER_FRAME, clock.getTime(), 1e-9);
     }
 
     @Test

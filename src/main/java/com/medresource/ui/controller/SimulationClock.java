@@ -15,7 +15,12 @@ import java.util.List;
 public final class SimulationClock {
 
     /** Velocidades que se pueden elegir: segundos simulados por cada segundo real. */
-    public static final List<Integer> SPEEDS = List.of(1, 2, 5, 10);
+    public static final int TURBO_SPEED = 50;
+
+    /** Un recorrido completo en modo TURBO requiere aproximadamente doce avances manuales. */
+    public static final int TURBO_SEGMENTS = 12;
+
+    public static final List<Integer> SPEEDS = List.of(1, 2, 5, 10, TURBO_SPEED);
 
     /** Velocidad inicial: tiempo real. */
     public static final int DEFAULT_SPEED = 1;

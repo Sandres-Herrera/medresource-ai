@@ -103,7 +103,11 @@ public final class ReportPanel extends JPanel implements Scrollable {
         for (ReportSection section : ReportSection.values()) {
             Optional<String> text = narrative.sectionText(section);
             Optional<JComponent> chart = ReportCharts.chartFor(section, generated);
-            JComponent extra = section == ReportSection.CASES ? cases(generated.report().cases()) : null;
+            JComponent extra = switch (section) {
+                case CASES -> cases(generated.report().cases());
+                case POLICY -> policyNote();
+                default -> null;
+            };
             if (text.isPresent() || chart.isPresent() || extra != null) {
                 addBlock(card(section.getTitle(), text.orElse(null), chart.orElse(null), extra));
             }
@@ -225,6 +229,13 @@ public final class ReportPanel extends JPanel implements Scrollable {
         area.setCaretColor(HomeTheme.TEXT);
         area.setSelectionColor(HomeTheme.SELECTED);
         return area;
+    }
+
+    /** Nota fija bajo la gráfica comparativa, independiente del texto redactado por la IA. */
+    private JTextArea policyNote() {
+        JTextArea note = paragraph(ReportCharts.policyExplanation(generated.whatIf().cases()));
+        paragraphs.add(note);
+        return note;
     }
 
     private JComponent cases(List<ReviewCase> reviewCases) {

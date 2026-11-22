@@ -24,9 +24,17 @@ class SpeedSegmentTest {
     void hasOnePillPerSpeed() {
         for (int speed : SimulationClock.SPEEDS) {
             assertNotNull(segment.pill(speed));
-            assertEquals("×" + speed, segment.pill(speed).getName());
+            String expectedLabel = speed == SimulationClock.TURBO_SPEED ? "TURBO" : "×" + speed;
+            assertEquals(expectedLabel, segment.pill(speed).getName());
         }
         assertNull(segment.pill(3));
+    }
+
+    @Test
+    void turboPillIsClearlyLabeled() {
+        assertEquals("TURBO", segment.pill(SimulationClock.TURBO_SPEED).getName());
+        segment.pill(SimulationClock.TURBO_SPEED).doClick();
+        assertTrue(segment.pill(SimulationClock.TURBO_SPEED).isSelected());
     }
 
     @Test

@@ -146,8 +146,22 @@ class ReportChartsTest {
         assertEquals(whatIf.policies().size() + 1, chart.getBars().size());
         assertEquals(whatIf.strategyName() + ReportCharts.CURRENT, chart.getBars().getFirst().label());
         assertEquals(whatIf.mortality().mean(), chart.getBars().getFirst().value(), 1e-9);
+        String average = ReportFormat.percent(whatIf.mortality().mean()) + " mortalidad media · "
+                + whatIf.cases() + " sim.";
+        assertEquals(average, chart.getBars().getFirst().valueText());
+        assertEquals(ReportFormat.percent(whatIf.policies().getFirst().mortality().mean())
+                + " mortalidad media · " + whatIf.cases() + " sim.",
+                chart.getBars().get(1).valueText());
         assertTrue(ReportCharts.policy(new WhatIfReport(whatIf.cases(), whatIf.strategyName(), whatIf.mortality(),
                 whatIf.waitMinutes(), whatIf.resources(), List.of())).isEmpty());
+    }
+
+    @Test
+    void explainsWhyThePolicyAverageMayDifferFromTheMainReport() {
+        String note = ReportCharts.policyExplanation(30);
+
+        assertTrue(note.contains("30 simulaciones"));
+        assertTrue(note.contains("simulación individual del resumen"));
     }
 
     @Test

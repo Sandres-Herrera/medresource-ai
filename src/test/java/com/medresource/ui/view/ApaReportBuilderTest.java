@@ -91,6 +91,8 @@ class ApaReportBuilderTest {
         for (Table table : document.tables()) {
             assertTrue(text.contains("Tabla " + table.number()), table.label());
         }
+        assertTrue(document.figures().stream().anyMatch(figure -> figure.note()
+                .contains(ReportCharts.policyExplanation(generated.whatIf().cases()))));
     }
 
     @Test

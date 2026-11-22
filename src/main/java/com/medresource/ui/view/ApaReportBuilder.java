@@ -246,7 +246,9 @@ public final class ApaReportBuilder {
         return switch (section) {
             case TIMELINE -> "Las franjas rojas son los periodos de colapso y la línea punteada marca el final de las "
                     + "llegadas. Hora del reloj de la simulación.";
-            case MISSING_RESOURCES, POLICY -> "Promedio de " + generated.whatIf().cases() + " simulaciones del mismo "
+            case POLICY -> ReportCharts.policyExplanation(generated.whatIf().cases()) + " Semillas desde la "
+                    + seed + ".";
+            case MISSING_RESOURCES -> "Promedio de " + generated.whatIf().cases() + " simulaciones del mismo "
                     + "caso con semillas consecutivas desde la " + seed + ".";
             default -> "Elaboración propia con los datos de la simulación (semilla " + seed + ").";
         };
