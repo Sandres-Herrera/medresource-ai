@@ -235,6 +235,9 @@ class PlsqlScriptTest {
         assertTrue(saving.contains("LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(p_id_a, p_id_b)"));
         assertTrue(saving.contains("p_nueva := 0;"));
         assertTrue(saving.contains("RETURNING id INTO p_id;"));
+        assertTrue(saving.contains("WHEN DUP_VAL_ON_INDEX THEN"));
+        assertTrue(saving.contains("SELECT MIN(id) INTO p_id"));
+        assertTrue(saving.contains("IF p_id IS NULL THEN"));
     }
 
     // ---------- triggers ----------

@@ -322,10 +322,26 @@ BEGIN
             NULL;
     END;
     SELECT id_caso INTO v_caso FROM ejecucion WHERE id = p_id_a;
-    INSERT INTO comparacion (id_caso, id_ejecucion_a, id_ejecucion_b, tipo, contenido_json)
-    VALUES (v_caso, p_id_a, p_id_b, v_tipo, p_json)
-    RETURNING id INTO p_id;
-    p_nueva := 1;
+    BEGIN
+        INSERT INTO comparacion (id_caso, id_ejecucion_a, id_ejecucion_b, tipo, contenido_json)
+        VALUES (v_caso, p_id_a, p_id_b, v_tipo, p_json)
+        RETURNING id INTO p_id;
+        p_nueva := 1;
+    EXCEPTION
+        WHEN DUP_VAL_ON_INDEX THEN
+            -- Una segunda sesión pudo insertar el mismo par tras el SELECT.
+            -- El índice único por LEAST/GREATEST arbitra esa concurrencia.
+            -- Solo reutilizamos un ID si se encuentra exactamente ese par;
+            -- otras violaciones de unicidad siguen siendo errores.
+            SELECT MIN(id) INTO p_id
+              FROM comparacion
+             WHERE LEAST(id_ejecucion_a, id_ejecucion_b) = LEAST(p_id_a, p_id_b)
+               AND GREATEST(id_ejecucion_a, id_ejecucion_b) = GREATEST(p_id_a, p_id_b);
+            IF p_id IS NULL THEN
+                RAISE;
+            END IF;
+            p_nueva := 0;
+    END;
 END pr_guardar_comparacion;
 /
 
