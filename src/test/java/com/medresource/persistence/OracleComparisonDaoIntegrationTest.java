@@ -48,6 +48,8 @@ class OracleComparisonDaoIntegrationTest {
     private static final String INTEGRITY = "SELECT fn_integridad_ejecucion(?) FROM dual";
     private static final String SHIFT_START = "UPDATE resultado_paciente SET minuto_inicio_atencion = "
             + "minuto_llegada - 1 WHERE id_ejecucion = ? AND minuto_inicio_atencion > 0 AND minuto_llegada > 0";
+    private static final String START_AFTER_OUTCOME = "UPDATE resultado_paciente SET minuto_inicio_atencion = "
+            + "minuto_desenlace + 1 WHERE id_ejecucion = ? AND minuto_inicio_atencion >= 0";
 
     @Test
     void savesAComparisonAfterCheckingRunIntegrity() throws SQLException {
@@ -79,6 +81,7 @@ class OracleComparisonDaoIntegrationTest {
                 assertRunIsComplete(connection, runA);
                 assertRunIsComplete(connection, runB);
                 assertTheTriggerRejectsAStartBeforeArrival(connection, runA);
+                assertTheTriggerRejectsAStartAfterOutcome(connection, runA);
             }
 
             RunComparison comparison = new RunComparator(new SimulationService(
@@ -115,6 +118,19 @@ class OracleComparisonDaoIntegrationTest {
             throws SQLException {
         connection.setAutoCommit(false);
         try (PreparedStatement statement = connection.prepareStatement(SHIFT_START)) {
+            statement.setInt(1, runId);
+            SQLException error = assertThrows(SQLException.class, statement::executeUpdate);
+            assertEquals(20001, error.getErrorCode());
+        } finally {
+            connection.rollback();
+        }
+    }
+
+    /** Una atención que comienza después del desenlace también debe ser rechazada. */
+    private static void assertTheTriggerRejectsAStartAfterOutcome(Connection connection, int runId)
+            throws SQLException {
+        connection.setAutoCommit(false);
+        try (PreparedStatement statement = connection.prepareStatement(START_AFTER_OUTCOME)) {
             statement.setInt(1, runId);
             SQLException error = assertThrows(SQLException.class, statement::executeUpdate);
             assertEquals(20001, error.getErrorCode());

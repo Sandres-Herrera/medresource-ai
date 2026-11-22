@@ -321,17 +321,20 @@ END pr_guardar_comparacion;
 /
 
 -- ---------------------------------------------------------------------------
--- Impide guardar un paciente que empezó su atención antes de llegar
+-- Impide iniciar la atención fuera del intervalo llegada..desenlace
 -- (ORA-20001). El valor -1 significa que nunca lo atendieron y se acepta.
+-- También se revalida cuando cambia el minuto de desenlace.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE TRIGGER trg_validar_tiempo_atencion
-BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON resultado_paciente
+BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada, minuto_desenlace ON resultado_paciente
 FOR EACH ROW
 BEGIN
-    IF :NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < :NEW.minuto_llegada THEN
+    IF :NEW.minuto_inicio_atencion <> -1
+       AND (:NEW.minuto_inicio_atencion < :NEW.minuto_llegada
+            OR :NEW.minuto_inicio_atencion > :NEW.minuto_desenlace) THEN
         RAISE_APPLICATION_ERROR(-20001, 'El paciente ' || :NEW.codigo_paciente
-            || ' no puede empezar su atención (minuto ' || :NEW.minuto_inicio_atencion
-            || ') antes de llegar (minuto ' || :NEW.minuto_llegada || ').');
+            || ' debe empezar su atención entre la llegada (minuto ' || :NEW.minuto_llegada
+            || ') y el desenlace (minuto ' || :NEW.minuto_desenlace || ').');
     END IF;
 END trg_validar_tiempo_atencion;
 /
@@ -728,7 +731,20 @@ CREATE OR REPLACE PROCEDURE pr_actualizar_enfermedad (
     p_sintomas          IN VARCHAR2,
     p_actualizadas      OUT NUMBER
 ) IS
+    v_pacientes_incompatibles NUMBER;
 BEGIN
+    -- El catálogo puede editarse, pero no debe invalidar casos ya guardados.
+    -- El motor de simulación no modifica las enfermedades: esta protección
+    -- solo se aplica al mantenimiento explícito del catálogo.
+    SELECT COUNT(*) INTO v_pacientes_incompatibles
+      FROM caso_paciente
+     WHERE id_enfermedad = p_id
+       AND (edad < p_edad_min OR edad > p_edad_max);
+    IF v_pacientes_incompatibles > 0 THEN
+        RAISE_APPLICATION_ERROR(-20009,
+            'El nuevo rango de edad de la enfermedad #' || p_id
+            || ' deja fuera a pacientes de casos guardados.');
+    END IF;
     UPDATE enfermedad
        SET nombre = p_nombre,
            especialidad_principal = p_especialidad,

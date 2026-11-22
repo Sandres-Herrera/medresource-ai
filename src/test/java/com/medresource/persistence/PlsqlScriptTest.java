@@ -244,14 +244,26 @@ class PlsqlScriptTest {
     }
 
     @Test
-    void aPatientCannotStartCareBeforeArrivingUnlessItWasNeverAttended() throws IOException {
+    void careStartsOnlyBetweenArrivalAndOutcomeUnlessNeverAttended() throws IOException {
         String trigger = unit("trg_validar_tiempo_atencion");
 
-        assertTrue(trigger.contains("BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada ON "
-                + "resultado_paciente"));
-        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion <> -1 AND :NEW.minuto_inicio_atencion < "
-                + ":NEW.minuto_llegada"));
+        assertTrue(trigger.contains("BEFORE INSERT OR UPDATE OF minuto_inicio_atencion, minuto_llegada, "
+                + "minuto_desenlace ON resultado_paciente"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion <> -1"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion < :NEW.minuto_llegada"));
+        assertTrue(trigger.contains(":NEW.minuto_inicio_atencion > :NEW.minuto_desenlace"));
         assertTrue(trigger.contains("RAISE_APPLICATION_ERROR(-20001"));
+    }
+
+    @Test
+    void editingDiseaseAgesMustPreserveStoredCasePatients() throws IOException {
+        String procedure = unit("pr_actualizar_enfermedad");
+
+        assertTrue(procedure.contains("FROM caso_paciente"));
+        assertTrue(procedure.contains("id_enfermedad = p_id"));
+        assertTrue(procedure.contains("edad < p_edad_min OR edad > p_edad_max"));
+        assertTrue(procedure.contains("RAISE_APPLICATION_ERROR(-20009"));
+        assertTrue(procedure.indexOf("RAISE_APPLICATION_ERROR(-20009") < procedure.indexOf("UPDATE enfermedad"));
     }
 
     @Test
