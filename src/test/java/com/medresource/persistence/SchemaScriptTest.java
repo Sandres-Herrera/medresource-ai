@@ -315,9 +315,15 @@ class SchemaScriptTest {
     }
 
     @Test
-    void theScriptCreatesThirteenTablesAndTwoIndexes() throws IOException {
+    void theScriptCreatesThirteenTablesAndEightIndexes() throws IOException {
         assertEquals(13, createdTables().size());
-        assertEquals(15, statements().size());
+        long indexes = statements().stream()
+                .filter(statement -> statement.startsWith("CREATE INDEX ")
+                        || statement.startsWith("CREATE UNIQUE INDEX "))
+                .count();
+        assertEquals(8, indexes, "El esquema debe crear dos indices originales y seis de apoyo");
+        assertEquals(createdTables().size() + indexes, statements().size(),
+                "El script solo debe crear tablas e indices");
     }
 
     @Test
