@@ -16,29 +16,24 @@ SELECT e.id, e.id_caso, c.semilla, c.escenario, e.estrategia, e.camas, e.camas_u
   FROM ejecucion e JOIN caso c ON c.id = e.id_caso
  ORDER BY e.id;
 
--- 2. Indicadores de cada ejecución calculados con las funciones PL/SQL
-SELECT id, estrategia,
-       ROUND(fn_porcentaje_atendidos(id), 1) AS atendidos_pct,
-       ROUND(fn_tasa_mortalidad(id), 1) AS mortalidad_pct,
-       fn_pacientes_sin_atencion(id) AS sin_atencion,
-       ROUND(fn_espera_promedio(id), 1) AS espera_promedio_min,
-       fn_espera_maxima(id) AS espera_maxima_min
-  FROM ejecucion
- ORDER BY id;
+-- 2. Validación de cada caso y de cada ejecución guardada (1 = cumple, 0 = no cumple)
+SELECT c.id AS caso,
+       fn_caso_integro(c.id) AS caso_integro,
+       fn_base_compatible(c.id, NULL) AS sin_base_valida
+  FROM caso c
+ ORDER BY c.id;
 
--- 3. Resumen de una ejecución con el procedimiento (se ve en «Salida de DBMS»)
-DECLARE
-    v_pacientes       NUMBER;
-    v_atendidos       NUMBER;
-    v_fallecidos      NUMBER;
-    v_sin_atencion    NUMBER;
-    v_espera_promedio NUMBER;
-    v_espera_maxima   NUMBER;
-BEGIN
-    pr_resumen_simulacion(1, v_pacientes, v_atendidos, v_fallecidos, v_sin_atencion, v_espera_promedio,
-                          v_espera_maxima);
-END;
-/
+SELECT e.id, e.estrategia,
+       fn_integridad_ejecucion(e.id) AS integridad_ejecucion
+  FROM ejecucion e
+ ORDER BY e.id;
+
+-- 3. Pertenencia de pacientes y de eventos (cambie los números y códigos por los de su caso)
+SELECT fn_paciente_pertenece_caso(1, 1) AS paciente_del_caso,
+       fn_paciente_pertenece_caso(1, 999999) AS paciente_ajeno,
+       fn_evento_paciente_valido(1, 'P001') AS evento_valido,
+       fn_evento_paciente_valido(1, 'NO_EXISTE') AS evento_invalido
+  FROM dual;
 
 -- 4. ¿Se pueden comparar dos ejecuciones? Dice el tipo (STRATEGY, RESOURCES, MIXED) o el motivo
 DECLARE
