@@ -111,6 +111,23 @@ class PlsqlScriptTest {
         assertTrue(migration.contains("SQLCODE = -4043"), "the cleanup must tolerate already missing objects");
     }
 
+    @Test
+    void hotfixMigrationReusesUpdatedUnitsAndNeverDropsTables() throws IOException {
+        String migration;
+        try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream(
+                "/db/migracion_integridad_20261122.sql")) {
+            assertNotNull(stream, "Falta la migración de integridad para bases existentes");
+            migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        for (String name : List.of("fn_integridad_ejecucion", "pr_guardar_comparacion",
+                "trg_validar_tiempo_atencion", "pr_actualizar_enfermedad")) {
+            assertTrue(migration.contains(unit(name)), "La migración no coincide con el script: " + name);
+        }
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DROP TABLE"));
+        assertTrue(migration.contains("EXECUTE IMMEDIATE p_ddl;"));
+        assertTrue(migration.contains("v_total <> 4"));
+    }
+
     // ---------- funciones de validación ----------
 
     @Test
