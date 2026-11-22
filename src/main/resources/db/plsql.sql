@@ -181,10 +181,19 @@ BEGIN
     IF v_eventos = 0 THEN
         RETURN 0;
     END IF;
+    -- Mismo criterio que fn_evento_paciente_valido: debe haber exactamente
+    -- un resultado por código. Se valida en SQL sin llamar PL/SQL por evento.
     SELECT COUNT(*) INTO v_eventos_mal
-      FROM evento
-     WHERE id_ejecucion = p_id_ejecucion
-       AND fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0;
+      FROM evento ev
+     WHERE ev.id_ejecucion = p_id_ejecucion
+       AND NOT EXISTS (
+           SELECT 1
+             FROM resultado_paciente r
+            WHERE r.id_ejecucion = ev.id_ejecucion
+              AND r.codigo_paciente = ev.codigo_paciente
+            GROUP BY r.id_ejecucion, r.codigo_paciente
+           HAVING COUNT(*) = 1
+       );
     IF v_faltan > 0 OR v_datos_mal > 0 OR v_codigos_rep > 0 OR v_eventos_mal > 0 THEN
         RETURN 0;
     END IF;

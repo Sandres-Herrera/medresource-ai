@@ -141,7 +141,11 @@ class PlsqlScriptTest {
         assertTrue(run.contains("v_eventos = 0"), "A run without any events must be rejected");
         assertTrue(run.contains("r.irrecuperable <> cp.irrecuperable"));
         assertTrue(run.contains("GROUP BY codigo_paciente") && run.contains("HAVING COUNT(*) > 1"));
-        assertTrue(run.contains("fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0"));
+        assertTrue(run.contains("NOT EXISTS ("));
+        assertTrue(run.contains("r.codigo_paciente = ev.codigo_paciente"));
+        assertTrue(run.contains("HAVING COUNT(*) = 1"));
+        assertFalse(run.contains("fn_evento_paciente_valido("),
+                "La validación completa no debe llamar la función por cada evento");
     }
 
     // ---------- validaciones antes de cada INSERT ----------
