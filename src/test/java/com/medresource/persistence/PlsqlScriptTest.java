@@ -16,19 +16,29 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pruebas del script PL/SQL: que tenga todas sus unidades, que cada una termine bien y que use las mismas reglas
- * que la aplicación. Que compile en Oracle lo comprueba la prueba de integración con la base de datos.
+ * Pruebas del script PL/SQL: que tenga todas sus unidades, que cada una termine bien, que las validaciones se
+ * hagan antes de cada INSERT y que use las mismas reglas que la aplicación. Que compile en Oracle lo comprueba la
+ * prueba de integración con la base de datos.
  */
 class PlsqlScriptTest {
 
     private static final Pattern HEADER =
             Pattern.compile("^CREATE OR REPLACE (FUNCTION|PROCEDURE|TRIGGER|VIEW) ([a-z_]+)");
 
-    /** COMMIT o ROLLBACK como sentencia: al inicio de la línea, sin contar los comentarios («-- ... (COMMIT)»). */
+    /** COMMIT o ROLLBACK como sentencia: al inicio de la línea, sin contar los comentarios. */
     private static final Pattern TRANSACTION_CONTROL =
             Pattern.compile("^\\s*(COMMIT|ROLLBACK)\\b", Pattern.MULTILINE);
 
     private static final Pattern COMMIT = Pattern.compile("^\\s*COMMIT\\b", Pattern.MULTILINE);
+
+    /** Objetos que se retiraron: no deben estar en el script. */
+    private static final List<String> RETIRED = List.of("pr_exigir_ejecucion", "fn_espera_promedio",
+            "fn_espera_maxima", "fn_porcentaje_atendidos", "fn_tasa_mortalidad", "fn_pacientes_sin_atencion",
+            "pr_resumen_simulacion");
+
+    /** Funciones de validación nuevas. */
+    private static final List<String> VALIDATIONS = List.of("fn_caso_integro", "fn_base_compatible",
+            "fn_paciente_pertenece_caso", "fn_evento_paciente_valido", "fn_integridad_ejecucion");
 
     static String script() throws IOException {
         try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream(SchemaInstaller.PLSQL_RESOURCE)) {
@@ -75,60 +85,117 @@ class PlsqlScriptTest {
         assertFalse(TRANSACTION_CONTROL.matcher(script()).find(), "las transacciones las maneja quien llama");
     }
 
-    // ---------- funciones ----------
-
     @Test
-    void hasTheFunctionsOfTheIndicators() throws IOException {
-        assertTrue(names().containsAll(List.of("pr_exigir_ejecucion", "fn_espera_promedio", "fn_espera_maxima",
-                "fn_porcentaje_atendidos", "fn_tasa_mortalidad", "fn_pacientes_sin_atencion", "fn_medicos_extra")));
-        assertEquals("pr_exigir_ejecucion", names().get(0));
-    }
-
-    @Test
-    void theIndicatorsFailWithTheSameErrorForAMissingRun() throws IOException {
-        assertTrue(unit("pr_exigir_ejecucion").contains("RAISE_APPLICATION_ERROR(-20002"));
-        for (String function : List.of("fn_espera_promedio", "fn_espera_maxima", "fn_porcentaje_atendidos",
-                "fn_tasa_mortalidad", "fn_pacientes_sin_atencion")) {
-            assertTrue(unit(function).contains("pr_exigir_ejecucion(p_id_ejecucion);"), function);
+    void theRetiredObjectsAreNotInTheScript() throws IOException {
+        for (String name : RETIRED) {
+            assertFalse(names().contains(name), name);
         }
     }
 
     @Test
-    void theWaitIsMeasuredLikeInTheApplication() throws IOException {
-        String rule = "CASE WHEN minuto_inicio_atencion >= 0 THEN minuto_inicio_atencion - minuto_llegada\n"
-                + "                    ELSE minuto_desenlace - minuto_llegada END";
+    void migrationDropsExactlyTheSevenRetiredObjectsWithoutDroppingTables() throws IOException {
+        String migration;
+        try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream(
+                "/db/migracion_eliminar_plsql_antiguo.sql")) {
+            assertNotNull(stream, "the PL/SQL cleanup migration is missing");
+            migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        Matcher drops = Pattern.compile("retirar\\('(FUNCTION|PROCEDURE)', '([A-Z_]+)'\\)")
+                .matcher(migration);
+        List<String> namesToDrop = new java.util.ArrayList<>();
+        while (drops.find()) {
+            namesToDrop.add(drops.group(2).toLowerCase(java.util.Locale.ROOT));
+        }
+        assertEquals(RETIRED.stream().sorted().toList(), namesToDrop.stream().sorted().toList());
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DROP TABLE"));
+        assertTrue(migration.contains("SQLCODE = -4043"), "the cleanup must tolerate already missing objects");
+    }
 
-        assertTrue(unit("fn_espera_promedio").contains("AVG(" + rule + ")"));
-        assertTrue(unit("fn_espera_maxima").contains("MAX(" + rule + ")"));
+    // ---------- funciones de validación ----------
+
+    @Test
+    void hasTheValidationFunctionsAndTheExtraDoctorsBeforeTheProceduresThatUseThem() throws IOException {
+        assertTrue(names().containsAll(VALIDATIONS));
+        assertTrue(names().contains("fn_medicos_extra"));
+        for (String function : VALIDATIONS) {
+            assertTrue(names().indexOf(function) < names().indexOf("pr_crear_ejecucion"), function);
+        }
     }
 
     @Test
-    void theAttendedTheDeathsAndTheUnattendedAreCountedLikeInTheApplication() throws IOException {
-        assertTrue(unit("fn_porcentaje_atendidos").contains("WHEN minuto_inicio_atencion >= 0 THEN 1"));
-        assertTrue(unit("fn_tasa_mortalidad").contains("WHEN estado = 'DECEASED' THEN 1"));
-        assertTrue(unit("fn_pacientes_sin_atencion").contains("estado = 'UNATTENDED'"));
-        assertTrue(unit("fn_porcentaje_atendidos").contains("IF v_total = 0 THEN"));
-        assertTrue(unit("fn_tasa_mortalidad").contains("IF v_total = 0 THEN"));
+    void theCaseIsCompleteWhenItHasTheRightPatientsSymptomsAgesAndArrivals() throws IOException {
+        String caso = unit("fn_caso_integro");
+
+        assertTrue(caso.contains("cantidad_pacientes"));
+        assertTrue(caso.contains("NVL(v_minimo, 0) <> 1"));
+        assertTrue(caso.contains("NOT EXISTS (SELECT 1 FROM caso_paciente_sintoma"));
+        assertTrue(caso.contains("cp.edad < e.edad_minima OR cp.edad > e.edad_maxima"));
+        assertTrue(caso.contains("minuto_llegada >= v_duracion"));
     }
 
-    // ---------- procedimientos ----------
+    @Test
+    void theRunIsCompleteWhenItsResultsAndEventsMatchTheCase() throws IOException {
+        String run = unit("fn_integridad_ejecucion");
+
+        assertTrue(run.contains("v_resultados <> v_pacientes"));
+        assertTrue(run.contains("v_eventos = 0"), "A run without any events must be rejected");
+        assertTrue(run.contains("r.irrecuperable <> cp.irrecuperable"));
+        assertTrue(run.contains("GROUP BY codigo_paciente") && run.contains("HAVING COUNT(*) > 1"));
+        assertTrue(run.contains("fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0"));
+    }
+
+    // ---------- validaciones antes de cada INSERT ----------
 
     @Test
-    void hasTheProceduresOfTheSummaryAndTheComparisons() throws IOException {
-        assertTrue(names().containsAll(List.of("pr_resumen_simulacion", "pr_validar_comparacion",
-                "pr_guardar_comparacion")));
+    void theCaseAndTheBaseAreCheckedBeforeTheExecutionIsCreated() throws IOException {
+        String create = unit("pr_crear_ejecucion");
+
+        assertTrue(create.contains("fn_caso_integro(p_id_caso) = 0"));
+        assertTrue(create.contains("fn_base_compatible(p_id_caso, p_base) = 0"));
+        assertTrue(create.contains("RAISE_APPLICATION_ERROR(-20004"));
+        assertTrue(create.contains("RAISE_APPLICATION_ERROR(-20005"));
+        assertTrue(create.indexOf("fn_caso_integro(") < create.indexOf("INSERT INTO ejecucion"));
+        assertTrue(create.indexOf("fn_base_compatible(") < create.indexOf("INSERT INTO ejecucion"));
+    }
+
+    @Test
+    void thePatientEventAndReportAreCheckedBeforeTheyAreSaved() throws IOException {
+        String patient = unit("pr_agregar_resultado_paciente");
+        assertTrue(patient.contains("fn_paciente_pertenece_caso(p_id_ejecucion, p_id_paciente) = 0"));
+        assertTrue(patient.contains("RAISE_APPLICATION_ERROR(-20006"));
+        assertTrue(patient.indexOf("fn_paciente_pertenece_caso(") < patient.indexOf("INSERT INTO resultado_paciente"));
+
+        String event = unit("pr_agregar_evento");
+        assertTrue(event.contains("fn_evento_paciente_valido(p_id_ejecucion, p_codigo_paciente) = 0"));
+        assertTrue(event.contains("RAISE_APPLICATION_ERROR(-20007"));
+        assertTrue(event.indexOf("fn_evento_paciente_valido(") < event.indexOf("INSERT INTO evento"));
+
+        String report = unit("pr_guardar_reporte");
+        assertTrue(report.contains("fn_integridad_ejecucion(p_id_ejecucion) = 0"));
+        assertTrue(report.contains("RAISE_APPLICATION_ERROR(-20008"));
+        assertTrue(report.indexOf("fn_integridad_ejecucion(") < report.indexOf("INSERT INTO reporte"));
+    }
+
+    @Test
+    void theErrorCodesAreDifferentForEachRule() throws IOException {
+        String script = script();
+
+        for (String code : List.of("-20001", "-20003", "-20004", "-20005", "-20006", "-20007", "-20008")) {
+            assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(" + code), code);
+        }
+        assertEquals(0, count(script, "RAISE_APPLICATION_ERROR(-20002"), "-20002 se retiró con pr_exigir_ejecucion");
+    }
+
+    private static int count(String text, String part) {
+        return text.split(Pattern.quote(part), -1).length - 1;
+    }
+
+    // ---------- comparaciones ----------
+
+    @Test
+    void hasTheComparisonProceduresInTheRightOrder() throws IOException {
+        assertTrue(names().containsAll(List.of("pr_validar_comparacion", "pr_guardar_comparacion")));
         assertTrue(names().indexOf("pr_validar_comparacion") < names().indexOf("pr_guardar_comparacion"));
-    }
-
-    @Test
-    void theSummaryReturnsTheIndicatorsAndPrintsThem() throws IOException {
-        String summary = unit("pr_resumen_simulacion");
-
-        for (String output : List.of("p_pacientes", "p_atendidos", "p_fallecidos", "p_sin_atencion",
-                "p_espera_promedio", "p_espera_maxima")) {
-            assertTrue(summary.contains(output), output);
-        }
-        assertTrue(summary.contains("DBMS_OUTPUT.PUT_LINE"));
     }
 
     @Test
@@ -196,40 +263,25 @@ class PlsqlScriptTest {
         assertTrue(trigger.contains("VALUES (:OLD.id, :OLD.id_ejecucion, 'DELETE', USER);"));
     }
 
-    @Test
-    void theErrorCodesAreDifferentForEachRule() throws IOException {
-        String script = script();
-
-        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20001"));
-        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20002"));
-        assertEquals(1, count(script, "RAISE_APPLICATION_ERROR(-20003"));
-    }
-
-    private static int count(String text, String part) {
-        return text.split(Pattern.quote(part), -1).length - 1;
-    }
-
     // ---------- demostración ----------
 
     @Test
-    void theDemoScriptShowsEveryFunctionAndProcedureAndChangesNothing() throws IOException {
+    void theDemoScriptShowsEveryFunctionAndChangesNothing() throws IOException {
         String demo;
         try (InputStream stream = PlsqlScriptTest.class.getResourceAsStream("/db/demo_plsql.sql")) {
             assertNotNull(stream, "no se encontró la demostración");
             demo = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
 
-        // La demostración muestra los indicadores (fn_) y el resumen y la validación de comparaciones.
-        // Los procedimientos de guardar, leer y borrar no se muestran: son el acceso de la aplicación.
         for (String name : names()) {
-            if (name.startsWith("fn_") || name.equals("pr_resumen_simulacion")
-                    || name.equals("pr_validar_comparacion")) {
+            if (name.startsWith("fn_")) {
                 assertTrue(demo.contains(name + "("), name);
             }
         }
+        assertTrue(demo.contains("pr_validar_comparacion("));
         assertTrue(demo.contains("trg_validar_tiempo_atencion"));
         assertFalse(demo.contains("&"));
-        // La demostración sí usa ROLLBACK para deshacer sus propios cambios, pero nunca confirma (COMMIT).
+        // La demostración sí usa ROLLBACK para deshacer sus cambios, pero nunca confirma (COMMIT).
         assertFalse(COMMIT.matcher(demo).find());
     }
 }

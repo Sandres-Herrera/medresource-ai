@@ -5,110 +5,194 @@
 -- abrir el archivo y ejecutarlo como script (F5). Cada unidad termina en una
 -- línea con solo «/». Se puede volver a ejecutar: todo es CREATE OR REPLACE.
 --
--- Las funciones calculan los indicadores de una ejecución con las mismas
--- definiciones que la aplicación (clase RunIndicators):
---   - atendido: minuto_inicio_atencion distinto de -1;
---   - sin atención: estado = 'UNATTENDED';
---   - espera: desde la llegada hasta el inicio de la atención, o hasta el
---     desenlace si nunca lo atendieron.
--- Si la ejecución no existe, lanzan el error ORA-20002.
+-- Funciones de validación: devuelven 1 si la regla se cumple y 0 si no. No
+-- modifican datos. Los procedimientos que escriben las llaman justo antes del
+-- INSERT y, si la regla no se cumple, lanzan un error propio (ver cada uno):
+--   ORA-20004  caso incompleto o incoherente         (pr_crear_ejecucion)
+--   ORA-20005  base de otro caso o inexistente        (pr_crear_ejecucion)
+--   ORA-20006  paciente que no pertenece al caso      (pr_agregar_resultado_paciente)
+--   ORA-20007  evento con paciente inválido           (pr_agregar_evento)
+--   ORA-20008  ejecución incompleta o incoherente     (pr_guardar_reporte)
+-- Las funciones van antes que los procedimientos que las llaman.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- Comprueba que una ejecución existe (ORA-20002 si no).
+-- ¿El caso está completo y es coherente? (1 sí, 0 no)
+--   - hay un paciente por cada unidad de cantidad_pacientes, con ids 1..N;
+--   - cada paciente tiene al menos un síntoma;
+--   - la edad está entre la edad mínima y máxima de su enfermedad;
+--   - el minuto de llegada está en [0, duracion_minutos).
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE PROCEDURE pr_exigir_ejecucion (p_id_ejecucion IN NUMBER) IS
+CREATE OR REPLACE FUNCTION fn_caso_integro (p_id_caso IN NUMBER) RETURN NUMBER IS
+    v_cantidad     NUMBER;
+    v_duracion     NUMBER;
+    v_pacientes    NUMBER;
+    v_distintos    NUMBER;
+    v_minimo       NUMBER;
+    v_maximo       NUMBER;
+    v_sin_sintomas NUMBER;
+    v_edad_mala    NUMBER;
+    v_llegada_mala NUMBER;
+BEGIN
+    SELECT cantidad_pacientes, duracion_minutos
+      INTO v_cantidad, v_duracion
+      FROM caso
+     WHERE id = p_id_caso;
+    SELECT COUNT(*), COUNT(DISTINCT id_paciente), MIN(id_paciente), MAX(id_paciente)
+      INTO v_pacientes, v_distintos, v_minimo, v_maximo
+      FROM caso_paciente
+     WHERE id_caso = p_id_caso;
+    IF v_pacientes <> v_cantidad OR v_distintos <> v_cantidad
+       OR NVL(v_minimo, 0) <> 1 OR NVL(v_maximo, 0) <> v_cantidad THEN
+        RETURN 0;
+    END IF;
+    SELECT COUNT(*) INTO v_sin_sintomas
+      FROM caso_paciente cp
+     WHERE cp.id_caso = p_id_caso
+       AND NOT EXISTS (SELECT 1 FROM caso_paciente_sintoma s
+                        WHERE s.id_caso = cp.id_caso AND s.id_paciente = cp.id_paciente);
+    SELECT COUNT(*) INTO v_edad_mala
+      FROM caso_paciente cp
+      JOIN enfermedad e ON e.id = cp.id_enfermedad
+     WHERE cp.id_caso = p_id_caso
+       AND (cp.edad < e.edad_minima OR cp.edad > e.edad_maxima);
+    SELECT COUNT(*) INTO v_llegada_mala
+      FROM caso_paciente
+     WHERE id_caso = p_id_caso
+       AND (minuto_llegada < 0 OR minuto_llegada >= v_duracion);
+    IF v_sin_sintomas > 0 OR v_edad_mala > 0 OR v_llegada_mala > 0 THEN
+        RETURN 0;
+    END IF;
+    RETURN 1;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 0;
+END fn_caso_integro;
+/
+
+-- ---------------------------------------------------------------------------
+-- ¿La ejecución base existe y es del mismo caso? Sin base (NULL) es válido si
+-- el caso existe. Solo mira la pertenencia al caso, no estrategias ni recursos.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_base_compatible (
+    p_id_caso IN NUMBER,
+    p_id_base IN NUMBER
+) RETURN NUMBER IS
     v_cantidad NUMBER;
 BEGIN
-    SELECT COUNT(*) INTO v_cantidad FROM ejecucion WHERE id = p_id_ejecucion;
+    SELECT COUNT(*) INTO v_cantidad FROM caso WHERE id = p_id_caso;
     IF v_cantidad = 0 THEN
-        RAISE_APPLICATION_ERROR(-20002, 'No existe la ejecución #' || p_id_ejecucion || '.');
-    END IF;
-END pr_exigir_ejecucion;
-/
-
--- ---------------------------------------------------------------------------
--- Espera promedio de una ejecución, en minutos (0 si no tiene pacientes).
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION fn_espera_promedio (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
-    v_promedio NUMBER;
-BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
-    SELECT AVG(CASE WHEN minuto_inicio_atencion >= 0 THEN minuto_inicio_atencion - minuto_llegada
-                    ELSE minuto_desenlace - minuto_llegada END)
-      INTO v_promedio
-      FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion;
-    RETURN NVL(v_promedio, 0);
-END fn_espera_promedio;
-/
-
--- ---------------------------------------------------------------------------
--- Espera más larga de una ejecución, en minutos (0 si no tiene pacientes).
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION fn_espera_maxima (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
-    v_maxima NUMBER;
-BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
-    SELECT MAX(CASE WHEN minuto_inicio_atencion >= 0 THEN minuto_inicio_atencion - minuto_llegada
-                    ELSE minuto_desenlace - minuto_llegada END)
-      INTO v_maxima
-      FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion;
-    RETURN NVL(v_maxima, 0);
-END fn_espera_maxima;
-/
-
--- ---------------------------------------------------------------------------
--- Porcentaje de pacientes que empezaron a recibir atención (0 a 100).
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION fn_porcentaje_atendidos (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
-    v_total     NUMBER;
-    v_atendidos NUMBER;
-BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
-    SELECT COUNT(*), NVL(SUM(CASE WHEN minuto_inicio_atencion >= 0 THEN 1 ELSE 0 END), 0)
-      INTO v_total, v_atendidos
-      FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion;
-    IF v_total = 0 THEN
         RETURN 0;
     END IF;
-    RETURN 100 * v_atendidos / v_total;
-END fn_porcentaje_atendidos;
-/
-
--- ---------------------------------------------------------------------------
--- Mortalidad de una ejecución: fallecidos sobre pacientes (0 a 100).
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION fn_tasa_mortalidad (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
-    v_total      NUMBER;
-    v_fallecidos NUMBER;
-BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
-    SELECT COUNT(*), NVL(SUM(CASE WHEN estado = 'DECEASED' THEN 1 ELSE 0 END), 0)
-      INTO v_total, v_fallecidos
-      FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion;
-    IF v_total = 0 THEN
-        RETURN 0;
+    IF p_id_base IS NULL THEN
+        RETURN 1;
     END IF;
-    RETURN 100 * v_fallecidos / v_total;
-END fn_tasa_mortalidad;
+    SELECT COUNT(*) INTO v_cantidad
+      FROM ejecucion
+     WHERE id = p_id_base AND id_caso = p_id_caso;
+    RETURN CASE WHEN v_cantidad = 1 THEN 1 ELSE 0 END;
+END fn_base_compatible;
 /
 
 -- ---------------------------------------------------------------------------
--- Pacientes que se quedaron sin atención (estado UNATTENDED).
+-- ¿El paciente pertenece al caso de esa ejecución? Una ejecución inexistente
+-- devuelve 0.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION fn_pacientes_sin_atencion (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
+CREATE OR REPLACE FUNCTION fn_paciente_pertenece_caso (
+    p_id_ejecucion IN NUMBER,
+    p_id_paciente  IN NUMBER
+) RETURN NUMBER IS
     v_cantidad NUMBER;
 BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
+    SELECT COUNT(*) INTO v_cantidad
+      FROM ejecucion e
+      JOIN caso_paciente cp ON cp.id_caso = e.id_caso
+     WHERE e.id = p_id_ejecucion
+       AND cp.id_paciente = p_id_paciente;
+    RETURN CASE WHEN v_cantidad > 0 THEN 1 ELSE 0 END;
+END fn_paciente_pertenece_caso;
+/
+
+-- ---------------------------------------------------------------------------
+-- ¿El código de paciente identifica exactamente un resultado de la ejecución?
+-- El código es texto (por ejemplo P001). Sirve también para los eventos como
+-- EMERGENCY_ALERT, que llevan el código de un paciente.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_evento_paciente_valido (
+    p_id_ejecucion    IN NUMBER,
+    p_codigo_paciente IN VARCHAR2
+) RETURN NUMBER IS
+    v_cantidad NUMBER;
+BEGIN
     SELECT COUNT(*) INTO v_cantidad
       FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion AND estado = 'UNATTENDED';
-    RETURN v_cantidad;
-END fn_pacientes_sin_atencion;
+     WHERE id_ejecucion = p_id_ejecucion
+       AND codigo_paciente = p_codigo_paciente;
+    RETURN CASE WHEN v_cantidad = 1 THEN 1 ELSE 0 END;
+END fn_evento_paciente_valido;
+/
+
+-- ---------------------------------------------------------------------------
+-- ¿La ejecución ya terminada tiene datos consistentes? (1 sí, 0 no)
+--   - hay un resultado por cada paciente del caso, y solo esos;
+--   - cada resultado conserva los datos de origen del paciente (edad, sexo,
+--     enfermedad, llegada, irrecuperable);
+--   - no hay códigos de paciente repetidos en la ejecución;
+--   - existe al menos un evento y cada evento tiene exactamente un resultado con su código.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_integridad_ejecucion (p_id_ejecucion IN NUMBER) RETURN NUMBER IS
+    v_caso        NUMBER;
+    v_pacientes   NUMBER;
+    v_resultados  NUMBER;
+    v_faltan      NUMBER;
+    v_datos_mal   NUMBER;
+    v_codigos_rep NUMBER;
+    v_eventos_mal NUMBER;
+    v_eventos     NUMBER;
+BEGIN
+    SELECT id_caso INTO v_caso FROM ejecucion WHERE id = p_id_ejecucion;
+    SELECT COUNT(*) INTO v_pacientes FROM caso_paciente WHERE id_caso = v_caso;
+    SELECT COUNT(*) INTO v_resultados FROM resultado_paciente WHERE id_ejecucion = p_id_ejecucion;
+    IF v_resultados <> v_pacientes THEN
+        RETURN 0;
+    END IF;
+    SELECT COUNT(*) INTO v_faltan
+      FROM caso_paciente cp
+     WHERE cp.id_caso = v_caso
+       AND NOT EXISTS (SELECT 1 FROM resultado_paciente r
+                        WHERE r.id_ejecucion = p_id_ejecucion AND r.id_paciente = cp.id_paciente);
+    SELECT COUNT(*) INTO v_datos_mal
+      FROM resultado_paciente r
+      JOIN caso_paciente cp ON cp.id_caso = v_caso AND cp.id_paciente = r.id_paciente
+     WHERE r.id_ejecucion = p_id_ejecucion
+       AND (r.edad <> cp.edad OR r.sexo <> cp.sexo OR r.id_enfermedad <> cp.id_enfermedad
+            OR r.minuto_llegada <> cp.minuto_llegada OR r.irrecuperable <> cp.irrecuperable);
+    SELECT COUNT(*) INTO v_codigos_rep
+      FROM (SELECT codigo_paciente
+              FROM resultado_paciente
+             WHERE id_ejecucion = p_id_ejecucion
+             GROUP BY codigo_paciente
+            HAVING COUNT(*) > 1);
+    -- Every generated case has patients and the engine emits arrival events.
+    -- A run with no events is not a complete saved simulation.
+    SELECT COUNT(*) INTO v_eventos
+      FROM evento
+     WHERE id_ejecucion = p_id_ejecucion;
+    IF v_eventos = 0 THEN
+        RETURN 0;
+    END IF;
+    SELECT COUNT(*) INTO v_eventos_mal
+      FROM evento
+     WHERE id_ejecucion = p_id_ejecucion
+       AND fn_evento_paciente_valido(id_ejecucion, codigo_paciente) = 0;
+    IF v_faltan > 0 OR v_datos_mal > 0 OR v_codigos_rep > 0 OR v_eventos_mal > 0 THEN
+        RETURN 0;
+    END IF;
+    RETURN 1;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 0;
+END fn_integridad_ejecucion;
 /
 
 -- ---------------------------------------------------------------------------
@@ -124,44 +208,6 @@ BEGIN
      WHERE id_ejecucion = p_id_ejecucion;
     RETURN NVL(v_lista, '-');
 END fn_medicos_extra;
-/
-
--- ---------------------------------------------------------------------------
--- Resumen de una ejecución, para verlo en SQL Developer (con SET SERVEROUTPUT
--- ON) o para leerlo desde un programa con los parámetros de salida.
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE PROCEDURE pr_resumen_simulacion (
-    p_id_ejecucion    IN  NUMBER,
-    p_pacientes       OUT NUMBER,
-    p_atendidos       OUT NUMBER,
-    p_fallecidos      OUT NUMBER,
-    p_sin_atencion    OUT NUMBER,
-    p_espera_promedio OUT NUMBER,
-    p_espera_maxima   OUT NUMBER
-) IS
-    v_estrategia ejecucion.estrategia%TYPE;
-BEGIN
-    pr_exigir_ejecucion(p_id_ejecucion);
-    SELECT estrategia INTO v_estrategia FROM ejecucion WHERE id = p_id_ejecucion;
-    SELECT COUNT(*),
-           NVL(SUM(CASE WHEN minuto_inicio_atencion >= 0 THEN 1 ELSE 0 END), 0),
-           NVL(SUM(CASE WHEN estado = 'DECEASED' THEN 1 ELSE 0 END), 0)
-      INTO p_pacientes, p_atendidos, p_fallecidos
-      FROM resultado_paciente
-     WHERE id_ejecucion = p_id_ejecucion;
-    p_sin_atencion := fn_pacientes_sin_atencion(p_id_ejecucion);
-    p_espera_promedio := fn_espera_promedio(p_id_ejecucion);
-    p_espera_maxima := fn_espera_maxima(p_id_ejecucion);
-    DBMS_OUTPUT.PUT_LINE('Ejecución #' || p_id_ejecucion || ' (' || v_estrategia || ')');
-    DBMS_OUTPUT.PUT_LINE('  Pacientes:       ' || p_pacientes);
-    DBMS_OUTPUT.PUT_LINE('  Atendidos:       ' || p_atendidos || ' ('
-        || ROUND(fn_porcentaje_atendidos(p_id_ejecucion), 1) || ' %)');
-    DBMS_OUTPUT.PUT_LINE('  Fallecidos:      ' || p_fallecidos || ' ('
-        || ROUND(fn_tasa_mortalidad(p_id_ejecucion), 1) || ' %)');
-    DBMS_OUTPUT.PUT_LINE('  Sin atención:    ' || p_sin_atencion);
-    DBMS_OUTPUT.PUT_LINE('  Espera promedio: ' || ROUND(p_espera_promedio, 1) || ' min');
-    DBMS_OUTPUT.PUT_LINE('  Espera máxima:   ' || p_espera_maxima || ' min');
-END pr_resumen_simulacion;
 /
 
 -- ---------------------------------------------------------------------------
@@ -365,6 +411,9 @@ CREATE OR REPLACE PROCEDURE pr_guardar_reporte (
     p_id             OUT NUMBER
 ) IS
 BEGIN
+    IF fn_integridad_ejecucion(p_id_ejecucion) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20008, 'La ejecución #' || p_id_ejecucion || ' no está completa o sus datos no son coherentes: no se guarda el reporte.');
+    END IF;
     INSERT INTO reporte (id_ejecucion, origen, contenido_json)
     VALUES (p_id_ejecucion, p_origen, p_contenido_json)
     RETURNING id INTO p_id;
@@ -803,6 +852,12 @@ CREATE OR REPLACE PROCEDURE pr_crear_ejecucion (
     p_id             OUT NUMBER
 ) IS
 BEGIN
+    IF fn_caso_integro(p_id_caso) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20004, 'El caso #' || p_id_caso || ' no está completo o es incoherente: no se crea la ejecución.');
+    END IF;
+    IF fn_base_compatible(p_id_caso, p_base) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20005, 'La ejecución base #' || p_base || ' no existe o no pertenece al caso #' || p_id_caso || '.');
+    END IF;
     INSERT INTO ejecucion (id_caso, estrategia, minutos_totales, camas, camas_uci, quirofanos, medicos,
                            enfermeros, unidades_sangre_por_tipo, capacidad_morgue, id_ejecucion_base)
     VALUES (p_id_caso, p_estrategia, p_minutos, p_camas, p_camas_uci, p_quirofanos, p_medicos,
@@ -840,6 +895,9 @@ CREATE OR REPLACE PROCEDURE pr_agregar_resultado_paciente (
     p_salud_final            IN BINARY_DOUBLE
 ) IS
 BEGIN
+    IF fn_paciente_pertenece_caso(p_id_ejecucion, p_id_paciente) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20006, 'El paciente #' || p_id_paciente || ' no pertenece al caso de la ejecución #' || p_id_ejecucion || '.');
+    END IF;
     INSERT INTO resultado_paciente (id_ejecucion, id_paciente, codigo_paciente, edad, sexo, nivel_triage,
                                     id_enfermedad, minuto_llegada, minuto_inicio_atencion, minuto_desenlace,
                                     estado, causa_muerte, nivel_atencion, irrecuperable, salud_final)
@@ -859,6 +917,9 @@ CREATE OR REPLACE PROCEDURE pr_agregar_evento (
     p_descripcion     IN VARCHAR2
 ) IS
 BEGIN
+    IF fn_evento_paciente_valido(p_id_ejecucion, p_codigo_paciente) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20007, 'El evento del paciente «' || p_codigo_paciente || '» no corresponde a exactamente un resultado de la ejecución #' || p_id_ejecucion || '.');
+    END IF;
     INSERT INTO evento (id_ejecucion, orden_evento, minuto_evento, tipo_evento, codigo_paciente,
                         codigo_recurso, descripcion)
     VALUES (p_id_ejecucion, p_orden, p_minuto, p_tipo, p_codigo_paciente, p_codigo_recurso, p_descripcion);

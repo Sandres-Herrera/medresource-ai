@@ -5,7 +5,6 @@ import com.medresource.model.Disease;
 import com.medresource.model.DiseaseCatalog;
 import com.medresource.model.HospitalConfig;
 import com.medresource.model.RunComparison;
-import com.medresource.model.RunIndicators;
 import com.medresource.model.RunRecord;
 import com.medresource.model.SavedComparison;
 import com.medresource.model.Scenario;
@@ -38,7 +37,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>Solo corre en los equipos que tienen {@code src/main/resources/db.properties}; en los demás se omite.
  * Guarda un caso con dos ejecuciones (FIFO y prioridad clínica), comprueba que las funciones PL/SQL dan los mismos
- * indicadores que la aplicación, guarda la comparación con el procedimiento, comprueba que no se repite y que el
+ * comprobaciones de integridad, guarda la comparación con el procedimiento, comprueba que no se repite y que el
  * trigger rechaza un inicio de atención anterior a la llegada. Borra lo que crea. Si las tablas o el PL/SQL
  * todavía no existen (no se han corrido {@code schema.sql} y {@code plsql.sql}), se omite con un aviso.</p>
  */
@@ -46,13 +45,12 @@ class OracleComparisonDaoIntegrationTest {
 
     private static final CaseConfig CONFIG = new CaseConfig(987_654_324L, Scenario.HIGH_DEMAND, 30, 240);
     private static final HospitalConfig HOSPITAL = new HospitalConfig(6, 2, 1, 3, 4, 2, 2);
-    private static final String INDICATORS = "SELECT fn_porcentaje_atendidos(?), fn_tasa_mortalidad(?), "
-            + "fn_pacientes_sin_atencion(?), fn_espera_promedio(?), fn_espera_maxima(?) FROM dual";
+    private static final String INTEGRITY = "SELECT fn_integridad_ejecucion(?) FROM dual";
     private static final String SHIFT_START = "UPDATE resultado_paciente SET minuto_inicio_atencion = "
             + "minuto_llegada - 1 WHERE id_ejecucion = ? AND minuto_inicio_atencion > 0 AND minuto_llegada > 0";
 
     @Test
-    void savesAComparisonAndThePlsqlAgreesWithTheApplication() throws SQLException {
+    void savesAComparisonAfterCheckingRunIntegrity() throws SQLException {
         assumeTrue(DatabaseConfig.class.getResource(DatabaseConfig.RESOURCE_NAME) != null,
                 "No hay db.properties: se omite la prueba con Oracle.");
         ConnectionManager manager = new ConnectionManager(DatabaseConfig.fromClasspath());
@@ -78,8 +76,8 @@ class OracleComparisonDaoIntegrationTest {
             int runB = results.save(new RunRecord(caseId, HOSPITAL, priority));
 
             try (Connection connection = manager.getConnection()) {
-                assertSameIndicators(connection, runA, RunIndicators.of(fifo));
-                assertSameIndicators(connection, runB, RunIndicators.of(priority));
+                assertRunIsComplete(connection, runA);
+                assertRunIsComplete(connection, runB);
                 assertTheTriggerRejectsAStartBeforeArrival(connection, runA);
             }
 
@@ -101,19 +99,13 @@ class OracleComparisonDaoIntegrationTest {
         return new SimulationEngine(generated, new HospitalFactory().create(HOSPITAL), strategy).run();
     }
 
-    private static void assertSameIndicators(Connection connection, int runId, RunIndicators expected)
-            throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INDICATORS)) {
-            for (int i = 1; i <= 5; i++) {
-                statement.setInt(i, runId);
-            }
+    /** La base da por completa y coherente la ejecución que guardó la aplicación (fn_integridad_ejecucion = 1). */
+    private static void assertRunIsComplete(Connection connection, int runId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(INTEGRITY)) {
+            statement.setInt(1, runId);
             try (ResultSet row = statement.executeQuery()) {
                 assertTrue(row.next());
-                assertEquals(expected.attendedPercent(), row.getDouble(1), 1e-9);
-                assertEquals(expected.mortalityPercent(), row.getDouble(2), 1e-9);
-                assertEquals(expected.unattended(), row.getInt(3));
-                assertEquals(expected.averageWait(), row.getDouble(4), 1e-9);
-                assertEquals(expected.maxWait(), row.getInt(5));
+                assertEquals(1, row.getInt(1), "la ejecución #" + runId + " no pasa fn_integridad_ejecucion");
             }
         }
     }
