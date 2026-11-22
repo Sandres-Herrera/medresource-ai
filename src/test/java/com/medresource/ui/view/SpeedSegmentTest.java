@@ -30,6 +30,13 @@ class SpeedSegmentTest {
     }
 
     @Test
+    void turboPillIsClearlyLabeled() {
+        assertEquals("TURBO", segment.pill(SimulationClock.TURBO_SPEED).getName());
+        segment.pill(SimulationClock.TURBO_SPEED).doClick();
+        assertTrue(segment.pill(SimulationClock.TURBO_SPEED).isSelected());
+    }
+
+    @Test
     void choosingAPillMarksItAndTellsTheListener() {
         List<Integer> heard = new ArrayList<>();
         segment.onSpeed(heard::add);
